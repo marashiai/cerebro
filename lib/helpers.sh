@@ -9,16 +9,10 @@ warn() { printf 'cerebro: warning: %s\n' "$*" >&2; }
 die()  { printf 'cerebro: error: %s\n' "$*" >&2; exit 1; }
 dbg()  { [[ "$CEREBRO_DEBUG" == "1" ]] && printf 'cerebro: debug: %s\n' "$*" >&2; return 0; }
 
-# child_fail_stderr <child_log> -- emit a tail of the child's stderr sidecar
-# (next to <child_log>, named <child_log>.err.log) to stderr, when it is
-# non-empty. Used by audit/review/execute/apply-review/doc-write/verify on a
-# non-zero child_run exit so a stalled or errored child is diagnosable
-# (provider auth error, model unavailable, rate limit, stale resume id)
-# instead of silent. Sidecar is written by backend_*_child_run (replaces the
-# old 2>/dev/null that discarded all provider stderr).
+# Surface native child stderr from the sibling .err.log file on failure.
 child_fail_stderr() {
   local child_log="$1"
-  local err_log="${child_log%.log}.err.log"
+  local err_log="${child_log%.*}.err.log"
   [[ -s "$err_log" ]] || return 0
   local tail_out
   tail_out="$(tail -n 15 "$err_log" 2>/dev/null)"
@@ -27,27 +21,15 @@ child_fail_stderr() {
   printf '%s\n' "$tail_out" | sed 's/^/    /' >&2
 }
 
-# Error helpers for the read-only bridge subcommands (git/gh/read/grep/ls).
-# Exit codes are documented in the orchestrator's system prompt so the model
-# can interpret them programmatically.
-# NOTE: parse_stream.py (the child stream parser) also uses small exit codes
-# for its own outcomes -- 2 = no stream events, 3 = no closing message,
-# 4 = child reported an error event, 5 = child stalled (no stream events for
-# CEREBRO_CHILD_IDLE_TIMEOUT seconds). Those are reported by the calling
-# cerebro command (audit/review/execute/...) in its own failure message, so
-# the two namespaces do not collide at the orchestrator boundary.
+# Bridge exit codes and diagnostics are documented in cerebro-commands.
 err_usage()  { printf 'cerebro: error: %s\n' "$*" >&2; exit 2; }
 err_path()   { printf 'cerebro: error: %s\n' "$*" >&2; exit 3; }
 err_subcmd() { printf 'cerebro: error: %s\n' "$*" >&2; exit 4; }
 err_flag()   { printf 'cerebro: error: %s\n' "$*" >&2; exit 5; }
 err_escape() { printf 'cerebro: error: %s\n' "$*" >&2; exit 6; }
 
-# Benign "target does not exist / wrong type" outcome for the read-only
-# EXPLORATION bridges (read/ls/grep). Default: print a machine-recognizable
-# marker to stdout and exit 0, so a missing probe target during a parallel
-# fan-out is a successful empty result, not a cascade-triggering failure.
-# With strict=1 (--strict-missing), restore the old behavior: stderr + exit 3.
-#   $1 = strict (0|1)   $2 = marker (stdout)   $3 = error message (stderr, strict)
+# Exploration misses are successful empty results unless --strict-missing is set.
+# $1 strict (0|1), $2 stdout marker, $3 strict-mode diagnostic.
 missing_target() {
   local strict="$1" marker="$2" msg="$3"
   if [[ "$strict" == "1" ]]; then
@@ -148,128 +130,62 @@ canonicalise_rg_type() {
 usage() {
   cat <<'EOF'
 usage:
-  cerebro                       # start a new session (interactive chat)
-  cerebro --resume [<id>]       # resume a session (id, or most recent if omitted)
-  cerebro --observe [<id>]      # watch-and-steer-only session for another's
-                                #   live paired children (id, or auto-pick)
-  cerebro list                  # list sessions, newest first
-  cerebro detach --output <path> -- <child-command> [...]
-                                # launch a long child outside agent-tool timeouts
-  cerebro wait <job-id>        # wait for detached completion notification
-  cerebro jobs                  # rediscover detached jobs after resume
-  cerebro cancel <job-id>       # terminate a detached job and descendants
-  cerebro --help                # this help
+  cerebro                       # start a native supervisor session
+  cerebro --resume [<id>]        # resume an ID, or the most recent session
+  cerebro --observe [<id>]       # observe another session's live paired children
+  cerebro list                   # list sessions
+  cerebro jobs                   # rediscover durable child jobs
+  cerebro wait <job-id>          # block on a job completion notification
+  cerebro cancel <job-id>        # stop an authorized job and its descendants
+  cerebro detach --output <path> -- <child-subcommand> [...]
+  cerebro acp [restart]          # editor frontend for OpenCode or Claude
+  cerebro --help
 
-cerebro launches a native interactive agent chat -- opencode or claude,
-selected by CEREBRO_BACKEND -- configured as an orchestrator. The
-orchestrator drives the plan -> execute -> review loop by calling
-`cerebro <subcommand>` against your repositories on your behalf. You stay
-in the chat -- you don't type the sub-commands yourself.
+CEREBRO_BACKEND selects opencode (default), codex or claude. OpenCode requires
+V2, minimum 2.0.19; V1 is unsupported. A session and all its children, including
+reviews, use one backend. Resume restores the recorded backend.
 
-The orchestrator runs with a restricted tool surface: read/grep/glob plus
-bash limited to `cerebro ...` (no edit, no write, no subagent delegation).
-Every git/gh action and every file edit happens inside a short-lived
-sub-agent that cerebro spawns; the orchestrator itself can't touch repos
-directly. The read-only reviewer runs under CEREBRO_REVIEW_BACKEND (opencode
-by default) on a suggested-different model (CEREBRO_REVIEW_MODEL),
-regardless of the editing backend; any subcommand's --model flag overrides
-the default per call, and `cerebro models` lists the user's model catalog
-($CEREBRO_HOME/models-config.json) with capability tags so the
-orchestrator can pick a model per task (e.g. a vision-capable model for
-screenshot verification).
+The parent supervises requirements, plans, delegation and delivery gates.
+Repository development happens in native children, with execute work isolated
+in a task worktree. Guarded Cerebro MCP commands accept literal argv and stdin;
+the parent has no unrestricted mutation tools. Review uses fresh read-only
+context on the same backend, optionally with another CEREBRO_REVIEW_MODEL.
+Empty model settings use the backend's native default; --model overrides one
+child call. The optional models-config.json catalog helps select models.
 
-Notes:
-  * Interactive-only. cerebro requires a genuine interactive TTY on stdin
-    and stdout; it accepts any controller that allocates a real PTY (a
-    shell, a multiplexer, an editor, or another agent such as Codex run
-    with `tty: true`) and rejects pipes, redirected input/output, and
-    cron-style launches. Sub-agents launched by the orchestrator are
-    exempt via $CEREBRO_SESSION_ID.
-  * Concurrency. cerebro has no concurrency control: it will not stop
-    you from running two mutating ops against the same repo at once,
-    within or across sessions. Sequence your own mutating work.
-  * No chat/PR/repo-specific flags are ever passed to the agent CLI. The
-    orchestrator addresses repos by absolute path as the first positional
-    arg to its sub-agent tools.
-  * Paused children. A spawned child (execute / apply-review /
-    doc-write) runs non-interactively and cannot ask questions mid-run.
-    When it hits a genuine blocker it ends with its question as its final
-    message; the orchestrator answers it (from the spec/recall, or by
-    asking you) and resumes the SAME child session with
-    `cerebro answer <child-session-id> "<answer>"`, so the child
-    continues where it paused.
-  * Pair programming. Ask the orchestrator to "pair" (or watch / steer)
-    an execute, apply-review, or doc-write child and it adds
-    `--pair`: the child runs with live steering so you can WATCH it live
-    from ANOTHER cerebro session -- ask that session to "observe <the
-    paired session's id>" and it narrates, in plain English, what every
-    live paired child is doing (and steers on your command) -- and STEER
-    it directly with `cerebro steer "<message>"` (a one-shot inject that
-    returns at once; pass the pipe path from the PAIR MODE banner as a
-    first arg when several run at once). The child runs to completion on
-    its own; after each turn it waits a short window (CEREBRO_PAIR_IDLE,
-    default 60s) for steering, and a quiet window finishes it. If the
-    child stream freezes, cerebro kills only that child and restarts it
-    with --resume, bounded by CEREBRO_PAIR_STALL_RETRIES. Each steering
-    message is injected into the running session and recorded; when the
-    child ends the orchestrator folds your steering into the session
-    spec and the upcoming plans, then tells you what changed.
-  * Observe-only sessions. `cerebro --observe [<id>]` opens an interactive
-    chat whose sole job is to watch and narrate another session's live
-    paired children (and steer them on your command). Its tools are
-    narrowed to `cerebro observe`/`steer` plus read-only commands, so it
-    makes no direct repo changes -- it is the pair-programming "watcher"
-    seat as a first-class session instead of a mode you ask for mid-chat.
-  * Backends. CEREBRO_BACKEND selects the agent CLI for the orchestrator
-    + editing children: `opencode` (default) or `claude`. CEREBRO_REVIEW_BACKEND
-    independently selects the CLI for the read-only reviewer (review / audit /
-    verify / improve): `opencode` (default) or `claude`, so the reviewer can
-    run under a different backend than the editor. The editing backend is
-    recorded in each session's metadata, so resuming a session always reuses
-    the backend it started with. Under `claude`, CEREBRO_CLAUDE_BASE_URL optionally
-    points every spawned `claude` at a custom Anthropic-compatible endpoint
-    (a local Ollama `/v1/messages` server, or any proxy/gateway) instead of
-    the claude.ai subscription; empty (the default) keeps the subscription.
-    CEREBRO_MODEL then names a model the endpoint serves; when the reviewer
-    runs under claude, CEREBRO_REVIEW_MODEL names the review model the endpoint
-    serves.
+Long child commands detach automatically through the command tool and survive
+parent disconnects. Their monitors notify waiters on completion; no child-state
+or log polling is required to wait. A blocked child ends with a question;
+answer <child-id> <answer> resumes that same conversation. A failed resume is
+reported instead of silently creating a fresh child.
 
-Requirements: jq, python3 on PATH, plus opencode and/or claude depending on
-the configured backends (opencode is required when CEREBRO_BACKEND or
-CEREBRO_REVIEW_BACKEND is opencode; claude when either is claude). Child
-runs additionally need git and gh on PATH for execute / apply-review /
-doc-write.
+Pair execute/apply-review/doc-write for live observation and steering. A separate
+observer reads log batches and compares them with the approved spec and plan.
+Preauthorized autosteering may correct drift. Restart additionally needs
+permission to abandon and remove the task's isolated branch, PR and worktree.
+Observer/supervisor steering cannot add user requirements. Paired children have
+a short post-turn steering window and bounded native inactivity handling.
 
-Options (env var or key in $CEREBRO_HOME/config.json; env wins over the file
-which wins over the default): CEREBRO_HOME (env-only), CEREBRO_BACKEND,
-CEREBRO_REVIEW_BACKEND, CEREBRO_MODEL, CEREBRO_REVIEW_MODEL, CEREBRO_TIMEOUT,
-CEREBRO_CHILD_IDLE_TIMEOUT, CEREBRO_OPENCODE_CMD, CEREBRO_CLAUDE_CMD,
+Interactive chats require a real TTY on stdin/stdout; controllers using a real
+PTY work. Session-bound commands are non-interactive. Cerebro does not serialize
+competing mutations against the same repository; sequence them.
+
+Requirements: jq, python3 and the selected native CLI on PATH. Development/PR
+work additionally needs git and gh; browser verification needs native browser
+capability. ACP is unavailable for Codex; its terminal frontend is supported.
+
+Options use env > $CEREBRO_HOME/config.json > default. CEREBRO_HOME is env-only.
+Supported options include CEREBRO_BACKEND, CEREBRO_MODEL, CEREBRO_REVIEW_MODEL,
+CEREBRO_TIMEOUT, CEREBRO_CHILD_IDLE_TIMEOUT (default 0), CEREBRO_CHILD_SESSION_TTL,
+CEREBRO_OPENCODE_CMD, CEREBRO_CODEX_CMD, CEREBRO_CLAUDE_CMD,
 CEREBRO_CLAUDE_BASE_URL, CEREBRO_CLAUDE_AUTH_TOKEN, CEREBRO_OVERLAY_CAP,
-CEREBRO_META_HORIZON, CEREBRO_CHILD_SESSION_TTL,
-CEREBRO_PAIR_IDLE, CEREBRO_PAIR_STALL, CEREBRO_PAIR_STALL_BUSY,
-CEREBRO_PAIR_STALL_RETRIES, CEREBRO_PAIR_STALL_BACKOFF, CEREBRO_DEBUG.
-See `cerebro --help` and docs/USAGE.md for the full table.
+CEREBRO_META_HORIZON, CEREBRO_PAIR_IDLE, CEREBRO_PAIR_STALL,
+CEREBRO_PAIR_STALL_BUSY, CEREBRO_PAIR_STALL_RETRIES, CEREBRO_PAIR_STALL_BACKOFF,
+CEREBRO_DEBUG. See docs/USAGE.md for the full table and workflows.
 EOF
 }
 
-# Interactive guard -- only runs for top-level invocations. Cerebro is driven
-# through a terminal, so it requires a genuine interactive TTY on stdin AND
-# stdout. The check is capability-based (is each a terminal?) rather than
-# parent-process-name based, so any controller that allocates a real PTY is
-# accepted -- a shell, a terminal multiplexer, an editor, or another agent
-# controller such as Codex that launches with `tty: true`. Pipes, redirected
-# input/output, and cron-style or otherwise non-interactive launches have no
-# TTY on stdin/stdout and are rejected here.
-#
-# The previous parent-executable allow-list guarded no invariant this TTY
-# check does not already cover: the child-impersonation guard is preserved by
-# launching children with `env -u CEREBRO_SESSION_ID` (so a child that ran
-# `cerebro` would fall through to this TTY check and fail it -- the
-# orchestrator's Bash tool has no TTY -- rather than impersonate the session).
-#
-# Sub-agents spawned by the orchestrator have CEREBRO_SESSION_ID set and bypass
-# this check; that's how `cerebro plan`, `cerebro execute`, ... can run inside
-# the orchestrator's non-TTY Bash tool.
+# Top-level chats require a real TTY; session-bound commands may use stdio MCP.
 require_interactive() {
   [[ -n "${CEREBRO_SESSION_ID:-}" ]] && return 0
   if [[ ! -t 0 || ! -t 1 ]]; then
@@ -278,40 +194,24 @@ require_interactive() {
 }
 
 require_deps() {
-  local cmd
-  # jq + python3 are always required. opencode is required when the editing
-  # backend OR the review backend is opencode (the read-only reviewer runs
-  # under CEREBRO_REVIEW_BACKEND, opencode by default); claude is required
-  # when either backend is claude. So a run with CEREBRO_BACKEND=claude and
-  # CEREBRO_REVIEW_BACKEND=claude needs no opencode at all.
-  local need_opencode=0 need_claude=0
-  [[ "$(current_backend)"  == "opencode" ]] && need_opencode=1
-  [[ "$(review_backend)"   == "opencode" ]] && need_opencode=1
-  [[ "$(current_backend)"  == "claude"   ]] && need_claude=1
-  [[ "$(review_backend)"   == "claude"   ]] && need_claude=1
-  for cmd in jq python3; do
-    command -v "$cmd" >/dev/null 2>&1 || die "missing required command on PATH: $cmd"
+  local cmd backend; backend="$(current_backend)"
+  case "$backend" in
+    opencode) cmd="$CEREBRO_OPENCODE_CMD" ;;
+    claude) cmd="$CEREBRO_CLAUDE_CMD" ;;
+    codex) cmd="$CEREBRO_CODEX_CMD" ;;
+    *) die "unsupported backend: $backend (choose opencode, claude or codex)" ;;
+  esac
+  local dep
+  for dep in jq python3 "$cmd"; do
+    command -v "$dep" >/dev/null 2>&1 || die "missing required command on PATH: $dep"
   done
-  if (( need_opencode )); then
-    command -v "$CEREBRO_OPENCODE_CMD" >/dev/null 2>&1 \
-      || die "missing required command on PATH: $CEREBRO_OPENCODE_CMD (needed: CEREBRO_BACKEND or CEREBRO_REVIEW_BACKEND is opencode)"
-  fi
-  if (( need_claude )); then
-    command -v "$CEREBRO_CLAUDE_CMD" >/dev/null 2>&1 \
-      || die "missing required command on PATH: $CEREBRO_CLAUDE_CMD (needed: CEREBRO_BACKEND or CEREBRO_REVIEW_BACKEND is claude)"
-  fi
+  [[ "$backend" != opencode ]] || backend_opencode_detect_version
 }
 
-# cerebro binds an interactive agent process to its session by exporting
-# CEREBRO_SESSION_ID into that process; the backend's bash tool inherits the
-# env, so every `cerebro <subcommand>` the orchestrator runs sees it. A session
-# is therefore always identified by that env var. The claude backend
-# additionally writes a current-session symlink from its UserPromptSubmit hook
-# (the bare `cerebro --resume` fallback when CEREBRO_SESSION_ID is unset).
+# Bind commands to the session environment and restore its recorded backend.
 require_session() {
   [[ -n "${CEREBRO_SESSION_ID:-}" ]] || {
-    # Bare-resume fallback (claude backend): hook writes a current-session
-    # symlink on first user prompt, pointing at sessions/<id>/.
+    # The Claude prompt hook records the active session for external commands.
     if [[ -L "$CEREBRO_HOME/current-session" ]]; then
       local target
       target="$(readlink "$CEREBRO_HOME/current-session")"
@@ -323,10 +223,7 @@ require_session() {
   CEREBRO_SESSION_DIR="$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID"
   [[ -d "$CEREBRO_SESSION_DIR" ]] || die "session dir missing: $CEREBRO_SESSION_DIR"
   export CEREBRO_SESSION_DIR
-  # Read the recorded backend back so child commands dispatch through the right
-  # implementation even when CEREBRO_BACKEND is not set in this shell (e.g. a
-  # subcommand spawned by an orchestrator whose session started under a
-  # different backend than the current env default).
+  # The recorded session backend governs every delegated child.
   CEREBRO_RESUME_BACKEND="$(session_backend "$CEREBRO_SESSION_DIR")"
   export CEREBRO_RESUME_BACKEND
 }
@@ -385,25 +282,12 @@ log_event() {
     >> "$file" 2>/dev/null || true
 }
 
-# playwright_isolate_child -- conditionally export the @playwright/mcp
-# isolation flag for a child process. @playwright/mcp inherits the env from the
-# launching CLI (opencode or claude), so exporting here propagates
-# PLAYWRIGHT_MCP_ISOLATED=1 to the MCP subprocess, making it use an in-memory
-# browser profile instead of the shared on-disk persistent profile. That shared
-# profile is single-owner (Chromium SingletonLock), so without this two
-# concurrent cerebro children collide and the second one fails (rc=4) fighting
-# the lock. In-memory profiles also make verify runs deterministic (no stale
-# cookies from prior runs). Call this at the top of every child launch fn
-# (both backends). Set CEREBRO_PLAYWRIGHT_ISOLATED=0 to restore the old shared
-# persistent profile (sequential-only) behaviour.
+# Separate browser profiles prevent concurrent native children sharing a lock.
 playwright_isolate_child() {
   [[ "${CEREBRO_PLAYWRIGHT_ISOLATED:-1}" != "0" ]] && export PLAYWRIGHT_MCP_ISOLATED=1
 }
 
-# Timeout fallback chain (copied from bin/tai).
-# CEREBRO_TIMEOUT unset/empty/0/none/unlimited => no cap: run the child
-# directly (TIMEOUT_CMD=(env)), so the perl alarm path can never fire.
-# Only a positive integer arms timeout/gtimeout/perl.
+# A configured wall-clock limit wraps child work; zero leaves it uncapped.
 build_timeout_cmd() {
   case "${CEREBRO_TIMEOUT:-0}" in
     ''|0|none|unlimited|NONE|UNLIMITED)
@@ -422,85 +306,29 @@ build_timeout_cmd() {
   fi
 }
 
-# Write the shared home payloads, then the backend-specific extras. The
-# opencode config tree ($CEREBRO_HOME/.opencode: agents + plugin + base config)
-# is ALWAYS written: the reviewer defaults to opencode (CEREBRO_REVIEW_BACKEND)
-# and the opencode editing backend's children + orchestrator agent files live
-# there too, so the tree is needed in the common case even when the editing
-# backend is claude. Idempotent: managed files are overwritten only when their
-# content differs.
-#
-# Agent files contain ONLY the static shipped prompts. User-owned learnings
-# and overlays are kept in their own files under $CEREBRO_HOME so the model can
-# read them when needed; they are NOT mixed into the agent body. Keeping the
-# agent files byte-for-byte stable across launches lets the backend cache the
-# system prompt.
+# Materialize shared skills and native backend extras without overwriting user overlays.
 materialise_home() {
-  mkdir -p "$CEREBRO_HOME/.opencode/agent" "$CEREBRO_HOME/.opencode/plugin" \
-    "$CEREBRO_HOME/.claude/skills" "$CEREBRO_HOME/guides" \
+  mkdir -p "$CEREBRO_HOME/.agents/skills" "$CEREBRO_HOME/.claude/skills" \
     "$CEREBRO_HOME/sessions" "$CEREBRO_HOME/templates" "$CEREBRO_HOME/overlays" \
     || die "cannot create $CEREBRO_HOME"
-
-  # Shared system prompt (read by the claude backend; also the core of the
-  # opencode orchestrator agent).
   write_if_changed "$CEREBRO_HOME/system-prompt.md" "$(cerebro_system_prompt)"
-
-  # Progressive-load skills + their opencode guide copies. Each shipped
-  # lib/payloads/skills/<topic>/SKILL.md is materialised verbatim as a Claude
-  # Code project skill at $CEREBRO_HOME/.claude/skills/<topic>/SKILL.md (the
-  # orchestrator runs with cwd $CEREBRO_HOME, so it discovers them and can
-  # load a body on demand via the Skill tool, keeping the always-loaded prompt
-  # small). The SAME source is also materialised as a plain guide with the
-  # YAML frontmatter stripped at $CEREBRO_HOME/guides/<topic>.md, which the
-  # opencode backend (no Skill tool / SKILL.md format) Reads directly. Globbing
-  # the skills dir means a new skill ships by just dropping a subdir, with no
-  # update needed here.
-  local sk_dir sk_topic sk_guide sk_src
-  sk_dir="$(cerebro_skills_dir)"
-  if [[ -d "$sk_dir" ]]; then
-    for sk_src in "$sk_dir"/*/SKILL.md; do
-      [[ -f "$sk_src" ]] || continue
-      sk_topic="$(basename "$(dirname "$sk_src")")"
-      # The claude skill keeps the cerebro-<topic> dir/name; the opencode guide
-      # drops the cerebro- prefix so the orchestrator prompt's stubs (which
-      # reference $CEREBRO_HOME/guides/<topic>.md) point at the real file.
-      sk_guide="${sk_topic#cerebro-}"
-      mkdir -p "$CEREBRO_HOME/.claude/skills/$sk_topic"
-      write_if_changed "$CEREBRO_HOME/.claude/skills/$sk_topic/SKILL.md" \
-        "$(cat "$sk_src")"
-      write_if_changed "$CEREBRO_HOME/guides/$sk_guide.md" \
-        "$(cerebro_skill_body "$sk_src")"
-    done
-  fi
-
-  # The opencode config tree is shared: the reviewer agent always runs under
-  # opencode, and the opencode editing backend's child agents live here too.
-  write_if_changed "$CEREBRO_HOME/.opencode/opencode.json" "$(cerebro_opencode_json)"
-  write_if_changed "$CEREBRO_HOME/.opencode/plugin/cerebro.js" "$(cerebro_plugin_js)"
-
-  # Orchestrator + observer agents: static bodies so the backend can cache.
-  write_if_changed "$CEREBRO_HOME/.opencode/agent/cerebro-orchestrator.md" \
-    "$(orchestrator_agent_file)"
-  write_if_changed "$CEREBRO_HOME/.opencode/agent/cerebro-observer.md" \
-    "$(observer_agent_file)"
-
-  local role
-  for role in execute apply-review doc-write; do
-    write_if_changed "$CEREBRO_HOME/.opencode/agent/cerebro-$role.md" \
-      "$(child_agent_file "$role")"
+  local src topic
+  for src in "$(cerebro_skills_dir)"/*/SKILL.md; do
+    topic="$(basename "$(dirname "$src")")"
+    mkdir -p "$CEREBRO_HOME/.agents/skills/$topic"
+    write_if_changed "$CEREBRO_HOME/.agents/skills/$topic/SKILL.md" "$(cat "$src")"
+    # Claude and Codex/OpenCode discover the same source through their native roots.
+    if [[ -d "$CEREBRO_HOME/.claude/skills/$topic" && ! -L "$CEREBRO_HOME/.claude/skills/$topic" ]]; then
+      rm -rf "$CEREBRO_HOME/.claude/skills/$topic"
+    fi
+    ln -sfn "../../.agents/skills/$topic" "$CEREBRO_HOME/.claude/skills/$topic"
   done
-  write_if_changed "$CEREBRO_HOME/.opencode/agent/cerebro-verify.md" \
-    "$(verify_agent_file)"
-  write_if_changed "$CEREBRO_HOME/.opencode/agent/cerebro-reviewer.md" \
-    "$(reviewer_agent_file)"
-
-  # Templates are user-editable defaults: write only when the file is missing
-  # so a user who customizes ~/.cerebro/templates/AGENTS.md isn't clobbered on
-  # the next launch.
+  local role
+  for role in orchestrator observer execute apply-review doc-write verify reviewer; do
+    rm -f "$CEREBRO_HOME/.opencode/agent/cerebro-$role.md"
+  done
+  rm -f "$CEREBRO_HOME/.opencode/plugin/cerebro.js" "$CEREBRO_HOME/.opencode/opencode.json"
   write_if_missing "$CEREBRO_HOME/templates/AGENTS.md" "$(cerebro_default_agents_md)"
-
-  # Backend-specific extras (claude: hook + settings.local.json + CLAUDE.md
-  # template; opencode: none beyond the shared tree above).
   backend_materialise_extras
 }
 

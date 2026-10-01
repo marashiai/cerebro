@@ -10,7 +10,7 @@ loop: the fast loop evolves task-level prompts (what the agent does), and
 the slow loop evolves the improvement procedure itself (how the agent
 improves) -- a bounded recursive self-improvement. Run this on the user's
 request -- it complements, it does not replace, the live
-preference-learning loop above.
+preference learning described in `cerebro-commands`.
 
 ## Fast loop (task-skill improvement)
 

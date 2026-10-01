@@ -1,63 +1,6 @@
 #!/usr/bin/env bash
-# cerebro - meta-harness CLI for the plan -> execute -> review loop.
-#
-# `cerebro` launches a native interactive agent chat -- opencode or claude,
-# selected by CEREBRO_BACKEND -- as the orchestrator. The orchestrator runs
-# with a restricted tool surface (read/grep/glob plus Bash limited to
-# `cerebro ...`) and a system prompt that catalogues the cerebro sub-commands.
-# The user talks only to the orchestrator; the orchestrator spawns short-lived
-# sub-agents (editing children via the configured backend, read-only review via
-# CEREBRO_REVIEW_BACKEND, opencode by default) via those sub-commands.
-#
-# This file is a thin entry point: it resolves its own location (even when
-# invoked through a symlink on PATH), sources the modular library under ../lib,
-# then dispatches. The implementation lives in lib/*.sh and lib/commands/*.sh,
-# with the python helpers under lib/python/ and the embedded-file payloads
-# under lib/payloads/ -- see docs/ARCHITECTURE.md for the module map.
-#
-# Top-level invocations the user types at a shell:
-#   cerebro                       # mint a new session, drop into the chat
-#   cerebro --resume [<id>]       # resume a session (id, or most recent)
-#   cerebro list                  # list sessions, newest first
-#
-# Required: jq, python3 on PATH, plus opencode and/or claude depending on the
-# configured backends (see CEREBRO_BACKEND and CEREBRO_REVIEW_BACKEND; each is
-# required when the backend it selects is in use). Child runs additionally need
-# git and gh for execute / apply-review / doc-write to function.
-#
-# Env:
-#   CEREBRO_HOME          base dir (default: $HOME/.cerebro)
-#   CEREBRO_BACKEND       agent backend for the orchestrator + editing children:
-#                         opencode (default) or claude
-#   CEREBRO_MODEL         provider/model for the orchestrator + editing children
-#                         (default: github-copilot/gemini-3.1-pro-preview)
-#   CEREBRO_REVIEW_MODEL  provider/model for the read-only reviewer
-#                         (review / audit / verify / improve; runs under
-#                         CEREBRO_REVIEW_BACKEND; default: github-copilot/gpt-5.5)
-#   CEREBRO_REVIEW_BACKEND
-#                         backend for the read-only reviewer, independent of
-#                         CEREBRO_BACKEND: opencode (default) or claude
-#   CEREBRO_TIMEOUT       seconds for child agent calls; 0/empty/none/
-#                         unlimited = no cap (default: 0, no cap)
-#   CEREBRO_OPENCODE_CMD  opencode executable (default: opencode)
-#   CEREBRO_CLAUDE_CMD    claude executable (default: claude) [claude backend]
-#   CEREBRO_CLAUDE_BASE_URL
-#                         optional Anthropic-compatible endpoint for the claude
-#                         backend (e.g. a local Ollama /v1/messages server, or
-#                         any proxy). empty (default) = the claude.ai
-#                         subscription `claude` is logged into [claude backend]
-#   CEREBRO_CLAUDE_AUTH_TOKEN
-#                         bearer token for CEREBRO_CLAUDE_BASE_URL (default:
-#                         ollama, a placeholder local no-auth servers ignore;
-#                         set to the real key for an authed gateway) [claude backend]
-#   CEREBRO_CHILD_SESSION_TTL
-#                         seconds a stored child session id stays resumable
-#                         before it is treated as stale (default: 86400, 24h)
-#   CEREBRO_DEBUG         if 1, verbose logs and leave temp files
-
-# ----- locate the library ---------------------------------------------------
-# Resolve symlinks by hand so the install can drop a `cerebro` symlink onto
-# PATH while the libs stay beside the real script. macOS lacks `readlink -f`.
+# Cerebro's thin entry point. The library owns commands and native backends.
+# Resolve PATH symlinks without relying on GNU readlink -f.
 _cerebro_src="${BASH_SOURCE[0]}"
 while [[ -h "$_cerebro_src" ]]; do
   _cerebro_dir="$(cd -P "$(dirname "$_cerebro_src")" && pwd)"
@@ -79,6 +22,7 @@ unset _cerebro_src _cerebro_dir _cerebro_bin_dir
 . "$CEREBRO_LIB_DIR/backend.sh"
 . "$CEREBRO_LIB_DIR/backend-opencode.sh"
 . "$CEREBRO_LIB_DIR/backend-claude.sh"
+. "$CEREBRO_LIB_DIR/backend-codex.sh"
 . "$CEREBRO_LIB_DIR/pair.sh"
 for _cerebro_cmd in "$CEREBRO_LIB_DIR"/commands/*.sh; do
   . "$_cerebro_cmd"

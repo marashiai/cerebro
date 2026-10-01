@@ -1,17 +1,4 @@
-# cerebro lib: commands/verify
-# subcommand: verify
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro verify <repo> (--plan <path> | --prompt <text>)
-#   [--context <text>] ---------------------------------------------------
-# Spawns the cerebro-verify child agent (on CEREBRO_REVIEW_MODEL) to perform a
-# HIGH-LEVEL REQUIREMENTS / ACCEPTANCE check: does the delivered change, used
-# for real, satisfy what the spec/plan asked for end-to-end? The verify agent
-# drives the real running app with a browser (or invokes the real
-# entrypoint/CLI for a non-UI change) and reports VERIFY: PASS|FAIL|BLOCKED as
-# its final line. Its report is saved to sessions/<id>/children/verify-*.md and
-# the path is echoed on stdout (same stdout contract as review). Mirrors
-# cmd_review's child-store continuity + resume/stale-fallback shape.
+# Delegate runtime acceptance verification and capture its final report.
 
 cmd_verify() {
   require_session
@@ -28,7 +15,7 @@ cmd_verify() {
       *) die "verify: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(review_backend)" verify
+  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" verify
   [[ -n "$repo" ]] \
     || die "usage: cerebro verify <repo-abs-path> (--plan <path> | --prompt \"<text>\") [--context \"<text>\"] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "verify: repo path must be absolute: $repo"
@@ -96,47 +83,27 @@ cmd_verify() {
 
   verify_prompt+=$'\n\nWrite your verification report (what you did, what you observed, and your judgement), then end with a SINGLE final line that is exactly one of: `VERIFY: PASS` (requirements met, used for real), `VERIFY: FAIL` (list which requirements are not met, with what you observed vs what was expected), or `VERIFY: BLOCKED` (genuine blocker -- no browser, credentials you lack, an env you cannot reach; end with a single clear question the orchestrator can relay to the user). Do not soften a real failure into PASS, and do not manufacture a failure out of a nitpick. Converge.'
 
-  # Run the verify child agent on the reviewer model (overridable per call
-  # with --model). It is NOT the read-only reviewer clamp -- verify may start
-  # servers, rebuild images, and drive a browser. Runs under
-  # CEREBRO_REVIEW_BACKEND (opencode by default).
-  local agent; agent="$(review_child_agent_name verify)"
+  # Verification retains runtime/browser tools, unlike read-only review.
+  local agent; agent="$(backend_child_agent_name verify)"
   local rc id_capture out_capture; id_capture="$(mktemp)"; out_capture="$(mktemp)"
 
-  child_store_begin "$ckey" "$(review_backend)" verify "$repo" "${verify_branch:-auto}" "$child_log" "${prior:+preserve-id}"
-  review_child_run 0 "$repo" "$verify_prompt" "$agent" "$prior" \
+  child_store_begin "$ckey" "$(current_backend)" verify "$repo" "${verify_branch:-auto}" "$child_log" "${prior:+preserve-id}"
+  child_run 0 "$repo" "$verify_prompt" "$agent" "$prior" \
     "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
   rc=$?
 
-  # Stale fallback: a resume the model no longer recognizes fails before any
-  # event (empty id capture); retry once fresh in that case only.
-  if (( rc != 0 )) && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-    log_event "verify_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-    warn "verify: resume of $prior failed (rc=$rc); retrying without resume"
-    : > "$id_capture"
-    child_store_begin "$ckey" "$(review_backend)" verify "$repo" "${verify_branch:-auto}" "$child_log"
-    review_child_run 0 "$repo" "$verify_prompt" "$agent" "" \
-      "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
-    rc=$?
-  fi
-
   # The report is the run's closing message; write it to out_path.
   if (( rc == 0 )) && [[ -s "$out_capture" ]]; then
-    cp "$out_capture" "$out_path"
+    cp "$out_capture" "$out_path" || rc=$?
   fi
   local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
   rm -f "$id_capture"
 
-  # On any failure -- non-zero exit OR empty report -- preserve the event log
-  # but do NOT echo a report path. Mark the child-store entry done ONLY when
-  # no session id was captured (a stall / dead-session failure that cannot
-  # be resumed, so a re-issue starts fresh instead of hanging on a dead
-  # --resume); a failed run that DID capture an id stays resumable.
-  if (( rc != 0 )) || [[ ! -s "$out_path" ]]; then
+  # A failed run must not supply a findings/report path; retain a native ID for resume.
+  if (( rc != 0 )) || [[ ! -s "$out_capture" || ! -s "$out_path" ]]; then
     rm -f "$out_capture"
-    # Mark done on a stall (rc=5, dead session) or when no id was captured;
-    # a failed run that captured an id stays resumable.
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    # Retain incomplete work when this attempt or the prior run has a native ID.
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "verify_failed" "rc=$rc log=$child_log out=$out_path"
     warn "verify: verification run failed (rc=$rc)"
     [[ -s "$child_log" ]] && warn "see event log: $child_log"

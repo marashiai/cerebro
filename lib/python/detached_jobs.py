@@ -123,6 +123,12 @@ def cancel(job_file):
         sys.exit("cerebro: refusing to signal PID whose monitor identity does not match")
 
     targets = descendants(pid)
+    # Publish cancellation before signalling the monitor: socket EOF and its
+    # final child result must agree with the registered job's cancellation.
+    write_atomic(status, "130\n")
+    output_status = job.get("output_status")
+    if output_status:
+        write_atomic(output_status, "130\n")
     for target in reversed(targets):
         try:
             os.kill(target, signal.SIGTERM)
@@ -140,10 +146,6 @@ def cancel(job_file):
                 os.kill(target, signal.SIGKILL)
             except OSError:
                 pass
-    write_atomic(status, "130\n")
-    output_status = job.get("output_status")
-    if output_status:
-        write_atomic(output_status, "130\n")
     print(f"cerebro: cancelled detached job {job.get('id')} (pid {pid})")
 
 

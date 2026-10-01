@@ -5,7 +5,7 @@ What to look for, grounded in the traces:
 * Repeated child failures or stalls (execute / apply-review / doc-write):
   the same wrong turn, missing instruction, or misread role constraint
   showing up across multiple sessions.
-* Grader noise: the codex audit/review grader repeatedly flagging the wrong
+* Grader noise: the audit/review grader repeatedly flagging the wrong
   thing, missing a class of real problem, or producing an unusable verdict.
 * Orchestrator mis-steps: the same planning/looping/escalation mistake
   recurring across sessions, or a preference the user had to repeat.

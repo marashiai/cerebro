@@ -70,6 +70,7 @@ acp_require_python_deps() {
 cmd_acp() {
   case "${1:-}" in
     restart)     shift; cmd_acp_restart     "$@" ; return $? ;;
+    opencode-child) shift; backend_opencode_launch_acp "$@" ; return $? ;;
     # internal: called by lib/python/acp_server.py over `cerebro acp <name>`
     mint)        shift; cmd_acp_mint        "$@" ; return $? ;;
     set-foreign) shift; cmd_acp_set_foreign "$@" ; return $? ;;
@@ -99,37 +100,34 @@ cmd_acp() {
   # spawn `cerebro execute` children that default back to opencode and fail to
   # bind the session, and a user-overridden CEREBRO_HOME would be lost.
   export CEREBRO_HOME \
-         CEREBRO_BACKEND CEREBRO_REVIEW_BACKEND \
-         CEREBRO_MODEL CEREBRO_DEFAULT_MODEL CEREBRO_REVIEW_MODEL \
+         CEREBRO_BACKEND \
+         CEREBRO_MODEL CEREBRO_REVIEW_MODEL \
          CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN
   exec "$CEREBRO_ACP_PYTHON" "$CEREBRO_LIB_DIR/python/acp_server.py"
 }
 
 # cmd_acp_mint (internal) -- mint a cerebro session for one ACP session/new and
-# prepare its cerebro-owned ACP project dir, then print the sid on stdout (the
-# python server parses stdout, so this must emit only the sid). The project dir
-# ($CEREBRO_HOME/acp/<sid>) becomes the upstream child's SESSION cwd: it carries
-# the restricted cerebro-orchestrator agent (both .opencode/agent and
-# .claude/agents copies, so either backend can be selected) plus cerebro's
-# opencode.json, so opencode acp / claude-agent-acp discover the agent from the
-# session cwd (their load path, verified) and surface it as a selectable
-# mode/agent option. The user's repo is NOT written to -- it is passed as an ACP
-# additional_directory by the proxy. Lightweight: no materialise_home (cmd_acp
-# already did it once at server start); just session + project dirs + metadata.
+# prepare its Cerebro-owned ACP project dir, then print only the sid. Native
+# launch happens after the proxy injects the session binding. OpenCode uses
+# built-in mode and skills; Claude discovers its restricted wrapper in this
+# project. The user's repo is passed as an additional directory.
 cmd_acp_mint() {
   local sid sess_dir ts proj
   sid="$(mint_uuid)"
   sess_dir="$CEREBRO_HOME/sessions/$sid"
   proj="$CEREBRO_HOME/acp/$sid"
   mkdir -p "$sess_dir/plans" "$sess_dir/children" \
-           "$proj/.opencode/agent" "$proj/.claude/agents" \
+           "$proj/.claude/agents" \
     || die "acp-mint: cannot create session dirs under $CEREBRO_HOME"
   : > "$sess_dir/transcript.jsonl"
   ts="$(ts_iso)"
   write_metadata_new "$sess_dir" "$sid" "$ts"
-  write_if_changed "$proj/.opencode/opencode.json" "$(cerebro_opencode_json)"
-  write_if_changed "$proj/.opencode/agent/cerebro-orchestrator.md" "$(orchestrator_agent_file)"
-  write_if_changed "$proj/.claude/agents/cerebro-orchestrator.md" "$(claude_orchestrator_agent_file)"
+  CEREBRO_SESSION_ID="$sid" CEREBRO_SESSION_DIR="$sess_dir" \
+    backend_supervisor_config supervisor > /dev/null
+  if backend_is claude; then
+    cp "$sess_dir/tools-supervisor.json" "$proj/.mcp.json"
+    write_if_changed "$proj/.claude/agents/cerebro-orchestrator.md" "$(claude_orchestrator_agent_file)"
+  fi
   printf '%s\n' "$sid"
 }
 

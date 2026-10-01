@@ -34,16 +34,15 @@ the entry point.
 bin/cerebro            # entry point: locate lib, source modules, dispatch
 lib/config.sh          # shell options + CEREBRO_* env defaults (sourced first)
 lib/helpers.sh         # say/warn/die, exit-code helpers, path + repo resolution, usage
-lib/payloads.sh        # loaders + generators for the payloads under lib/payloads/
-lib/payloads/          # opencode agent generators, session-binding plugin, opencode.json,
-                       #   hook script + settings.json (claude backend), system prompt,
-                       #   child role prompts, default AGENTS.md / CLAUDE.md templates
+lib/payloads.sh        # shared skill/prompt and configuration payload loaders
+lib/payloads/          # skills, native session-binding hooks/plugins, templates
 lib/session-store.sh   # session metadata (incl. backend) + child-agent session store
-lib/backend.sh         # the backend dispatch seam (child_run/launch/resume/materialise)
-lib/backend-opencode.sh # opencode backend: `opencode run --agent` / `opencode serve` (pair)
-lib/backend-claude.sh  # claude backend: `claude -p` / `claude --resume` (pair via stream-json)
-lib/python/            # python helpers (child-session store, stream parsing, pair pumps
-                       #   for both backends, observe pump, serve control, path resolution)
+lib/backend.sh         # backend dispatch (child_run/launch/resume/materialise)
+lib/backend-opencode.sh # OpenCode V2: native TUI + serve/session event API
+lib/backend-codex.sh   # Codex: native TUI + app-server thread/turn API
+lib/backend-claude.sh  # Claude: native TUI + stream-json children
+lib/python/            # guarded MCP commands, native transports, stream parsing,
+                       #   detached completion, observation and path helpers
 lib/pair.sh            # pair-programming mode shared helpers (watch + steer a live child)
 lib/commands/*.sh      # one file per subcommand group (plan, execute, review, ...)
 lib/main.sh            # dispatch table mapping argv[0] to a cmd_* function

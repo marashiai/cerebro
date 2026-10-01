@@ -15,7 +15,6 @@ cmd_plan() {
   local content=""
   local use_stdin=0
   local from_file=""
-  local scratch_dir=0
   local out_name=""
   local args=()
   while [[ $# -gt 0 ]]; do
@@ -23,24 +22,9 @@ cmd_plan() {
       --out) shift; out_name="${1:-}"; shift || true ;;
       --stdin) use_stdin=1; shift ;;
       --from-file) shift; from_file="${1:-}"; shift || true ;;
-      --scratch-dir) scratch_dir=1; shift ;;
       *) args+=("$1"); shift ;;
     esac
   done
-
-  # --scratch-dir: print this session's private scratch directory and stop.
-  # The orchestrator has no repo-mutation tools and only a /tmp-scoped Write,
-  # so LARGE plan bodies are staged in /tmp before `cerebro plan --from-file`
-  # ingests them. The dir is namespaced by the session id so concurrent cerebro
-  # sessions never clobber each other's staging files. The orchestrator asks
-  # for this path once (cerebro owns it -- no fragile path construction), Write
-  # tool drops the body at <scratch-dir>/<name>.md, then --from-file records it.
-  if (( scratch_dir )); then
-    local sd="/tmp/cerebro-$CEREBRO_SESSION_ID"
-    mkdir -p "$sd" || die "plan: cannot create scratch dir: $sd"
-    printf '%s\n' "$sd"
-    return 0
-  fi
 
   if (( ${#args[@]} > 0 )); then content="${args[*]}"; fi
   # The body may come from exactly one of: an inline positional, --stdin,
@@ -53,17 +37,11 @@ cmd_plan() {
   if (( use_stdin )); then
     content="$(cat)" || die "plan: failed to read body from stdin"
   elif [[ -n "$from_file" ]]; then
-    # Read the body from a file instead of the command string. This is the
-    # fast path for LARGE plans: the orchestrator drops the markdown with its
-    # Write tool (no Bash-command-text transport) to a /tmp path, then hands
-    # cerebro just the path -- a tiny command. Piping a big body through the
-    # Bash tool's command string is super-linear in size and hits the 120s/
-    # 300s timeout even for the --stdin heredoc form; --from-file sidesteps it.
     [[ -f "$from_file" ]] || die "plan: --from-file not a regular file: $from_file"
     content="$(cat -- "$from_file")" || die "plan: failed to read body from $from_file"
   fi
   [[ "$content" =~ [^[:space:]] ]] \
-    || die "usage: cerebro plan \"<plan markdown>\" [--out <name>] [--stdin] [--from-file <path>]"$'\n'"  # body from an inline arg, --stdin, or --from-file; use --from-file for large plans"
+    || die "usage: cerebro plan \"<plan markdown>\" [--out <name>] [--stdin] [--from-file <path>]"
 
   local plans_dir="$CEREBRO_SESSION_DIR/plans"
   mkdir -p "$plans_dir"
@@ -74,7 +52,9 @@ cmd_plan() {
     out_name="plan-$n"
   fi
   out_name="${out_name%.md}"
+  [[ "$out_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "plan: invalid plan name: $out_name"
   local out_path="$plans_dir/$out_name.md"
+  out_path="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$out_path")" || return $?
 
   printf '%s\n' "$content" > "$out_path" || die "plan: cannot write $out_path"
   log_event "plan_written" "$out_path"
@@ -97,6 +77,7 @@ cmd_plans() {
     [[ -n "$name" ]] || die "usage: cerebro plans rm <name>"
     name="$(basename "${name%.md}")"
     local f="$plans_dir/$name.md"
+    f="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$f")" || return $?
     [[ -f "$f" ]] || die "plans rm: no such plan: $f"
     rm -f "$f" || die "plans rm: cannot remove $f"
     log_event "plan_removed" "$f"

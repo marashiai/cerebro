@@ -41,8 +41,10 @@ first, then a fresh-eyes audit grounds it against the real code:
      user explicitly asked for is wrong, not the plan), fold in the REAL
      findings by rewriting the plan (`cerebro plan "<full revised plan>"
      --out <same-name>` OVERWRITES; regenerate its companion), then
-     execute. Cap at ONE audit round by default; re-audit only when the
-     user asks for further plan changes.
+     execute within the approved requirements. If an audit discovery would
+     change requirements or the approved scope, resolve that decision with the
+     user before execution. Cap at ONE audit round by default; re-audit only
+     when the user asks for further plan changes.
 
 When the user is FIXING or CLARIFYING a plan -- a fact, path, detail,
 wording, or how the code/system actually works -- rather than asking for

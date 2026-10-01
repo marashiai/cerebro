@@ -1,8 +1,4 @@
-# cerebro lib: commands/review
-# subcommands: review / apply-review
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro review <repo> [--base <ref>] --------------------
+# Read-only code review and delegated corrections on the session backend.
 
 cmd_review() {
   require_session
@@ -21,7 +17,7 @@ cmd_review() {
       *) die "review: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(review_backend)" review
+  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" review
   [[ -n "$repo" ]] || die "usage: cerebro review <repo-abs-path> [--base <ref>] [--criteria-file <plan-path>] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "review: repo path must be absolute: $repo"
   [[ -d "$repo" ]] || die "review: repo not a directory: $repo"
@@ -135,9 +131,8 @@ cmd_review() {
   say "cerebro: reviewing $repo against $base_description (merge-base $merge_base)"
   log_event "review_started" "repo=$repo base=$base_ref merge_base=$merge_base resume=${prior:-none}"
 
-  # Short, focused prompt. We give the reviewer the merge base directly so it
-  # runs the right `git diff` itself instead of pre-loading a huge patch. The
-  # read-only constraints live in the reviewer agent, not the prompt.
+  # Supply the merge base instead of duplicating the full diff in the prompt.
+  # The native adapter enforces read-only access.
   local review_prompt
   review_prompt="Review the code changes against the $base_description. The merge base commit for this comparison is $merge_base. Run \`git diff $merge_base\` to inspect the changes included since that merge base. Provide prioritized, actionable findings: bugs, regressions, security issues, missing tests, and correctness problems. Skip style nits, speculative concerns, and over-engineering suggestions (gold-plating, defensive code for cases that cannot occur, premature abstraction, or broad rewrites where a small fix would do); prefer the smallest change that resolves a real problem. For each finding, give a one-line title, the file or area affected, and a sentence explaining the concern and a suggested fix. Output Markdown only; no preamble."
 
@@ -160,50 +155,27 @@ $criteria_block
 </plan>"
   fi
 
-  # Run the read-only reviewer agent on the review model
-  # (CEREBRO_REVIEW_MODEL, overridable per call with --model). Its findings are
-  # its final message, which we capture and write to out_path; the JSON event
-  # stream is tee'd to child_log. The session id is persisted at startup so an
-  # interrupt stays resumable. The reviewer runs under CEREBRO_REVIEW_BACKEND
-  # (opencode by default).
-  local agent; agent="$(review_child_agent_name review)"
+  # Run a fresh read-only child on this backend with the selected review model.
+  local agent; agent="$(backend_child_agent_name review)"
   local rc id_capture out_capture; id_capture="$(mktemp)"; out_capture="$(mktemp)"
 
-  child_store_begin "$ckey" "$(review_backend)" review "$repo" "${review_branch:-auto}" "$child_log" "${prior:+preserve-id}"
-  review_child_run 0 "$repo" "$review_prompt" "$agent" "$prior" \
+  child_store_begin "$ckey" "$(current_backend)" review "$repo" "${review_branch:-auto}" "$child_log" "${prior:+preserve-id}"
+  child_run 0 "$repo" "$review_prompt" "$agent" "$prior" \
     "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
   rc=$?
 
-  # Stale fallback: a resume the model no longer recognizes fails before any
-  # event (empty id capture); retry once fresh in that case only.
-  if (( rc != 0 )) && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-    log_event "review_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-    warn "review: resume of $prior failed (rc=$rc); retrying without resume"
-    : > "$id_capture"
-    child_store_begin "$ckey" "$(review_backend)" review "$repo" "${review_branch:-auto}" "$child_log"
-    review_child_run 0 "$repo" "$review_prompt" "$agent" "" \
-      "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
-    rc=$?
-  fi
-
   # The findings are the run's closing message; write them to out_path.
   if (( rc == 0 )) && [[ -s "$out_capture" ]]; then
-    cp "$out_capture" "$out_path"
+    cp "$out_capture" "$out_path" || rc=$?
   fi
   local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
   rm -f "$id_capture"
 
-  # On any failure -- non-zero exit OR empty findings -- preserve the event log
-  # but do NOT echo a findings path. The orchestrator must not feed a failed
-  # review's output into apply-review as if it were findings. Mark the
-  # child-store entry done ONLY when no session id was captured (a stall /
-  # dead-session failure that cannot be resumed); a failed run that DID
-  # capture an id stays resumable.
-  if (( rc != 0 )) || [[ ! -s "$out_path" ]]; then
+  # A failed run must not supply a findings/report path; retain a native ID for resume.
+  if (( rc != 0 )) || [[ ! -s "$out_capture" || ! -s "$out_path" ]]; then
     rm -f "$out_capture"
-    # Mark done on a stall (rc=5, dead session) or when no id was captured;
-    # a failed run that captured an id stays resumable.
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    # Retain incomplete work when this attempt or the prior run has a native ID.
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "review_failed" "rc=$rc log=$child_log out=$out_path"
     warn "review: review run failed (rc=$rc)"
     [[ -s "$child_log" ]] && warn "see event log: $child_log"
@@ -211,8 +183,7 @@ $criteria_block
     die "review: review run failed; not echoing a findings path"
   fi
 
-  # The review session id was already persisted at startup (so an interrupted
-  # review stays resumable); just mark this review cleanly finished.
+  # The native ID is already persisted; successful completion retires the child.
   child_store_done "$ckey"
   rm -f "$out_capture"
 
@@ -385,20 +356,6 @@ cmd_apply_review() {
     rc=$?
     pair_cleanup "$pair"
 
-    # Stale fallback (same rule as execute): only retry fresh when the resumed
-    # run never started and this was not a stall.
-    if (( rc != 0 )) && ! pair_stalled "$child_log" && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-      log_event "apply_review_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-      warn "apply-review: resume of $prior failed (rc=$rc); retrying without resume"
-      : > "$id_capture"
-      (( pair )) && pair_begin apply-review "$repo" "$ar_branch" "$child_log" ""
-      child_store_begin "$ckey" "$provider" apply-review "$repo" "${ar_branch:-default}" "$child_log"
-      child_run "$pair" "$repo" "$child_prompt" "$agent" "" \
-        "$child_log" "$msg_capture" "$id_capture" "$store_file" "$ckey" "$model"
-      rc=$?
-      pair_cleanup "$pair"
-    fi
-
     if (( pair )) && pair_stalled "$child_log"; then
       if (( stall_n < ${CEREBRO_PAIR_STALL_RETRIES:-2} )); then
         stall_n=$((stall_n + 1))
@@ -419,9 +376,8 @@ cmd_apply_review() {
   if (( rc != 0 )); then
     local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
     rm -f "$id_capture" "$msg_capture"
-    # Mark done on a stall (rc=5, dead session) or when no id was captured;
-    # a half-done mutating run that captured an id stays resumable.
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    # Retain incomplete work when this attempt or the prior run has a native ID.
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "apply_review_failed" "rc=$rc log=$child_log"
     warn "apply-review: child failed (rc=$rc); see $child_log"
     child_fail_stderr "$child_log"

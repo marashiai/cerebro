@@ -79,17 +79,30 @@ pair_restart_clear() { rm -f "$(pair_restart_marker "$1")"; }
 # command-substitution capture would trap it in a subshell instead).
 PAIR_RESOLVED_FIFO=""
 pair_resolve_live_fifo() {
-  local fifo="${1:-}" verb="${2:-steer}"
+  local fifo="${1:-}" verb="${2:-steer}" scope=""
   PAIR_RESOLVED_FIFO=""
+  if [[ "${CEREBRO_ROLE:-}" == "observer" ]]; then
+    require_session
+    local target
+    target="$(jq -r '.observe_target // empty' "$CEREBRO_SESSION_DIR/metadata.json")"
+    [[ "$target" =~ ^[a-zA-Z0-9_-]+$ ]] || die "$verb: observer has no assigned target"
+    scope="$CEREBRO_HOME/sessions/$target"
+    scope="$(resolve_in_repo "$scope" "$scope/children")" || return $?
+    [[ -z "$fifo" ]] || fifo="$(resolve_in_repo "$scope" "$fifo")" || return $?
+  fi
   if [[ -n "$fifo" ]]; then
     [[ -p "$fifo" ]] || die "$verb: no live paired session at $fifo (the child may have finished)"
     PAIR_RESOLVED_FIFO="$fifo"
     return 0
   fi
-  local candidates=() f
+  local candidates=() dirs=() f dir
   shopt -s nullglob
-  for f in "$CEREBRO_HOME"/sessions/*/children/*.steer.fifo; do
-    steer_fifo_live "$f" && candidates+=("$f")
+  if [[ -n "$scope" ]]; then dirs=("$scope"); else dirs=("$CEREBRO_HOME"/sessions/*/children); fi
+  for dir in "${dirs[@]}"; do
+    for f in "$dir"/*.steer.fifo; do
+      [[ -z "$scope" ]] || f="$(resolve_in_repo "$scope" "$f" 2>/dev/null)" || continue
+      steer_fifo_live "$f" && candidates+=("$f")
+    done
   done
   shopt -u nullglob
   if (( ${#candidates[@]} == 0 )); then

@@ -1,14 +1,4 @@
-# cerebro lib: commands/audit
-# subcommand: audit (fresh-eyes viability check of an orchestrator-written plan)
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro audit <repo> <plan-path> [--context "..."] -------
-# The orchestrator writes plans itself (`cerebro plan`), so the external
-# check comes from a genuinely independent model: a read-only opencode reviewer
-# that receives the plan, the current session spec, and any crucial context
-# the orchestrator passes, verifies the plan against the ACTUAL code, and writes
-# its findings (ending with a PLAN AUDIT verdict line) to
-# sessions/<id>/audits/<name>.md.
+# Independent read-only plan audit on the session backend.
 
 cmd_audit() {
   require_session
@@ -25,7 +15,7 @@ cmd_audit() {
       *) die "audit: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(review_backend)" audit
+  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" audit
   [[ -n "$repo" && -n "$plan_path" ]] \
     || die "usage: cerebro audit <repo-abs-path> <plan-path> [--context \"<crucial context>\"] [--out <name>] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "audit: repo path must be absolute: $repo"
@@ -40,7 +30,10 @@ cmd_audit() {
   local plan_name; plan_name="$(basename "${plan_path%.md}")"
   [[ -z "$out_name" ]] && out_name="$plan_name-audit"
   out_name="${out_name%.md}"
+  [[ "$out_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "audit: invalid output name: $out_name"
   local out_path="$audits_dir/$out_name.md"
+  out_path="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$out_path")" || return $?
+  : > "$out_path" || die "audit: cannot write findings: $out_path"
   local child_log="${out_path%.md}.log"
 
   # Child-session continuity is only for interrupted/incomplete audits. A
@@ -85,50 +78,27 @@ $context
 </context>"
   fi
 
-  # Run the read-only reviewer agent on the review model (CEREBRO_REVIEW_MODEL,
-  # overridable per call with --model). Its findings are its final message,
-  # which we capture and write to out_path; the JSON event stream is tee'd to
-  # child_log. The session id is persisted at startup so an interrupt stays
-  # resumable. The reviewer runs under CEREBRO_REVIEW_BACKEND (opencode by
-  # default).
-  local agent; agent="$(review_child_agent_name audit)"
+  # Use this session backend with the selected review model and capture the final findings.
+  local agent; agent="$(backend_child_agent_name audit)"
   local rc id_capture out_capture; id_capture="$(mktemp)"; out_capture="$(mktemp)"
 
-  child_store_begin "$ckey" "$(review_backend)" audit "$repo" "$out_name" "$child_log" "${prior:+preserve-id}"
-  review_child_run 0 "$repo" "$audit_prompt" "$agent" "$prior" \
+  child_store_begin "$ckey" "$(current_backend)" audit "$repo" "$out_name" "$child_log" "${prior:+preserve-id}"
+  child_run 0 "$repo" "$audit_prompt" "$agent" "$prior" \
     "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
   rc=$?
 
-  # Stale fallback: a resume the model no longer recognizes fails before any
-  # event (empty id capture); retry once fresh in that case only.
-  if (( rc != 0 )) && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-    log_event "audit_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-    warn "audit: resume of $prior failed (rc=$rc); retrying without resume"
-    : > "$id_capture"
-    child_store_begin "$ckey" "$(review_backend)" audit "$repo" "$out_name" "$child_log"
-    review_child_run 0 "$repo" "$audit_prompt" "$agent" "" \
-      "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
-    rc=$?
-  fi
-
   # The findings are the run's closing message; write them to out_path.
   if (( rc == 0 )) && [[ -s "$out_capture" ]]; then
-    cp "$out_capture" "$out_path"
+    cp "$out_capture" "$out_path" || rc=$?
   fi
   local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
   rm -f "$id_capture"
 
-  # On any failure -- non-zero exit OR empty findings -- preserve the event log
-  # but do NOT echo a findings path. The orchestrator must not treat a failed
-  # audit's output as findings. Mark the child-store entry done ONLY when no
-  # session id was captured (a stall / no-events / dead-session failure that
-  # cannot be resumed, so a re-issue must start fresh instead of hanging on a
-  # dead --resume); a failed run that DID capture an id stays resumable.
-  if (( rc != 0 )) || [[ ! -s "$out_path" ]]; then
+  # A failed run must not supply a findings/report path; retain a native ID for resume.
+  if (( rc != 0 )) || [[ ! -s "$out_capture" || ! -s "$out_path" ]]; then
     rm -f "$out_capture"
-    # Mark done on a stall (rc=5, dead session) or when no id was captured;
-    # a failed run that captured an id stays resumable.
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    # Retain incomplete work when this attempt or the prior run has a native ID.
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "audit_failed" "rc=$rc log=$child_log out=$out_path"
     warn "audit: review run failed (rc=$rc)"
     [[ -s "$child_log" ]] && warn "see event log: $child_log"

@@ -1,8 +1,4 @@
-# cerebro lib: commands/doc-write
-# subcommand: doc-write
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro doc-write <repo> <plan> [--notes ...] -----------
+# Delegate documentation updates on the task branch.
 
 cmd_doc_write() {
   require_session
@@ -89,20 +85,6 @@ cmd_doc_write() {
     rc=$?
     pair_cleanup "$pair"
 
-    # Stale fallback (same rule as execute): only retry fresh when the resumed
-    # run never started and this was not a stall.
-    if (( rc != 0 )) && ! pair_stalled "$child_log" && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-      log_event "doc_write_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-      warn "doc-write: resume of $prior failed (rc=$rc); retrying without resume"
-      : > "$id_capture"
-      (( pair )) && pair_begin doc-write "$repo" "$dw_branch" "$child_log" ""
-      child_store_begin "$ckey" "$provider" doc-write "$repo" "${dw_branch:-default}" "$child_log"
-      child_run "$pair" "$repo" "$child_prompt" "$agent" "" \
-        "$child_log" "$msg_capture" "$id_capture" "$store_file" "$ckey" "$model"
-      rc=$?
-      pair_cleanup "$pair"
-    fi
-
     if (( pair )) && pair_stalled "$child_log"; then
       if (( stall_n < ${CEREBRO_PAIR_STALL_RETRIES:-2} )); then
         stall_n=$((stall_n + 1))
@@ -123,9 +105,8 @@ cmd_doc_write() {
   if (( rc != 0 )); then
     local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
     rm -f "$id_capture" "$msg_capture"
-    # Mark done on a stall (rc=5, dead session) or when no id was captured;
-    # a half-done run that captured an id stays resumable.
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    # Retain incomplete work when this attempt or the prior run has a native ID.
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "doc_write_failed" "rc=$rc log=$child_log"
     warn "doc-write: child failed (rc=$rc); see $child_log"
     child_fail_stderr "$child_log"

@@ -4,14 +4,15 @@
 
 ![cerebro demo](docs/demo.gif)
 
-`cerebro` drops you into a `claude` chat configured as an
-orchestrator. It can read, search, and browse — but never touch your
-repos directly: every edit, git operation, PR, and code review happens
-in a short-lived sub-agent it spawns (`claude -p` for code, `codex
-exec` for review and plan audits). The orchestrator writes plans itself
-with its full conversation context, then has codex audit them against
-the actual code with fresh, independent eyes. You describe what you
-want and stay in the chat.
+`cerebro` turns your chosen backend — **OpenCode V2, Codex, or Claude Code** —
+into a supervisor. You describe the work; it records the requirements, delegates
+implementation to children in isolated worktrees, and gates delivery on
+independent review and real verification. The supervisor uses guarded Cerebro
+commands and never edits the repo itself. Each session and all its children
+stay on one backend, using that backend's native conversations and tools.
+
+Shared skills define the roles. A separate observer can watch live work and,
+when you authorize it, steer drift back to the approved spec.
 
 ## Quick start
 
@@ -21,12 +22,19 @@ cerebro
 ```
 
 Name a repo by path, describe the change, read the plan it drafts, say
-"go". Requires `claude`, `codex`, `jq`, `python3` (plus `git`/`gh` for
-the PR work, `rg` recommended).
+"go". Requires your selected CLI (`opencode` **2.0.19 or later within V2**,
+`codex`, or `claude`), `jq`, and `python3` (plus `git`/`gh` for PR work;
+`rg` recommended). OpenCode V1 is not supported.
+
+```bash
+CEREBRO_BACKEND=opencode cerebro   # default
+CEREBRO_BACKEND=codex cerebro
+CEREBRO_BACKEND=claude cerebro
+```
 
 ## What you get
 
-* **Planned, reviewed PRs** — plan → your "go" → branch, PR, codex
+* **Planned, reviewed PRs** — plan → your "go" → branch, PR, independent
   review loop, fixes applied, docs updated.
 * **Verified, not just green** — done means the change was observed
   working in the running app (Playwright or with you), never unit
@@ -61,7 +69,7 @@ command). Each block is collapsible — click to expand.
 <summary><strong>Ship a feature (the core loop)</strong></summary>
 
 Name a repo, describe the change, read the plan it drafts, and say go.
-You get a branch, a PR, a codex review loop with fixes applied, and
+You get a branch, a PR, an independent review loop with fixes applied, and
 end-to-end verification in the running app.
 
 > Example prompt: "In ~/code/api, add rate limiting to the login endpoint — draft a plan first."
@@ -175,6 +183,24 @@ cerebro-uninstall --purge    # also deletes the clone; session state is never to
 ```bash
 bash tests/run.sh
 ```
+
+The optional native checks use installed CLIs with deterministic providers on
+loopback, isolated configuration, and guards against unconfigured CLI launches:
+
+```bash
+python3 tests/native_runtime.py
+python3 tests/native_runtime.py --parents
+python3 tests/native_runtime.py --pair --background
+python3 tests/native_runtime.py --acp opencode
+```
+
+Append backend names to select a subset. The checks exercise native delegation,
+worktree isolation, session resume, guarded review, and paired steering. Native
+background completion is covered for OpenCode and Codex; Claude uses a
+foreground command. These checks prove the CLI and process boundaries, not
+model decision quality. Diagnostic artifacts remain under `/tmp`.
+The ACP check exercises OpenCode's native launcher; the Python ACP proxy and
+PTY MCP tests additionally require their optional SDKs and Python 3.10 or later.
 
 Conventions live in [AGENTS.md](AGENTS.md); the demo GIF is rendered
 from [docs/demo/demo.tape](docs/demo/demo.tape) with

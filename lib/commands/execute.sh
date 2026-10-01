@@ -1,8 +1,4 @@
-# cerebro lib: commands/execute
-# subcommand: execute
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro execute <repo> <plan-path> ----------------------
+# Implement authorized work in an isolated task worktree.
 
 cmd_execute() {
   require_session
@@ -158,7 +154,7 @@ cmd_execute() {
   msg_capture="$(mktemp)"
   local PAIR_SID="" PAIR_FIFO="" PAIR_STEER="" PAIR_IDLE="" PAIR_STALL="" PAIR_STALL_BUSY=""
   local PAIR_PORT="" PAIR_SERVE_PID="" PAIR_BASE_URL="" PAIR_OPTS=() PAIR_PGID="" PAIR_LAUNCH=()
-  (( pair )) && pair_begin execute "$repo" "$new_branch" "$child_log" "$prior"
+  (( pair )) && pair_begin execute "$wt" "$new_branch" "$child_log" "$prior"
 
   local stall_n=0
   while :; do
@@ -170,26 +166,12 @@ cmd_execute() {
     rc=$?
     pair_cleanup "$pair"
 
-    # Stale fallback: retry fresh only when the resumed run never started and
-    # this was not a stall. A stall is handled by the outer resume loop.
-    if (( rc != 0 )) && ! pair_stalled "$child_log" && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-      log_event "execute_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-      warn "execute: resume of $prior failed (rc=$rc); retrying without resume"
-      : > "$id_capture"
-      (( pair )) && pair_begin execute "$repo" "$new_branch" "$child_log" ""
-      child_store_begin "$ckey" "$provider" execute "$repo" "${new_branch:-auto}" "$child_log"
-      child_run "$pair" "$wt" "$child_prompt" "$agent" "" \
-        "$child_log" "$msg_capture" "$id_capture" "$store_file" "$ckey" "$model"
-      rc=$?
-      pair_cleanup "$pair"
-    fi
-
     if (( pair )) && pair_stalled "$child_log"; then
       if (( stall_n < ${CEREBRO_PAIR_STALL_RETRIES:-2} )); then
         stall_n=$((stall_n + 1))
         pair_stall_backoff "$stall_n"
         pair_stall_clear "$child_log"
-        pair_begin execute "$repo" "$new_branch" "$child_log" "$PAIR_SID"
+        pair_begin execute "$wt" "$new_branch" "$child_log" "$PAIR_SID"
         prior="$PAIR_SID"
         continue
       fi
@@ -201,13 +183,8 @@ cmd_execute() {
     break
   done
 
-  # Restart: the developer/observer ran `cerebro restart`, the pump reaped the
-  # child and dropped a `.restart` marker holding a diagnosis. Treat this as a
-  # clean abandonment (NOT a crash). The child only ever worked on a FRESH branch
-  # inside its own worktree, so the clean slate is unconditional: tear down the
-  # branch (PR + remote + local) and the worktree, mark the child done so the
-  # next execute never resumes the poisoned session, surface the diagnosis, and
-  # return 0 so the orchestrator can relaunch fresh.
+  # Authorized restart abandons this task and tears down its isolated branch/PR/worktree.
+  # Retire the old native conversation before handing the diagnosis back for relaunch.
   if (( pair )) && pair_restarted "$child_log"; then
     local diag; diag="$(pair_restart_read "$child_log")"
     local branch; branch="$(execute_worktree_branch "$wt")"
@@ -238,15 +215,10 @@ cmd_execute() {
   fi
 
   if (( rc != 0 )); then
-    # If the child captured a session id before failing, it is a LIVE
-    # half-done run that stays resumable -- do NOT mark it done (re-issue
-    # should resume it, not redo mutating work). EXCEPT a stall (parse_stream
-    # exit 5): the session is unresponsive, so even with an id it is dead
-    # and a re-issue must start fresh instead of hanging on a dead --resume.
-    # Also mark done when no id was captured (no-events / dead-session).
+    # Keep failed work resumable when a native ID exists; do not silently start fresh.
     local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
     rm -f "$id_capture" "$msg_capture"
-    if [[ -z "$_cap_id" || $rc -eq 5 ]]; then
+    if [[ -z "$_cap_id" && -z "$prior" ]]; then
       child_store_done "$ckey"
     fi
     log_event "execute_failed" "rc=$rc log=$child_log"

@@ -34,6 +34,8 @@ main() {
     # cerebro MCP server: a generic terminal MCP (lib/python/cerebro_mcp_server.py) that
     # holds long-lived PTYs and exposes them as MCP tools so a controller can
     # drive an interactive TTY program (cerebro or any other) event-driven.
+    tools) shift; cmd_tools "$@" ;;
+    guide) shift; cmd_guide "$@" ;;
     cerebro-mcp) shift; cmd_cerebro_mcp "$@" ;;
     answer) shift; cmd_answer "$@" ;;
     models)  shift; cmd_models "$@" ;;

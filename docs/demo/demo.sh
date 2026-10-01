@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scripted playback of a representative cerebro session, used by demo.tape
 # to render docs/demo.gif. This is a simulation for the README animation --
-# it does not run claude/codex.
+# it does not run a native backend.
 
 # colors
 B=$'\033[1m'; D=$'\033[2m'; N=$'\033[0m'
@@ -37,7 +37,7 @@ say "${MA}●${N} Capturing the requirements, then drafting a plan."
 slow 0.4
 say "  ${D}⏺ cerebro spec set \"Rate-limit the public API; 429 + Retry-After…\"${N}"
 slow 0.6
-say "  ${D}⏺ cerebro grep /Users/amin/work/webapp \"router.use\" src/${N}"
+say "  ${D}⏺ cerebro grep /Users/amin/work/webapp \"router.use\" --path src${N}"
 slow 0.5
 say "  ${D}⏺ cerebro plan \"# Rate-limit the public API…\" --out plan-1${N}"
 slow 0.5
@@ -69,7 +69,7 @@ say "    ${D}Bash: npm test${N}  ${GR}✓ 42 passed${N}"
 slow 0.7
 say "    ${D}Bash: gh pr create…${N} → ${YE}github.com/amin/webapp/pull/128${N}"
 slow 0.6
-say "${MA}●${N} PR ${B}#128${N} is open. Running codex review against the diff."
+say "${MA}●${N} PR ${B}#128${N} is open. Running independent review against the diff."
 slow 0.4
 say "  ${D}⏺ cerebro review /Users/amin/work/webapp${N}"
 slow 1.4

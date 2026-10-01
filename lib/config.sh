@@ -22,13 +22,13 @@ CEREBRO_HOME="${CEREBRO_HOME:-$HOME/.cerebro}"
 # strings (jq tostring); numeric options are coerced by their arithmetic
 # context at use, exactly as an env var would be.
 CEREBRO_CFG_BACKEND=""
-CEREBRO_CFG_REVIEW_BACKEND=""
 CEREBRO_CFG_MODEL=""
 CEREBRO_CFG_REVIEW_MODEL=""
 CEREBRO_CFG_TIMEOUT=""
 CEREBRO_CFG_CHILD_IDLE_TIMEOUT=""
 CEREBRO_CFG_OPENCODE_CMD=""
 CEREBRO_CFG_CLAUDE_CMD=""
+CEREBRO_CFG_CODEX_CMD=""
 CEREBRO_CFG_DEBUG=""
 CEREBRO_CFG_CLAUDE_BASE_URL=""
 CEREBRO_CFG_CLAUDE_AUTH_TOKEN=""
@@ -48,12 +48,12 @@ _cerebro_options_load() {
     [[ -n "$k" ]] || continue
     case "$k" in
       backend)             CEREBRO_CFG_BACKEND="$v" ;;
-      review_backend)     CEREBRO_CFG_REVIEW_BACKEND="$v" ;;
       model)              CEREBRO_CFG_MODEL="$v" ;;
       review_model)       CEREBRO_CFG_REVIEW_MODEL="$v" ;;
       timeout)            CEREBRO_CFG_TIMEOUT="$v" ;;
       child_idle_timeout) CEREBRO_CFG_CHILD_IDLE_TIMEOUT="$v" ;;
       opencode_cmd)       CEREBRO_CFG_OPENCODE_CMD="$v" ;;
+      codex_cmd)          CEREBRO_CFG_CODEX_CMD="$v" ;;
       claude_cmd)         CEREBRO_CFG_CLAUDE_CMD="$v" ;;
       debug)              CEREBRO_CFG_DEBUG="$v" ;;
       claude_base_url)    CEREBRO_CFG_CLAUDE_BASE_URL="$v" ;;
@@ -72,48 +72,18 @@ _cerebro_options_load() {
 }
 _cerebro_options_load
 
-# Which agent backend drives the orchestrator + editing children:
-#   opencode -- `opencode run --agent` (the opencode CLI)
-#   claude    -- `claude -p` (the claude CLI)
-# Recorded into each session's metadata.json at launch so a resumed session
-# always reuses the backend it started with, regardless of the current env.
+# A session and all its children use one native backend. An empty model lets
+# that backend select its configured default; --model still overrides per call.
 CEREBRO_BACKEND="${CEREBRO_BACKEND:-${CEREBRO_CFG_BACKEND:-opencode}}"
-# The model the orchestrator and every editing child (execute / apply-review /
-# doc-write / answer) run on. Captured separately as CEREBRO_DEFAULT_MODEL so
-# the claude backend can tell when the user has overridden it for a custom
-# endpoint (see CEREBRO_CLAUDE_BASE_URL below).
-CEREBRO_DEFAULT_MODEL="github-copilot/gemini-3.1-pro-preview"
-CEREBRO_MODEL="${CEREBRO_MODEL:-${CEREBRO_CFG_MODEL:-$CEREBRO_DEFAULT_MODEL}}"
-# The model the read-only reviewer/auditor (cerebro review / cerebro audit /
-# cerebro verify / cerebro improve) runs on -- a SUGGESTED different model
-# from the implementer, so the review can be a genuinely independent pair of
-# eyes when a different model is configured. It is a suggestion, not a rule:
-# leaving it equal to CEREBRO_MODEL is allowed (the reviewer's read-only
-# confinement and fresh context still give it independence). Any subcommand
-# can override either default per call with --model <provider/model>; the
-# orchestrator discovers available models and their capabilities (e.g. vision
-# for screenshot verification) via `cerebro models`, which reads the user's
-# catalog at $CEREBRO_HOME/models-config.json. GPT-5.5 by default. The
-# reviewer runs under CEREBRO_REVIEW_BACKEND (opencode by default); when that
-# is opencode it needs opencode on PATH even if the editing children run
-# under claude.
-CEREBRO_REVIEW_MODEL="${CEREBRO_REVIEW_MODEL:-${CEREBRO_CFG_REVIEW_MODEL:-github-copilot/gpt-5.5}}"
-# The backend the read-only reviewer (review / audit / verify / improve) runs
-# under, independent of CEREBRO_BACKEND so the reviewer can use a different CLI
-# than the orchestrator + editing children. opencode (the default, unchanged)
-# or claude. Not recorded in session metadata: the reviewer is ephemeral and a
-# backend mismatch on resume falls back to a fresh run via the existing
-# stale-fallback, so the env var at runtime is sufficient.
-CEREBRO_REVIEW_BACKEND="${CEREBRO_REVIEW_BACKEND:-${CEREBRO_CFG_REVIEW_BACKEND:-opencode}}"
+CEREBRO_MODEL="${CEREBRO_MODEL:-${CEREBRO_CFG_MODEL:-}}"
+CEREBRO_REVIEW_MODEL="${CEREBRO_REVIEW_MODEL:-${CEREBRO_CFG_REVIEW_MODEL:-$CEREBRO_MODEL}}"
 CEREBRO_TIMEOUT="${CEREBRO_TIMEOUT:-${CEREBRO_CFG_TIMEOUT:-0}}"   # 0/empty/none/unlimited = no cap
-# Inactivity timeout (seconds) for the child stream parser: if a spawned child
-# produces no new stream event for this window, parse_stream.py exits 5 with a
-# "child stalled" diagnostic instead of blocking forever. A slow-but-progressing
-# child (periodic events) is NOT killed -- the timer resets on every line. 0
-# disables the inactivity bound (legacy blocking read). Default 180s.
-CEREBRO_CHILD_IDLE_TIMEOUT="${CEREBRO_CHILD_IDLE_TIMEOUT:-${CEREBRO_CFG_CHILD_IDLE_TIMEOUT:-180}}"
+# Native transports own completion and busy-tool timeouts. This optional
+# parser inactivity cap defaults to disabled so quiet tools can finish.
+CEREBRO_CHILD_IDLE_TIMEOUT="${CEREBRO_CHILD_IDLE_TIMEOUT:-${CEREBRO_CFG_CHILD_IDLE_TIMEOUT:-0}}"
 CEREBRO_OPENCODE_CMD="${CEREBRO_OPENCODE_CMD:-${CEREBRO_CFG_OPENCODE_CMD:-opencode}}"
 CEREBRO_CLAUDE_CMD="${CEREBRO_CLAUDE_CMD:-${CEREBRO_CFG_CLAUDE_CMD:-claude}}"
+CEREBRO_CODEX_CMD="${CEREBRO_CODEX_CMD:-${CEREBRO_CFG_CODEX_CMD:-codex}}"
 CEREBRO_DEBUG="${CEREBRO_DEBUG:-${CEREBRO_CFG_DEBUG:-0}}"
 # Optional custom Anthropic-compatible endpoint for the claude backend (e.g. a
 # local Ollama server exposing /v1/messages, or any proxy/gateway). Empty (the
@@ -129,18 +99,6 @@ CEREBRO_DEBUG="${CEREBRO_DEBUG:-${CEREBRO_CFG_DEBUG:-0}}"
 # servers); set it to the real key for an authenticated gateway.
 CEREBRO_CLAUDE_BASE_URL="${CEREBRO_CLAUDE_BASE_URL:-${CEREBRO_CFG_CLAUDE_BASE_URL:-}}"
 CEREBRO_CLAUDE_AUTH_TOKEN="${CEREBRO_CLAUDE_AUTH_TOKEN:-${CEREBRO_CFG_CLAUDE_AUTH_TOKEN:-}}"
-# cerebro ships its own opencode config tree (agents + plugin) under
-# $CEREBRO_HOME/.opencode and points every opencode invocation -- the
-# interactive orchestrator (when backend=opencode), every spawned opencode
-# child, and the read-only reviewer (when CEREBRO_REVIEW_BACKEND=opencode) --
-# at it via OPENCODE_CONFIG_DIR. The user's global ~/.config/opencode (auth,
-# providers, models) still loads underneath it, so credentials keep working;
-# this dir only layers cerebro's agents and the session-binding plugin on top.
-# Always exported: the reviewer defaults to opencode, and the editing backend
-# may be opencode too, so the tree is needed in the common case even when the
-# editing backend is claude.
-export OPENCODE_CONFIG_DIR="$CEREBRO_HOME/.opencode"
-
 # Max chars in a single harness overlay file. Larger than learnings' cap since
 # overlays aren't all carried in one system message, but still bounded.
 CEREBRO_OVERLAY_CAP="${CEREBRO_OVERLAY_CAP:-${CEREBRO_CFG_OVERLAY_CAP:-4000}}"

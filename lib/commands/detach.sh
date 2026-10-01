@@ -2,6 +2,15 @@
 # subcommand: detach (launch a long-running cerebro child independently)
 # Sourced by bin/cerebro; not meant to be executed directly.
 
+# Resolve either allowed output root before a monitor or lost-job waiter writes.
+detached_output_path() {
+  [[ "$1" == /* ]] || die "detached output path must be absolute"
+  local scratch="/tmp/cerebro-$CEREBRO_SESSION_ID" resolved
+  resolved="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$1" 2>/dev/null)" \
+    || resolved="$(resolve_in_repo "$scratch" "$1" 2>/dev/null)" \
+    || die "detached output must be under $scratch or $CEREBRO_SESSION_DIR"
+  printf '%s\n' "$resolved"
+}
 
 # ----- subcommand: cerebro detach --output <path> -- <subcommand> [...] -----
 # Launch a long-running cerebro subcommand outside the calling agent harness's
@@ -25,11 +34,10 @@ cmd_detach() {
     *) die "detach: '$1' is not a long-running child subcommand" ;;
   esac
 
-  local scratch="/tmp/cerebro-$CEREBRO_SESSION_ID"
-  case "$output" in
-    "$scratch"/*|"$CEREBRO_SESSION_DIR"/*) ;;
-    *) die "detach: output must be under $scratch or $CEREBRO_SESSION_DIR" ;;
-  esac
+  local status pid_path
+  output="$(detached_output_path "$output")" || return $?
+  status="$(detached_output_path "$output.status")" || return $?
+  pid_path="$(detached_output_path "$output.pid")" || return $?
 
   if [[ -r "$output.status" && "$(cat "$output.status" 2>/dev/null)" == "running" \
         && -r "$output.pid" ]]; then
@@ -41,12 +49,13 @@ cmd_detach() {
   fi
 
   local jobs_dir="$CEREBRO_SESSION_DIR/detached-jobs" job_id job_file
+  jobs_dir="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$jobs_dir")" || return $?
   mkdir -p "$jobs_dir"
   job_id="$(mint_uuid)"
   job_file="$jobs_dir/$job_id.json"
 
   python3 "$CEREBRO_LIB_DIR/python/detach_process.py" \
-    "$output" "$output.status" "$output.pid" "$job_file" "$job_id" "$1" \
+    "$output" "$status" "$pid_path" "$job_file" "$job_id" "$1" \
     "$CEREBRO_LIB_DIR/../bin/cerebro" "$@"
 }
 
@@ -60,26 +69,22 @@ cmd_wait() {
   command -v python3 >/dev/null 2>&1 || die "wait: missing required command on PATH: python3"
   [[ $# -eq 1 ]] || die "usage: cerebro wait <job-id|absolute-output.status>"
 
-  local status pid_path scratch="/tmp/cerebro-$CEREBRO_SESSION_ID"
+  local status
   if [[ "$1" == /* ]]; then
     status="$1"
-    [[ "$status" == *.status ]] || die "wait: path must end in .status"
-    case "$status" in
-      "$scratch"/*|"$CEREBRO_SESSION_DIR"/*) ;;
-      *) die "wait: status must be under $scratch or $CEREBRO_SESSION_DIR" ;;
-    esac
-    pid_path="${status%.status}.pid"
   else
     [[ "$1" =~ ^[0-9a-fA-F-]+$ ]] || die "wait: invalid job id: $1"
     local job_file="$CEREBRO_SESSION_DIR/detached-jobs/$1.json"
+    job_file="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$job_file")" || return $?
     [[ -r "$job_file" ]] || die "wait: no such detached job: $1"
     status="$(jq -r '.status // empty' "$job_file")"
-    pid_path="$(jq -r '.pid_file // empty' "$job_file")"
-    [[ -n "$status" && -n "$pid_path" ]] || die "wait: malformed detached job: $1"
+    [[ -n "$status" ]] || die "wait: malformed detached job: $1"
   fi
+  [[ "$status" == *.status ]] || die "wait: path must end in .status"
+  status="$(detached_output_path "$status")" || return $?
 
   python3 "$CEREBRO_LIB_DIR/python/wait_detached.py" \
-    "$status" "$pid_path"
+    "$status"
 }
 
 
@@ -102,6 +107,7 @@ cmd_cancel() {
   [[ $# -eq 1 && "$1" =~ ^[0-9a-fA-F-]+$ ]] \
     || die "usage: cerebro cancel <detached-job-id>"
   local job_file="$CEREBRO_SESSION_DIR/detached-jobs/$1.json"
+  job_file="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$job_file")" || return $?
   [[ -r "$job_file" ]] || die "cancel: no such detached job: $1"
   python3 "$CEREBRO_LIB_DIR/python/detached_jobs.py" cancel "$job_file"
 }

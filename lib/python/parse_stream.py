@@ -24,7 +24,7 @@ saw_any_event = False
 saw_error = False
 error_msg = ""
 session_id = None
-provider = None
+provider = sys.argv[5] if len(sys.argv) > 5 else None
 tool_summary_open = True
 
 # Format-specific state. claude: result_text from the `result` event's `result`
@@ -69,7 +69,7 @@ def record_session(sid):
 
 
 def handle_claude(ev):
-    global session_id, result_text, result_subtype, saw_error
+    global session_id, result_text, result_subtype, saw_error, error_msg
     t = ev.get("type")
     if t == "system" and ev.get("subtype") == "init":
         sid = ev.get("session_id")
@@ -142,7 +142,25 @@ def handle_opencode(ev):
         saw_error = True
         err = ev.get("error") or {}
         data = err.get("data") or {}
-        error_msg = data.get("message") or err.get("name") or "unknown error"
+        error_msg = err.get("message") or data.get("message") or err.get("name") or "unknown error"
+
+
+def handle_codex(ev):
+    global session_id, result_text, saw_error, error_msg
+    kind = ev.get("type")
+    if kind == "thread.started":
+        session_id = ev["thread_id"]
+        record_session(session_id)
+    elif kind == "item.completed":
+        item = ev.get("item") or {}
+        if item.get("type") == "agent_message":
+            result_text = item.get("text", "")
+        elif item.get("type") in ("command_execution", "mcp_tool_call", "file_change"):
+            target = item.get("command") or item.get("tool") or item.get("changes") or ""
+            emit_tool_summary(f"  {item['type']}: {str(target)[:120]}\n")
+    elif kind in ("turn.failed", "error"):
+        saw_error = True
+        error_msg = (ev.get("error") or {}).get("message") or ev.get("message") or "Codex turn failed"
 
 
 # Inactivity timeout: if no new complete event line arrives for this many
@@ -150,9 +168,9 @@ def handle_opencode(ev):
 # A slow-but-progressing child (periodic events) is NOT killed -- the timer
 # resets on every received line. 0 disables the timeout (blocking read).
 try:
-    IDLE_TIMEOUT = float(os.environ.get("CEREBRO_CHILD_IDLE_TIMEOUT", "180") or 0)
+    IDLE_TIMEOUT = float(os.environ.get("CEREBRO_CHILD_IDLE_TIMEOUT", "0") or 0)
 except (TypeError, ValueError):
-    IDLE_TIMEOUT = 180.0
+    sys.exit("cerebro: child_idle_timeout must be a number")
 
 
 def _read_bounded():
@@ -213,15 +231,20 @@ for line in _read_bounded():
     if not saw_any_event:
         saw_any_event = True
         # Auto-detect format from the first event.
-        if ev.get("type") == "step_start" or "sessionID" in ev:
+        if provider:
+            pass
+        elif ev.get("type") == "step_start" or "sessionID" in ev:
             provider = "opencode"
         elif ev.get("type") in ("system", "assistant", "result"):
             provider = "claude"
+        elif ev.get("type") in ("thread.started", "turn.started", "item.started", "item.completed"):
+            provider = "codex"
         else:
-            # Unknown shape; guess opencode (the default backend).
-            provider = "opencode"
+            sys.exit("cerebro: unrecognized child stream; select its backend explicitly")
     if provider == "claude":
         handle_claude(ev)
+    elif provider == "codex":
+        handle_codex(ev)
     else:
         handle_opencode(ev)
 

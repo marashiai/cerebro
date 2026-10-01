@@ -7,7 +7,7 @@ offline with no GitHub:
     or `cerebro overlay set system` (a broader orchestrator addition)
   - a child role prompt (execute / apply-review / doc-write) ->
     `cerebro overlay set <role>`
-  - the codex grader (audit or review) -> `cerebro overlay set grader`
+  - the session backend's grader (audit or review) -> `cerebro overlay set grader`
   - the improvement procedure itself (analyzer / retriever / allocator /
     proposer / evolver) -> `cerebro overlay set meta-<component>`
   - (maintainers only, optional) the SAME change upstreamed to the
@@ -15,16 +15,16 @@ offline with no GitHub:
 
 The harness surface list (ILLUSTRATIVE, not exhaustive -- GREP the repo
 for the real definition site):
-  - Orchestrator brain: `lib/payloads/system-prompt.md`.
-  - Child role prompts: `lib/payloads/prompts/{execute,apply-review,doc-write}.md`
+  - Supervisor: `lib/payloads/skills/cerebro-supervisor/SKILL.md`.
+  - Child roles: `lib/payloads/skills/cerebro-{execute,apply-review,doc-write}/SKILL.md`
     plus the shared `lib/payloads/prompts/noninteractive-note.md`.
   - Graders: the AUDIT grader at `lib/payloads/prompts/audit.md`; the REVIEW
-    grader is INLINE in `lib/commands/review.sh` (the `codex_prompt=` block).
+    grader is composed in `lib/commands/review.sh`.
   - Improvement procedure: `lib/payloads/prompts/meta/{analyzer,retriever,allocator,proposer,evolver}.md`
-  - Tool surfaces: `lib/commands/session.sh`; `child_allowed_tools`
-    (`lib/payloads.sh`); read-only bridges in `lib/commands/bridge.sh`
+  - Tool surfaces: `lib/python/command_server.py`; native role restrictions in
+    `lib/backend-*.sh`; read-only bridges in `lib/commands/bridge.sh`
     (read/grep/ls) and `lib/commands/git.sh` / `lib/commands/gh.sh`.
-  - Observer overlay: `lib/payloads/observe-mode.md`.
+  - Observer: `lib/payloads/skills/cerebro-observer/SKILL.md`.
   - Already-applied state to avoid re-proposing: `learnings.md`,
     `overlays/*.md` (Read these and skip anything already addressed).
 

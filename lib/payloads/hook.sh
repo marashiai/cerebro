@@ -33,10 +33,10 @@ jq -nc --arg ts "$ts" --arg text "$text" '{kind:"user", ts:$ts, text:$text}' \
 # (bare `cerebro --resume` path).
 ln -sfn "$sess_dir" "$CEREBRO_HOME/current-session" 2>/dev/null || true
 
-# Touch last_touched in metadata.
+# Claude's explicitly chosen session ID is also its native conversation ID.
 if [[ -f "$sess_dir/metadata.json" ]]; then
   tmp="$(mktemp 2>/dev/null)" && {
-    if jq --arg ts "$ts" '.last_touched = $ts' "$sess_dir/metadata.json" \
+    if jq --arg ts "$ts" --arg sid "$sid" '.last_touched = $ts | .foreign_session_id = $sid' "$sess_dir/metadata.json" \
         > "$tmp" 2>/dev/null; then
       mv "$tmp" "$sess_dir/metadata.json"
     else

@@ -1,35 +1,8 @@
-# cerebro lib: commands/improve
-# subcommand: improve (two-timescale hill-climbing trace analysis)
-# Sourced by bin/cerebro; not meant to be executed directly.
-
-# ----- subcommand: cerebro improve <cerebro-repo> [--context "..."] [--meta] -
-# The fourth loop, now two-timescale (MetaSkill-Evolve):
-#
-#   FAST loop (default): a read-only reviewer mines cerebro's accumulated
-#   agent traces under $CEREBRO_HOME for problems that RECUR across runs and
-#   proposes the smallest fixes, routed to local overlays / learnings /
-#   meta-overlays. Findings go to improvements/improve.md ending with a
-#   HILL CLIMB verdict line.
-#
-#   SLOW loop (--meta, or auto-fires every CEREBRO_META_HORIZON fast runs):
-#   the same reviewer mines the IMPROVEMENT HISTORY itself and proposes
-#   changes to the meta-skill (the five components that parameterise the
-#   improvement procedure: analyzer / retriever / allocator / proposer /
-#   evolver). Findings go to improvements/meta-improve.md ending with a
-#   META CLIMB verdict line. Routed to `cerebro overlay set meta-<component>`.
-#
-# Both loops ANALYSE/PROPOSE only; nothing here rewrites the harness. Successful
-# runs are appended to a chronological history with a trace-quality snapshot.
-
-# ----- improvement-history helpers ------------------------------------------
+# Read-only trace analysis and periodic analysis of improvement history.
 
 improve_history_file() { printf '%s\n' "$CEREBRO_HOME/improvement-history.json"; }
 
-# Count numbered findings written either as `1.` or a Markdown heading such as
-# `## 1.`. Captures
-# the grep count into a variable so grep's exit-1-on-zero does not cause a
-# double-print (grep -c prints 0 AND exits 1; the || fallback would then
-# print a second 0).
+# A zero-match grep must emit one numeric count, despite its nonzero exit code.
 improve_count_findings() {
   local f="$1" n
   [[ -s "$f" ]] || { printf '0'; return 0; }
@@ -48,19 +21,14 @@ improve_valid_verdict() {
   esac
 }
 
-# Run one read-only reviewer child and write its final message to out_path.
-# Shared by the fast and slow loops so both share the same stale-fallback
-# and error-handling path.
-#   $1 cwd (repo)   $2 prompt   $3 agent   $4 prior (or "")
-#   $5 child_log    $6 out_path  $7 ckey-label (for child_key)
-# Returns 0 on success with findings in $out_path; non-zero on failure.
+# Fast and slow analysis share native resume, final-report capture and error handling.
 improve_run_reviewer() {
   local repo="$1" prompt="$2" agent="$3" prior="$4"
   local child_log="$5" out_path="$6" label="$7" model="${8:-}"
   local store_file; store_file="$(child_sessions_file)"
   local ckey; ckey="$(child_key "$repo" "$label" "$label")"
 
-  # If a prior session is still running, resume; otherwise start fresh.
+  # Resume only an incomplete retained conversation.
   if [[ -n "$prior" ]] && child_session_running_fresh "$ckey"; then
     :
   else
@@ -71,22 +39,10 @@ improve_run_reviewer() {
   : > "$out_path"
   local rc id_capture out_capture; id_capture="$(mktemp)"; out_capture="$(mktemp)"
 
-  child_store_begin "$ckey" "$(review_backend)" "$label" "$repo" "$label" "$child_log" "${prior:+preserve-id}"
-  review_child_run 0 "$repo" "$prompt" "$agent" "$prior" \
+  child_store_begin "$ckey" "$(current_backend)" "$label" "$repo" "$label" "$child_log" "${prior:+preserve-id}"
+  child_run 0 "$repo" "$prompt" "$agent" "$prior" \
     "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
   rc=$?
-
-  # Stale fallback: a resume the model no longer recognizes fails before any
-  # event (empty id capture); retry once fresh in that case only.
-  if (( rc != 0 )) && [[ -n "$prior" ]] && [[ ! -s "$id_capture" ]]; then
-    log_event "${label}_resume_failed" "rc=$rc resume=$prior; retrying fresh"
-    warn "${label}: resume of $prior failed (rc=$rc); retrying without resume"
-    : > "$id_capture"
-    child_store_begin "$ckey" "$(review_backend)" "$label" "$repo" "$label" "$child_log"
-    review_child_run 0 "$repo" "$prompt" "$agent" "" \
-      "$child_log" "$out_capture" "$id_capture" "$store_file" "$ckey" "${model:-$CEREBRO_REVIEW_MODEL}"
-    rc=$?
-  fi
 
   local _cap_id; _cap_id="$(cat "$id_capture" 2>/dev/null || true)"
 
@@ -95,13 +51,10 @@ improve_run_reviewer() {
   fi
   rm -f "$id_capture"
 
-  # On any failure -- non-zero exit OR empty findings -- preserve the event
-  # log but do NOT echo a findings path. Mark the child done on a stall (rc=5,
-  # dead session) or when no id was captured; a failed run that captured an id
-  # stays resumable. Show the child's stderr tail, matching review/audit.
+  # A failed run must not supply a findings/report path; retain a native ID for resume.
   if (( rc != 0 )) || [[ ! -s "$out_path" ]]; then
     rm -f "$out_capture"
-    [[ -z "$_cap_id" || $rc -eq 5 ]] && child_store_done "$ckey"
+    [[ -z "$_cap_id" && -z "$prior" ]] && child_store_done "$ckey"
     log_event "${label}_failed" "rc=$rc log=$child_log out=$out_path"
     warn "${label}: review run failed or returned an invalid verdict (rc=$rc)"
     [[ -s "$child_log" ]] && warn "see event log: $child_log"
@@ -132,7 +85,7 @@ cmd_improve() {
       *) die "improve: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(review_backend)" improve
+  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" improve
   [[ -n "$repo" ]] \
     || die "usage: cerebro improve <cerebro-repo-abs-path> [--context \"<focus>\"] [--meta] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "improve: repo path must be absolute: $repo"
@@ -157,7 +110,7 @@ cmd_improve() {
   local util_now
   util_now="$(python3 "$CEREBRO_LIB_DIR/python/improve_utility.py" "$CEREBRO_HOME" "$since_ts" 2>/dev/null || printf '0.5')"
 
-  local agent; agent="$(review_child_agent_name improve)"
+  local agent; agent="$(backend_child_agent_name improve)"
   local results=()
 
   # --- FAST LOOP: task-skill improvement -----------------------------------

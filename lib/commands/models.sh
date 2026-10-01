@@ -32,14 +32,6 @@
 # (CEREBRO_MODEL / CEREBRO_REVIEW_MODEL). This command does not require a
 # session -- it is a plain catalog lookup usable from a shell too.
 
-# model_backend_of <id> -- the backend a model id is shaped for. The two
-# backends use incompatible id formats: opencode takes "provider/model" (the
-# id has a '/'), claude takes "model:tag" / a plain id (no '/'). The format is
-# the discriminator, so the backend is inferred from the id's shape.
-model_backend_of() {
-  [[ "$1" == */* ]] && printf 'opencode\n' || printf 'claude\n'
-}
-
 # require_model_for_backend <id> <backend> [subcmd] -- reject a --model whose
 # format does not match the backend the child runs under, up front with a
 # clear message instead of a confusing downstream failure. opencode requires
@@ -50,7 +42,7 @@ model_backend_of() {
 require_model_for_backend() {
   local id="$1" backend="$2" subcmd="${3:-}"
   [[ "$backend" == "opencode" && "$id" != */* ]] || return 0
-  die "${subcmd:+$subcmd: }--model '$id' is not valid for the opencode backend, which needs a 'provider/model' id (with a '/'); this id is a claude-backend model. List models with: cerebro models"
+  die "${subcmd:+$subcmd: }--model '$id' is not valid for the opencode backend, which needs a 'provider/model' id (with a '/'). List models with: cerebro models"
 }
 
 cmd_models() {

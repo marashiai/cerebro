@@ -1,0 +1,254 @@
+"""Observe and steer native Claude stream-json or Codex app-server children.
+
+The native stdout stream drives completion. No child-log/session-file polling
+or transcript reconciliation is involved; Cerebro owns only the FIFO side
+channel, its authorized restart, and the post-turn steering window.
+"""
+
+import base64
+import json
+import os
+from pathlib import Path
+import select
+import signal
+import subprocess
+import sys
+import time
+
+from codex_launch import guarded_options
+
+
+def emit(event):
+    print(json.dumps(event), flush=True)
+
+
+class Claude:
+    def __init__(self, send, resume):
+        self.send = send
+        self.outstanding = 0
+        self.busy = set()
+
+    def start(self, prompt):
+        self.steer(prompt)
+
+    def steer(self, text):
+        self.send({'type': 'user', 'message': {'role': 'user', 'content': text}})
+        self.outstanding += 1
+
+    def event(self, event):
+        emit(event)
+        kind = event.get('type')
+        for block in (event.get('message') or {}).get('content', []) or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'tool_use':
+                self.busy.add(block['id'])
+            elif block.get('type') == 'tool_result':
+                self.busy.discard(block['tool_use_id'])
+        if kind == 'result':
+            self.outstanding -= 1
+            return self.outstanding == 0
+        return False
+
+
+class Codex:
+    def __init__(self, send, resume, cwd, model, instructions, readonly=False):
+        self.send = send
+        self.resume = resume
+        self.params = {'cwd': cwd, 'approvalPolicy': 'never', 'sandbox': 'read-only' if readonly else 'danger-full-access',
+                       'developerInstructions': instructions}
+        if model:
+            self.params['model'] = model
+        self.next_id = 0
+        self.requests = {}
+        self.thread = None
+        self.pending = []
+        self.busy = set()
+        self.active_turns = set()
+        self.completed_turns = set()
+
+    def request(self, method, params, purpose):
+        self.next_id += 1
+        self.requests[self.next_id] = purpose
+        self.send({'jsonrpc': '2.0', 'id': self.next_id, 'method': method, 'params': params})
+
+    def start(self, prompt):
+        self.pending.append(prompt)
+        self.request('initialize', {'clientInfo': {'name': 'cerebro', 'version': '2.0.0'}}, 'initialize')
+
+    def next_turn(self):
+        text = '\n\n'.join(self.pending)
+        self.pending.clear()
+        self.request('turn/start', {'threadId': self.thread,
+                     'input': [{'type': 'text', 'text': text}]}, 'turn')
+
+    def steer(self, text):
+        # Native turn/start atomically starts an idle turn or steers the active
+        # one, including the boundary where a completion is still in transit.
+        self.pending.append(text)
+        if self.thread:
+            self.next_turn()
+
+    def event(self, event):
+        if 'id' in event and 'method' not in event:
+            purpose = self.requests.pop(event['id'], None)
+            if 'error' in event:
+                raise RuntimeError(json.dumps(event['error']))
+            result = event.get('result') or {}
+            if purpose == 'initialize':
+                self.send({'jsonrpc': '2.0', 'method': 'initialized', 'params': {}})
+                params = dict(self.params)
+                if self.resume:
+                    params['threadId'] = self.resume
+                    params['excludeTurns'] = True
+                self.request('thread/resume' if self.resume else 'thread/start', params, 'thread')
+            elif purpose == 'thread':
+                self.thread = result['thread']['id']
+                emit({'type': 'thread.started', 'thread_id': self.thread})
+                self.next_turn()
+            elif purpose == 'turn':
+                turn_id = result['turn']['id']
+                if turn_id not in self.completed_turns:
+                    self.active_turns.add(turn_id)
+            return self.finished()
+        method = event.get('method', '')
+        params = event.get('params') or {}
+        if 'id' in event:
+            # never/danger-full-access should not ask. Reject unexpected host
+            # requests rather than treating them as authorization.
+            self.send({'jsonrpc': '2.0', 'id': event['id'],
+                       'error': {'code': -32601, 'message': 'Unexpected host request'}})
+            return False
+        if method == 'turn/started':
+            self.active_turns.add(params['turn']['id'])
+            emit({'type': 'turn.started'})
+        elif method in ('item/started', 'item/completed'):
+            item = params['item']
+            kind = item['type']
+            if kind in ('commandExecution', 'mcpToolCall', 'fileChange'):
+                if method == 'item/started':
+                    self.busy.add(item['id'])
+                else:
+                    self.busy.discard(item['id'])
+            normalized = {'id': item['id'], 'type': {
+                'agentMessage': 'agent_message', 'commandExecution': 'command_execution',
+                'fileChange': 'file_change', 'mcpToolCall': 'mcp_tool_call',
+            }.get(kind, kind)}
+            normalized.update({k: v for k, v in item.items() if k not in ('id', 'type')})
+            emit({'type': 'item.completed' if method == 'item/completed' else 'item.started', 'item': normalized})
+        elif method == 'turn/completed':
+            turn = params['turn']
+            if turn['status'] != 'completed':
+                emit({'type': 'turn.failed', 'error': turn.get('error') or {'message': turn['status']}})
+                raise RuntimeError('Codex turn ' + turn['status'])
+            emit({'type': 'turn.completed'})
+            self.completed_turns.add(turn['id'])
+            self.active_turns.discard(turn['id'])
+        else:
+            emit({'type': 'progress', 'event': event})
+        return self.finished()
+
+    def finished(self):
+        return bool(self.completed_turns) and not self.active_turns and not self.busy and not self.pending and 'turn' not in self.requests.values()
+
+
+def run():
+    backend, cwd, resume, model, fifo, steer_path, child_log, executable = sys.argv[1:9]
+    prompt = sys.stdin.read()
+    readonly = os.environ.get('CEREBRO_CHILD_ROLE') in ('review', 'audit', 'improve')
+    if backend == 'claude':
+        argv = [executable, *sys.argv[9:]]
+    else:
+        options = guarded_options(executable, 'reviewer', cwd, os.environ['CEREBRO_SESSION_DIR']) if readonly else [
+            '-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"',
+            '--disable', 'multi_agent', '--disable', 'multi_agent_v2']
+        argv = [executable, '--no-daemon', '--strict-config', *options, 'app-server']
+    env = dict(os.environ)
+    for key in ('CEREBRO_SESSION_ID', 'CEREBRO_SESSION_DIR', 'CEREBRO_ROLE'):
+        env.pop(key, None)
+    proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=sys.stderr, start_new_session=True, env=env)
+
+    def send(event):
+        proc.stdin.write((json.dumps(event) + '\n').encode())
+        proc.stdin.flush()
+
+    adapter = Claude(send, resume) if backend == 'claude' else Codex(
+        send, resume, cwd, model, os.environ['CEREBRO_CHILD_INSTRUCTIONS'], readonly)
+    fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK) if fifo else None
+    idle_grace = float(os.environ.get('CEREBRO_PAIR_IDLE', '60'))
+    stall = float(os.environ.get('CEREBRO_PAIR_STALL', '180'))
+    stall_busy = float(os.environ.get('CEREBRO_PAIR_STALL_BUSY', '450'))
+    output_buffer = b''
+    fifo_buffer = b''
+    last_activity = time.monotonic()
+    idle_deadline = None
+    # SIGTERM from a timeout/cancellation must run the process-group cleanup.
+    def stop(signum, frame):
+        raise SystemExit(128 + signum)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        adapter.start(prompt)
+        while True:
+            now = time.monotonic()
+            deadline = idle_deadline if idle_deadline is not None else last_activity + (stall_busy if adapter.busy else stall)
+            watched = [proc.stdout.fileno()] + ([fd] if fd is not None else [])
+            ready, _, _ = select.select(watched, [], [], max(0, deadline - now))
+            if not ready:
+                if idle_deadline is not None:
+                    return 0
+                Path((child_log[:-6] if child_log.endswith('.jsonl') else child_log) + '.stalled').touch()
+                return 5
+            if fd in ready:
+                fifo_buffer += os.read(fd, 65536)
+                while b'\n' in fifo_buffer:
+                    line, fifo_buffer = fifo_buffer.split(b'\n', 1)
+                    prefix, encoded = line.decode().split(' ', 1)
+                    message = base64.b64decode(encoded).decode()
+                    if prefix == 'R':
+                        Path((child_log[:-6] if child_log.endswith('.jsonl') else child_log) + '.restart').write_text(message)
+                        return 0
+                    if prefix != 'S':
+                        raise ValueError('invalid steering prefix')
+                    adapter.steer(message)
+                    with open(steer_path, 'a') as record:
+                        record.write('- ' + message.replace('\n', '\n  ') + '\n')
+                    idle_deadline = None
+                    last_activity = time.monotonic()
+            if proc.stdout.fileno() in ready:
+                chunk = os.read(proc.stdout.fileno(), 65536)
+                if not chunk:
+                    return proc.wait() or (0 if idle_deadline is not None else 2)
+                output_buffer += chunk
+                while b'\n' in output_buffer:
+                    line, output_buffer = output_buffer.split(b'\n', 1)
+                    if not line.strip():
+                        continue
+                    event = json.loads(line)
+                    last_activity = time.monotonic()
+                    if adapter.event(event):
+                        idle_deadline = last_activity + idle_grace
+                    elif adapter.busy or (backend == 'codex' and adapter.active_turns):
+                        idle_deadline = None
+    finally:
+        if fd is not None:
+            os.close(fd)
+        proc.stdin.close()
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(run())
+    except Exception as error:
+        print('cerebro pair: ' + str(error), file=sys.stderr)
+        sys.exit(2)

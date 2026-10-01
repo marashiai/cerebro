@@ -24,6 +24,7 @@ cmd_restart() {
     die "restart: usage: cerebro restart [<pipe>] \"<diagnosis>\""
   fi
   [[ -n "$diag" ]] || die "restart: empty diagnosis (it is what the orchestrator needs to correct the prompt)"
+  diag="[${CEREBRO_ROLE:-user}] $diag"
   pair_resolve_live_fifo "$fifo" restart
   fifo="$PAIR_RESOLVED_FIFO"
   python3 "$CEREBRO_LIB_DIR/python/steer_send.py" "$fifo" "$diag" R \

@@ -1,74 +1,54 @@
-"""Wait silently for a detached Cerebro command's final exit status."""
+"""Block on a detached monitor's completion socket without status polling."""
 
+import hashlib
 import os
-import subprocess
+from pathlib import Path
+import socket
 import sys
-import time
+import tempfile
 
 
-if len(sys.argv) != 3:
-    sys.exit("wait_detached: expected <status-path> <pid-path>")
+def completion_socket(status_path):
+    directory = Path('/tmp') / f'cerebro-wait-{os.getuid()}'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    if directory.stat().st_uid != os.getuid() or directory.stat().st_mode & 0o077:
+        raise OSError('completion socket directory must be private')
+    key = hashlib.sha256(os.path.realpath(status_path).encode()).hexdigest()[:32]
+    return str(directory / (key + '.sock'))
 
-status_path, pid_path = sys.argv[1:]
 
-
-def read(path):
+def final_status(path):
     try:
-        with open(path) as fh:
-            return fh.read().strip()
-    except OSError:
-        return ""
-
-
-def write_atomic(path, value):
-    tmp = f"{path}.tmp.{os.getpid()}"
-    with open(tmp, "w") as fh:
-        fh.write(value)
-    os.replace(tmp, path)
-
-
-def monitor_alive(pid, status):
-    try:
-        os.kill(int(pid), 0)
+        return int(Path(path).read_text().strip())
     except (OSError, ValueError):
-        return False
-    try:
-        command = subprocess.check_output(
-            ["ps", "-p", str(int(pid)), "-o", "command="], text=True
-        )
-    except (subprocess.CalledProcessError, ValueError):
-        return False
-    return "detach_process.py --monitor" in command and status in command
+        return None
 
 
-while True:
-    value = read(status_path)
-    if value in ("starting", "running"):
-        pid = read(pid_path)
-        if not pid or not monitor_alive(pid, status_path):
-            # The monitor writes the final status before exiting. Re-read after
-            # a short grace period to distinguish that atomic handoff from a
-            # monitor lost to reboot, SIGKILL, or external process cleanup.
-            time.sleep(0.5)
-            if read(status_path) in ("starting", "running") and (
-                not pid or not monitor_alive(pid, status_path)
-            ):
-                write_atomic(status_path, "125\n")
-                sys.stderr.write(
-                    f"cerebro: detached monitor {pid or 'unknown'} disappeared; "
-                    "recorded exit 125\n"
-                )
-                sys.exit(125)
-        time.sleep(0.5)
-        continue
+def wait_for_completion(status_path):
+    rc = final_status(status_path)
+    if rc is not None:
+        return rc
     try:
-        rc = int(value)
-    except ValueError:
-        pid = read(pid_path) or "unknown"
-        sys.stderr.write(
-            f"cerebro: detached monitor {pid} left invalid status: "
-            f"{value or '(missing)'}\n"
-        )
-        sys.exit(125)
-    print(f"cerebro: detached child finished (exit {rc})")
+        with socket.socket(socket.AF_UNIX) as client:
+            client.connect(completion_socket(status_path))
+            with client.makefile('r') as stream:
+                return int(stream.readline().strip())
+    except (OSError, ValueError):
+        # Status is published before socket closure, including the race between
+        # reading running and connecting. EOF without a result means monitor loss.
+        rc = final_status(status_path)
+        if rc is not None:
+            return rc
+        with tempfile.NamedTemporaryFile(mode='w', dir=Path(status_path).parent, delete=False) as result:
+            result.write('125\n')
+        os.replace(result.name, status_path)
+        sys.stderr.write('cerebro: detached monitor disappeared before completion (exit 125)\n')
+        return 125
+
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        sys.exit('wait_detached: expected <status-path>')
+    rc = wait_for_completion(sys.argv[1])
+    print(f'cerebro: detached child finished (exit {rc})')
     sys.exit(rc)

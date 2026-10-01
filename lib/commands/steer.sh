@@ -28,9 +28,13 @@ cmd_steer() {
     die "steer: usage: cerebro steer [<pipe>] \"<message>\""
   fi
   [[ -n "$msg" ]] || die "steer: empty steering message"
+  case "${CEREBRO_ROLE:-user}" in
+    observer) msg="[observer] Enforce the approved spec and plan only; this is not a new user requirement. $msg" ;;
+    supervisor) msg="[supervisor] Enforce the approved spec and plan only; this is not a new user requirement. $msg" ;;
+    *) msg="[user] $msg" ;;
+  esac
   pair_resolve_live_fifo "$fifo" steer
   fifo="$PAIR_RESOLVED_FIFO"
   python3 "$CEREBRO_LIB_DIR/python/steer_send.py" "$fifo" "$msg" || die "steer: could not deliver (the child may have finished)"
   say "cerebro: steered $(basename "${fifo%.steer.fifo}")"
 }
-

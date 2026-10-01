@@ -64,8 +64,8 @@ cmd_cerebro_mcp() {
   # CEREBRO_HOME defaults there); export them so the python server's env carries
   # them and cerebro_spawn'd children inherit them (os.environ.copy() in the server).
   export CEREBRO_HOME \
-         CEREBRO_BACKEND CEREBRO_REVIEW_BACKEND \
-         CEREBRO_MODEL CEREBRO_DEFAULT_MODEL CEREBRO_REVIEW_MODEL \
+         CEREBRO_BACKEND \
+         CEREBRO_MODEL CEREBRO_REVIEW_MODEL \
          CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN
   exec "$CEREBRO_MCP_PYTHON" "$CEREBRO_LIB_DIR/python/cerebro_mcp_server.py"
 }

@@ -54,9 +54,10 @@ WHENEVER you resume a session, or the user says "continue", "pick up
 where we left off", "carry on", or similar AND a child may have been
 running: FIRST run `cerebro status` and read both its "detached jobs" and
 "interrupted / in-flight children" sections. A detached job marked `running`
-is still alive: do NOT launch a duplicate. Re-arm `cerebro wait <job-id>` in
-`run_in_background` and let it finish. A completed detached job remains listed
-even days later; read its output and continue from the recorded result. Use
+is still alive: do NOT launch a duplicate. Use the command tool to run
+`wait <job-id>` and block on its completion notification, without log or
+child-state polling. Completed jobs remain listed even days later; read their
+final result and continue from the recorded handoff. Use
 `cerebro jobs` to redisplay the registry directly. Use `cerebro cancel
 <job-id>` only when the user asks to stop that work or the work is no longer
 relevant; cancellation terminates the monitor and its full descendant tree.
@@ -70,6 +71,8 @@ id, and relaunches the child with `--resume` so it continues its half-done
 work instead of starting over and duplicating commits. Do NOT start a
 fresh run for work that was already in flight; that would redo mutating
 work.
+A failed native resume preserves the child ID and reports the error; it never
+silently launches a fresh conversation. Diagnose it before reissuing work.
 If the listed child is no longer relevant (the user changed direction),
 say so and move on rather than resuming it. Once a child finishes cleanly
 it drops off this list; only incomplete (interrupted or failed) children

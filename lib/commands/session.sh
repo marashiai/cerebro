@@ -1,10 +1,5 @@
-# cerebro lib: commands/session
-# subcommands: launch / --resume / --observe / list
-# Sourced by bin/cerebro; not meant to be executed directly.
+# Native supervisor/observer launch, recorded-backend resume and session listing.
 
-# ----- subcommand: cerebro (launch new session) ----------------------------
-
-# Global preference files (span every session under $CEREBRO_HOME).
 learnings_file()         { printf '%s\n' "$CEREBRO_HOME/learnings.md"; }
 pending_learnings_file() { printf '%s\n' "$CEREBRO_HOME/pending-learnings.md"; }
 
@@ -21,20 +16,6 @@ overlay_body() {   # $1=target; echoes body only if present + non-whitespace
   [[ "$b" =~ [^[:space:]] ]] && printf '%s' "$b"
 }
 
-# orchestrator_handle -- resolve the stable orchestrator identifier for the
-# active backend: under opencode it is the agent name (materialise_home writes a
-# stable agent file from the static system prompt); under claude it is the
-# static system prompt file path (the backend loads it with --append-system-prompt-file).
-# User-owned local overlays and learnings are no longer injected here; they live
-# in plain files the model can read when needed. Echoed on stdout.
-orchestrator_handle() {
-  if backend_is opencode; then
-    printf 'cerebro-orchestrator\n'
-  else
-    printf '%s\n' "$CEREBRO_HOME/system-prompt.md"
-  fi
-}
-
 cmd_launch() {
   require_interactive
   require_deps
@@ -48,8 +29,6 @@ cmd_launch() {
   ts="$(ts_iso)"
   write_metadata_new "$sess_dir" "$sid" "$ts"
 
-  local handle; handle="$(orchestrator_handle)"
-
   export CEREBRO_SESSION_ID="$sid"
   export CEREBRO_SESSION_DIR="$sess_dir"
   export CEREBRO_HOME
@@ -58,66 +37,27 @@ cmd_launch() {
 
   say "cerebro: starting session $sid (backend $(current_backend))"
   cd "$CEREBRO_HOME" || die "cd to $CEREBRO_HOME failed"
-  backend_launch_orchestrator "$sess_dir" "$handle"
-}
-
-# Build the observer session's system prompt: the static orchestrator prompt
-# (so it understands what audit/execute/review children do) plus the
-# observe-mode overlay that narrows it to watching and steering. When a target
-# id is given, point it at that session by default. Echoed on stdout.
-observer_append_prompt() {
-  local target="${1:-}"
-  local base mode
-  base="$(cerebro_system_prompt)"
-  mode="$(cerebro_observe_mode_prompt)"
-  if [[ -n "$target" ]]; then
-    printf '%s\n\n%s\n\nThe user launched this observer to watch session `%s`. Begin by running `cerebro observe %s` and narrating what you see; keep looping until its children are done or the user stops you.\n' \
-      "$base" "$mode" "$target" "$target"
-  else
-    printf '%s\n\n%s\n' "$base" "$mode"
-  fi
-}
-
-# observer_handle -- resolve the stable observer identifier for the active
-# backend: under opencode it is the agent name (materialise_home writes a stable
-# agent file from the static observe-mode prompt); under claude it is the
-# composed inline prompt (there is no separate observer file). Echoed on stdout.
-observer_handle() {
-  local target="${1:-}"
-  if backend_is opencode; then
-    printf 'cerebro-observer\n'
-  else
-    observer_append_prompt "$target"
-  fi
+  backend_launch_orchestrator "$sess_dir"
 }
 
 # ----- subcommand: cerebro --observe [<id>] --------------------------------
 
-# Block until there is something to observe: another session with live paired
-# children (a named target's, or -- with no target -- any other session's).
-# Polls observe_pump's cheap probe mode, sleeping CEREBRO_OBSERVE_POLL seconds
-# between tries, so the observer chat opens onto live activity instead of an
-# immediate "nothing to observe". The user can Ctrl-C to bail. No python3 (or
-# no sessions root) -> proceed immediately and let the session sort it out.
+# Wait for live paired work before minting an observer session; Ctrl-C cancels the wait.
+# This startup probe is separate from native child completion notification.
 observer_wait_until_observable() {
-  local target="${1:-}"
-  command -v python3 >/dev/null 2>&1 || return 0
-  python3 "$CEREBRO_LIB_DIR/python/observe_pump.py" \
-    "$CEREBRO_HOME/sessions" "$target" "" "" 0 0 probe >/dev/null 2>&1 && return 0
-  local who="paired children"
+  local target="${1:-}" selected waiting=0 who="paired children"
+  [[ -z "$target" || "$target" =~ ^[a-zA-Z0-9_-]+$ ]] || die "observe: target must be a Cerebro session ID"
   [[ -n "$target" ]] && who="session $target's paired children"
-  say "cerebro: waiting for $who to observe... (Ctrl-C to cancel)"
-  while ! python3 "$CEREBRO_LIB_DIR/python/observe_pump.py" \
-      "$CEREBRO_HOME/sessions" "$target" "" "" 0 0 probe >/dev/null 2>&1; do
+  until selected="$(python3 "$CEREBRO_LIB_DIR/python/observe_pump.py" \
+      "$CEREBRO_HOME/sessions" "$target" "" "" 0 0 probe 2>/dev/null)"; do
+    (( waiting )) || say "cerebro: waiting for $who to observe... (Ctrl-C to cancel)"
+    waiting=1
     sleep "${CEREBRO_OBSERVE_POLL:-2}"
   done
+  printf '%s\n' "$selected"
 }
 
-# Launch an interactive agent chat dedicated to observing and steering another
-# cerebro session's live paired children. Same session plumbing as cmd_launch,
-# but the system prompt is the observe-mode overlay and the tool surface is
-# narrowed to observe + steer + read-only commands, so this session can never
-# make direct repo changes. Optional first arg is the target session id.
+# Observers use the same native session plumbing with a guarded read/steer role.
 cmd_launch_observer() {
   require_interactive
   require_deps
@@ -126,7 +66,7 @@ cmd_launch_observer() {
   local target="${1:-}"
   # Don't open the chat until something is observable; poll until it is. Done
   # before minting the session so a Ctrl-C here leaves no orphan session dir.
-  observer_wait_until_observable "$target"
+  target="$(observer_wait_until_observable "$target")" || return $?
 
   local sid sess_dir ts
   sid="$(mint_uuid)"
@@ -136,7 +76,9 @@ cmd_launch_observer() {
   ts="$(ts_iso)"
   write_metadata_new "$sess_dir" "$sid" "$ts"
 
-  local handle; handle="$(observer_handle "$target")"
+  local metadata_tmp="$sess_dir/metadata.json.tmp"
+  jq --arg target "$target" '.role="observer" | .observe_target=$target' "$sess_dir/metadata.json" > "$metadata_tmp"
+  mv "$metadata_tmp" "$sess_dir/metadata.json"
 
   export CEREBRO_SESSION_ID="$sid"
   export CEREBRO_SESSION_DIR="$sess_dir"
@@ -146,21 +88,18 @@ cmd_launch_observer() {
 
   say "cerebro: starting observer session $sid${target:+ (watching $target)}"
   cd "$CEREBRO_HOME" || die "cd to $CEREBRO_HOME failed"
-  backend_launch_observer "$sess_dir" "$handle" "$target"
+  backend_launch_observer "$sess_dir" "" "$target"
 }
 
 # ----- subcommand: cerebro --resume [<id>] ---------------------------------
 
 cmd_resume() {
   require_interactive
-  require_deps
-  materialise_home
 
   local id="${1:-}"
   export CEREBRO_HOME
 
-  # With no id, resume the most recently touched session. Both backends now use
-  # cerebro's own session id rather than relying on a provider picker/symlink.
+  # With no ID, select the most recently touched Cerebro session.
   if [[ -z "$id" ]]; then
     id="$(python3 "$CEREBRO_LIB_DIR/python/list_sessions.py" "$CEREBRO_HOME/sessions" --most-recent 2>/dev/null)"
     [[ -n "$id" ]] || die "no sessions to resume"
@@ -175,27 +114,21 @@ cmd_resume() {
   # and any children it spawns dispatch through the same implementation.
   CEREBRO_RESUME_BACKEND="$(session_backend "$sess_dir")"
   export CEREBRO_RESUME_BACKEND
-
-  local handle; handle="$(orchestrator_handle)"
+  require_deps
+  materialise_home
 
   export CEREBRO_SESSION_ID="$id"
   export CEREBRO_SESSION_DIR="$sess_dir"
   say "cerebro: resuming session $id (backend $CEREBRO_RESUME_BACKEND)"
 
-  # Reopen the provider conversation when we captured its id at launch (opencode
-  # assigns its own; claude uses the cerebro id directly); otherwise start a
-  # fresh conversation in this same cerebro session dir (cerebro state --
-  # spec, plans, children -- persists regardless).
+  # Reopen the recorded native conversation; state files retain the approved contract.
   local foreign_id=""
   foreign_id="$(session_foreign_id "$sess_dir")"
-  # Under claude the foreign id is the cerebro id itself (claude's --resume takes
-  # it directly); fall back to the cerebro id when no foreign id is stored.
-  if [[ -z "$foreign_id" ]] && [[ "$CEREBRO_RESUME_BACKEND" == "claude" ]]; then
-    foreign_id="$id"
-  fi
+  # Claude native session IDs are minted from the Cerebro ID.
+  [[ "$CEREBRO_RESUME_BACKEND" != "claude" ]] || foreign_id="$id"
 
   cd "$CEREBRO_HOME" || die "cd to $CEREBRO_HOME failed"
-  backend_resume_orchestrator "$sess_dir" "$foreign_id" "$handle"
+  backend_resume_orchestrator "$sess_dir" "$foreign_id"
 }
 
 # ----- subcommand: cerebro list --------------------------------------------

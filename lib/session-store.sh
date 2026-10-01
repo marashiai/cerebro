@@ -4,15 +4,10 @@
 
 # ----- session metadata -----------------------------------------------------
 
-# Unified metadata schema (backends share one shape so resume reads back the
-# recorded backend and reopens the session under it):
-#   {cerebro_session_id, backend, foreign_session_id, created_at, last_touched}
-# `backend` is "opencode" or "claude". `foreign_session_id` holds the
-# provider-assigned conversation id (opencode's own session id, or claude's
-# session id when claude is the backend). The cerebro id is the directory name.
+# Cerebro owns the directory ID; metadata binds its backend and native conversation.
 write_metadata_new() {
   local sess_dir="$1" sid="$2" ts="$3"
-  jq -n --arg sid "$sid" --arg backend "${CEREBRO_BACKEND:-opencode}" --arg ts "$ts" \
+  jq -n --arg sid "$sid" --arg backend "$(current_backend)" --arg ts "$ts" \
     '{cerebro_session_id:$sid, backend:$backend, foreign_session_id:"", created_at:$ts, last_touched:$ts}' \
     > "$sess_dir/metadata.json"
 }
@@ -36,8 +31,7 @@ set_metadata_foreign() {
     > "$tmp" 2>/dev/null && mv "$tmp" "$sess_dir/metadata.json" || rm -f "$tmp"
 }
 
-# session_backend <sess-dir> -- echo the recorded backend for a session, or
-# the default if the field is missing (older sessions). Never errors.
+# Read the recorded backend, using the configured backend when metadata is absent.
 session_backend() {
   local sess_dir="$1"
   [[ -f "$sess_dir/metadata.json" ]] || { printf '%s' "${CEREBRO_BACKEND:-opencode}"; return 0; }
@@ -45,56 +39,19 @@ session_backend() {
   printf '%s' "${b:-${CEREBRO_BACKEND:-opencode}}"
 }
 
-# session_foreign_id <sess-dir> -- echo the provider-assigned conversation id
-# stored for a session (opencode's own session id under the opencode backend,
-# claude's session id under the claude backend), or empty. Reads both the new
-# `foreign_session_id` field and the legacy `opencode_session_id`/`claude_session_id`
-# names so sessions created by an older single-backend release still resume.
-# jq's `//` only falls through on null/false, not on the empty string, but
-# write_metadata_new records `foreign_session_id:""` at launch (before the
-# plugin has the provider id), so we force the fall-through explicitly.
 session_foreign_id() {
   local sess_dir="$1"
   [[ -f "$sess_dir/metadata.json" ]] || return 0
-  jq -r '
-    if (.foreign_session_id // "") != ""
-    then .foreign_session_id
-    else (.opencode_session_id // .claude_session_id // empty)
-    end
-  ' "$sess_dir/metadata.json" 2>/dev/null
-}
-
-# set_session_foreign_id <sess-dir> <id> -- record the provider-assigned id back
-# into metadata (idempotent, atomic). Used by the session-binding plugin/hook
-# and by the claude resume path when claude assigns its own id.
-set_session_foreign_id() {
-  local sess_dir="$1" id="$2"
-  [[ -n "$id" ]] || return 0
-  [[ -f "$sess_dir/metadata.json" ]] || return 0
-  local tmp; tmp="$(mktemp)" || return 0
-  if jq --arg id "$id" '.foreign_session_id = $id' "$sess_dir/metadata.json" \
-      > "$tmp" 2>/dev/null; then
-    mv "$tmp" "$sess_dir/metadata.json"
-  else
-    rm -f "$tmp"
-  fi
+  jq -r '.foreign_session_id // empty' "$sess_dir/metadata.json" 2>/dev/null
 }
 
 # ----- child agent session store -------------------------------------------
-# A small per-session JSON map of provider conversation ids + in-flight state.
-# Normal child launches only auto-resume entries still marked "running", which
-# means a completed sub-agent cannot bleed context into a later one. `cerebro
-# answer` is the explicit resume path for a child that stopped with a question.
-# Each entry carries {id, provider, role, repo, branch, log, status, started_at,
-# updated_at}; status is "running" until the child cleanly finishes (then
-# "done"). The file is created lazily on first child_store_begin and lives
-# alongside spec.md / metadata.json, so it survives context compaction.
+# Persist native child IDs before completion. Only incomplete work auto-resumes;
+# answer explicitly resumes a child that ended with a question.
 
 child_sessions_file() { printf '%s\n' "$CEREBRO_SESSION_DIR/child-sessions.json"; }
 
-# child_key <repo> <role> <branch> -- stable short hash identifying one line
-# of work. role is execute|review so an execute conversation and a review
-# conversation on the same branch stay distinct.
+# Keep each repo/role/task conversation distinct in the child store.
 child_key() {
   local repo="$1" role="$2" branch="${3:-default}"
   printf '%s\0%s\0%s' "$repo" "$role" "$branch" | python3 -c 'import sys,hashlib; print(hashlib.sha1(sys.stdin.buffer.read()).hexdigest())' | cut -c1-16

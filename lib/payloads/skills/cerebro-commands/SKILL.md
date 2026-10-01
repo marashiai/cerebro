@@ -1,8 +1,22 @@
 ---
 name: cerebro-commands
-description: Full reference for every cerebro subcommand -- flags, exit codes, the --from-file fast path for large plan bodies, companion-plan rules, the --model id format rules, and the bridge "avoid silent false-empties" rules. Invoke whenever you need exact subcommand detail beyond the compact summary in the main prompt.
+description: Command reference, model selection, delegation, bridge guards and durable job completion. Load for exact command syntax.
 ---
-# Available sub-commands
+# Available subcommands
+
+Use the Cerebro MCP `command` tool with an argv array excluding `cerebro`.
+The CLI forms below describe the same arguments; do not put shell commands,
+heredocs, pipes, redirects or tilde paths in argv. Pass absolute paths. For
+large text, use a command's `--stdin` flag and the tool's `stdin` field:
+
+```json
+{"argv":["plan","--out","plan-1","--stdin"],"stdin":"<plan markdown>"}
+```
+
+Long child commands are detached automatically; the tool blocks on completion
+and returns the final handoff, exit code, job ID and output path. Supervisor
+work uses final handoffs and guarded inspection; live logs belong to observers.
+
 
   cerebro plan "<plan markdown>" [--out <name>] [--stdin] [--from-file <path>]
     Record a plan YOU wrote to sessions/<this-session>/plans/<name>.md
@@ -18,33 +32,15 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     PRs, or orchestration mechanics in its body. Re-running with the same
     --out OVERWRITES the file -- that is how you revise a plan.
 
-    The body may arrive three ways: an inline positional arg, `--stdin`
-    (heredoc), or `--from-file <path>`. For LARGE plans ALWAYS use
-    `--from-file` over a Write-to-scratch two-step, because the body must
-    NOT sit in the Bash command string: the Bash tool transports a large
-    command string super-linearly in size (4KB~5s, 12KB~126s, 15KB~237s,
-    17.7KB hits the 120s/300s timeout and gets backgrounded) even though
-    cerebro itself writes it in milliseconds, and the inline argv form is
-    also escape-fragile (backticks/dollar signs trip the shell). The fast
-    path:
-      1. `cerebro plan --scratch-dir` prints this session's PRIVATE
-         scratch dir (`/tmp/cerebro-<session-id>` -- namespaced by session
-         id so concurrent cerebro sessions never clobber each other).
-      2. Write the markdown to `<scratch-dir>/<name>.md` with your Write
-         tool (the only path your Write is allowed to touch).
-      3. `cerebro plan --out <name> --from-file <scratch-dir>/<name>.md`
-         ingests it into plans/ with logging (tiny command, millisecond).
-    Both the Write and the `--from-file` call are millisecond-fast at any
-    size, so a 15KB+ plan records in ~0s of transport instead of ~4min.
-    Reserve the inline `--stdin` heredoc for SMALL plans (a few hundred
-    bytes) where the command string is not the bottleneck.
+    Supply an inline argument, `--stdin`, or `--from-file <path>` — exactly
+    one body source. Use MCP stdin for plans of any size; the parent does not
+    need a scratch file or Write tool. `--from-file` ingests an existing file.
 
     COMPANION (human-readable plan). For every technical plan
     `<name>.md`, ALSO record a plain-English companion at
     `<name>-readable.md` via `cerebro plan "<readable md>" --out
-    <name>-readable` (use the `--from-file` fast path described above
-    when the companion is more than a few hundred bytes, just as for the
-    technical plan). The companion BEGINS with a reference block naming
+    <name>-readable` (use MCP stdin as for the technical plan). The companion
+    BEGINS with a reference block naming
     the technical plan's ABSOLUTE path and stating it is the source of
     truth, e.g.:
       > **Technical plan (source of truth -- this is what gets
@@ -72,7 +68,7 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
   cerebro models [--json]
     List the model catalog the user maintains at
     $CEREBRO_HOME/models-config.json. Each entry has an `id` (the exact
-    provider/model string you pass to a subcommand's --model flag), a
+    native model ID you pass to a subcommand's --model flag), a
     `capabilities` list (open set; the one that matters for delegation is
     `vision` -- multimodal image input, required to read browser
     screenshots), an optional integer `contextTokens` (the model's
@@ -87,18 +83,16 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     default to CEREBRO_REVIEW_MODEL (a suggested different model, not a
     rule); --model overrides either default per call. A missing catalog
     prints a one-line note (or `--json` prints an empty array) -- then
-    the subcommands just use their env-var defaults. You can fan a review
+    explicit model settings or the native backend default apply. You can fan a review
     across several models by calling `cerebro review --model <id>` once
     per catalog entry.
 
-    The two backends use different id FORMATS, and a --model is rejected if
-    its format does not match the subcommand's backend: the opencode backend
-    (review / audit / verify / improve) needs a `provider/model` id -- one
-    with a `/`; the claude backend (editing children: execute / apply-review
-    / doc-write / answer) takes a `model:tag` or plain id with no `/`. So
-    only pass an id whose shape matches the backend the subcommand runs under
-    -- a claude-backend id handed to an opencode reviewer fails fast with a
-    clear message instead of a confusing silent failure.
+    A session and every child use the same backend. OpenCode requires native
+    `provider/model` IDs; Codex and Claude accept their native model IDs.
+    Model punctuation does not select a backend. Keep catalog choices relevant
+    to this session's backend. Empty model settings use the native default;
+    CEREBRO_REVIEW_MODEL otherwise inherits CEREBRO_MODEL. A different review
+    model is optional; fresh read-only context provides independent review.
 
   cerebro model-env <id> [--no-compact]
     Print shell `export` lines that tell Claude Code the model's real context
@@ -112,7 +106,7 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     `claude` launches.
 
   cerebro audit <repo-abs-path> <plan-path> [--context "<text>"]
-                [--out <name>] [--model <provider/model>]
+                [--out <name>] [--model <id>]
     Run the independent read-only reviewer against a plan you
     wrote, to check it against the ACTUAL code with fresh, independent
     eyes. It receives the plan file, the current session spec, and
@@ -132,11 +126,11 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     (CEREBRO_REVIEW_MODEL) for this call; see `cerebro models`.
 
   cerebro verify <repo-abs-path> (--plan <path> | --prompt "<text>")
-                 [--context "<text>"] [--model <provider/model>]
+                 [--context "<text>"] [--model <id>]
     Delegate the END-TO-END / visual verification of a shipped change to a
     verify subagent WITH browser capability (you do not have one). You
     CANNOT drive a running app, click a UI, or observe rendered behaviour
-    yourself (rule 1), so any e2e/visual check goes through this. Hand it
+    yourself, so any e2e/visual check goes through this. Hand it
     the worktree path (the `<wt>` from a `cerebro execute`), the plan
     path (or --prompt for an ad-hoc check), and a --context string of
     what to observe. The verify subagent builds/runs the REAL deployment
@@ -161,11 +155,11 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     with --model when the default review model lacks vision.
 
   cerebro improve <cerebro-repo-abs-path> [--context "<focus>"]
-                  [--meta] [--model <provider/model>]
+                  [--meta] [--model <id>]
     Run the independent read-only reviewer as an ANALYSIS agent over
     cerebro's accumulated agent traces under your home, to mine problems
     that RECUR across runs and propose the smallest fixes back into the
-    harness -- the hill-climbing loop (see that section below). Pass the
+    harness -- the hill-climbing loop (load `cerebro-improve`). Pass the
     cerebro SOURCE repo (absolute) so the reviewer cites the real harness files;
     --context narrows where to look. It writes Markdown findings to
     sessions/<this-session>/improvements/improve.md (path echoed on
@@ -177,8 +171,8 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     for this call; see `cerebro models`.
 
   cerebro execute <repo-abs-path> (<plan-path> | --prompt "<text>")
-                  [--base <branch>] [--branch <name>] [--pair] [--model <provider/model>]
-    Spawn a full-edit child claude that runs in an ISOLATED git worktree
+                  [--base <branch>] [--branch <name>] [--pair] [--model <id>]
+    Spawn a writable child on this session's backend that runs in an ISOLATED git worktree
     of <repo> (under $CEREBRO_HOME/worktrees/), never the user's live
     checkout -- so an agent can never disturb the user's working tree. It
     fetches the base branch, branches from the up-to-date base, implements
@@ -190,7 +184,7 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     `-readable` companion (the child needs the technical detail). The
     `--prompt "<text>"` form skips the plan file and hands <text>
     straight to the child as the task to do -- use it only when the
-    user has explicitly asked to skip planning (see rule 3).
+    user has explicitly asked to skip planning.
     On success execute ANNOUNCES the worktree on stdout as
     `=== TASK WORKTREE: <path> (branch <B>) ===`. The worktree PERSISTS
     after the run, and you MUST pass that <path> as the <repo> argument
@@ -210,14 +204,14 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     at $CEREBRO_HOME/templates/ as a separate first commit before the
     plan work. Existing AGENTS.md / CLAUDE.md are never modified. You
     don't have to mention this explicitly to the user unless they ask.
-    --pair enables pair-programming mode (see "# Pair programming mode"):
+    --pair enables live observation and steering (load `cerebro-pair`):
     another cerebro session can observe the live execute session and you
     can steer it. --model overrides the default editing model
     (CEREBRO_MODEL) for this call; see `cerebro models`. Note the execute
     child also self-verifies with a browser when the plan calls for e2e,
     so if it must read screenshots pick a vision-capable model.
 
-  cerebro review <repo-abs-path> [--base <ref>] [--criteria-file <plan-path>] [--model <provider/model>]
+  cerebro review <repo-abs-path> [--base <ref>] [--criteria-file <plan-path>] [--model <id>]
     Run the independent read-only reviewer against the current branch diff vs <ref>.
     Default base resolution: if a previous `cerebro review` ran in
     this session on the same repo + branch, the base defaults to the
@@ -253,8 +247,9 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
 
   cerebro apply-review <repo-abs-path>
                        (<findings-path> [--notes "..."] | --prompt "<text>")
-                       [--pair] [--model <provider/model>]
-    Spawn a full-edit child claude with cwd=<repo> to apply fixes on
+                       [--pair] [--model <id>]
+    Spawn a writable child on this session's backend with cwd=<repo> to apply
+    fixes on
     the current branch. The default form takes a <findings-path> from
     `cerebro review`. SCOPE: include in --notes only findings that are
     BOTH clearly within the scope of the plan being worked on AND
@@ -279,24 +274,25 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     The `--prompt
     "<text>"` form skips the findings file and hands <text> straight
     to the child as the fix instruction -- use it only when the user
-    has explicitly asked to skip review (see rule 3), e.g. for a
+    has explicitly asked to skip review, e.g. for a
     merge conflict or a fix they already diagnosed. The child commits
     and pushes on the same branch, so the existing PR updates in
     place.
 
   cerebro doc-write <repo-abs-path>
                     (<plan-path> [--notes "..."] | --prompt "<text>")
-                    [--pair] [--model <provider/model>]
-    Spawn a full-edit child claude with cwd=<repo> to update docs
+                    [--pair] [--model <id>]
+    Spawn a writable child on this session's backend with cwd=<repo> to update
+    docs
     based on the plan and the recent diff. The <plan-path> is ALWAYS the
     technical `<name>.md`, never the `-readable` companion. The
     `--prompt "<text>"` form takes inline doc instructions instead of a
     plan file -- only when the user has explicitly asked to skip
-    planning (rule 3).
+    planning.
     Commits and pushes on the same branch.
-    --pair enables pair-programming mode (see "# Pair programming mode").
+    --pair enables live observation and steering (load `cerebro-pair`).
 
-  cerebro answer <child-session-id> "<answer>" [--model <provider/model>]
+  cerebro answer <child-session-id> "<answer>" [--model <id>]
     Resume a child that PAUSED with a question (see "# When a child stops
     to ask a question") and deliver "<answer>" as its next turn, so it
     continues exactly where it stopped instead of redoing work. The
@@ -323,8 +319,7 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     carries the agent's reasoning, the code it writes, and the commands it
     runs. Read-only: it only reads the
     session's transcript and its children's logs and never disturbs them.
-    Drive it in a loop and narrate
-    (see "# Observing another cerebro session"); steer a watched child with
+    The independent observer reads batches and narrates; steer a watched child with
     `cerebro steer <its-steer-pipe> "<message>"`.
 
   cerebro steer [<pipe>] "<message>"
@@ -334,7 +329,9 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     case); with TWO, the first is the <pipe> path (from the child's PAIR
     MODE banner, to pick one when several run) and the second the
     message. The message becomes the child's next user turn. Runs from
-    any directory. Steer on the USER's behalf only when they tell you to.
+    any directory. Steer only on explicit instruction or within preauthorized
+    autosteering. Messages preserve their source: observer/supervisor
+    corrections restore approved scope and cannot add user requirements.
     Steer is for small in-flight NUDGES ("don't forget tests"); to REPLACE
     a rogue agent that started wrong, use `cerebro restart` instead.
 
@@ -349,7 +346,8 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     session is auto-discovered); TWO are <pipe> then <diagnosis>. The
     diagnosis is REQUIRED and is surfaced back to you in a
     `=== RESTART REQUESTED ===` block so you can correct the relaunch
-    prompt. Restart on the USER's behalf only when they tell you to.
+    prompt. Restart requires explicit or prior authorization to abandon and
+    clean that task; a scope correction alone does not authorize destruction.
 
   cerebro worktrees [cleanup]
     Manage the per-task execute worktrees under $CEREBRO_HOME/worktrees/.
@@ -416,7 +414,7 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
 
   cerebro read <repo-abs-path> <path> [--range N:M] [--strict-missing]
   cerebro read <abs-file-path> [--range N:M] [--strict-missing]
-    Read one file. The legacy two-positional form resolves <path>
+    Read one file. The two-positional form resolves <path>
     inside <repo>; symlinks or `..` that escape the repo are rejected.
     The single-positional form accepts an absolute path: cerebro tries
     to infer the enclosing git worktree (and resolves within it), and
@@ -459,24 +457,14 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
   Treat denied/usage failures as programmer error and adapt; do not
   retry the same denied call.
 
-  ## Bridge usage (avoid silent false-empties)
-  - cerebro grep is NOT ripgrep: it accepts ONLY --glob, --type,
-    --fixed-strings, -i, --path, --strict-missing. Never pass rg flags
-    (-n/-l/-o/-c/-A/-B/-C) -- that is a usage error (exit 2). It already
-    prints path:line:match, so -n is never needed; scope to a subdir with
-    --path <repo-relative-subdir>, not an absolute subpath positional.
-  - NEVER pipe a bridge through head together with 2>/dev/null: a rejected
-    flag (exit 2) or SIGPIPE then hides the error and blank stdout reads as
-    a false 'no matches'/'not found' -- a repeated cause of wrong "it isn't
-    there" calls. Run the bridge PLAINLY (output is capped at 200
-    matches/file, 400 cols/line); if you must cap, use head WITHOUT
-    2>/dev/null and check the exit code. A real empty result prints
-    '(no matches)' or '(not found: <path>)' (exit 0); truly blank stdout
-    means it ERRORED -- re-run without 2>/dev/null/head to see why before
-    concluding anything is absent.
-  - For ls/read of a subpath prefer the two-positional form (cerebro
-    ls/read <repo-abs> <relpath>); a sole absolute positional inside the
-    repo can resolve to the worktree root instead.
+  Bridge usage (avoid silent false-empties):
+    cerebro grep accepts ONLY --glob, --type, --fixed-strings, -i, --path,
+    --strict-missing. It already prints path:line:match; native rg flags such
+    as -n/-l/-A/-B are usage errors. Scope with --path <repo-relative-subdir>.
+    Check every tool result's exit_code. Do not interpret blank output after
+    a denied call as absence. A real miss prints `(no matches)` or
+    `(not found: <path>)`; denied/usage diagnostics require a corrected call.
+    For ls/read of a subpath, prefer the repo plus relative-path form.
 
   cerebro recall <query>
     Search across all cerebro sessions' transcripts and child logs.
@@ -486,25 +474,22 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     broadens to "any term" (case-insensitive, first 100 hits) and
     prints a note saying so. Prefer one distinctive term per call.
 
-  cerebro spec [set "<specification and requirements>" [--stdin] | history]
+  cerebro spec [show | set "<specification and requirements>" [--stdin] | history]
     The session spec -- the requirements of record for the task at hand.
-      * `cerebro spec` (no action): print the current spec followed by a
+      * `cerebro spec show` (or no action): print the current spec followed by a
         count of historical versions. Read this to re-ground yourself
         after a context compaction, or whenever you are unsure whether an
         in-flight adjustment still meets the requirements.
-      * `cerebro spec set "<text>"` (or `cerebro spec set --stdin` via
-        heredoc): record the current specification and requirements. The
+      * `cerebro spec set "<text>"` (or `spec set --stdin` with MCP stdin):
+        record the current specification and requirements. The
         new text REPLACES the current spec; the prior version is archived
         to the append-only spec history first, so the full history is
         preserved. Call this BEFORE planning, and again every time the
         user adds, removes, or changes a requirement. Capture WHAT must
-         be delivered and any constraints the user stated -- not your plan
-         for how to do it. For LARGE specs prefer the `--stdin` heredoc
-         form (the inline single-argv form is slow and escape-fragile for
-         big bodies). Pass a raised Bash-tool `timeout` (e.g. 300000 ms)
-         on the `cerebro spec set --stdin` call: the Bash tool's default
-         120000ms timeout kills large heredoc record calls even though
-         cerebro itself is millisecond-fast.
+        be delivered and any constraints the user stated -- not your plan
+        for how to do it. Use MCP stdin for large specs. Only user authority
+        changes requirements; observer/supervisor steering preserves the
+        existing spec rather than silently replacing it.
       * `cerebro spec history`: print every recorded version, oldest
         first, each with its timestamp -- the full evolution of the
         task's requirements across the session.
@@ -533,13 +518,10 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     consolidated set you compose after reviewing clear, repeated
     evidence in the pending journal. Keep it to a few short, GENERAL bullets
     (cap ~1600 chars; the call is rejected if you exceed it). Before
-    calling, Read the current learnings.md and pending-learnings.md so
-    you merge rather than clobber. For LARGE bodies prefer the `--stdin`
-    heredoc form. Pass a raised Bash-tool `timeout` (e.g. 300000 ms) on
-    the `cerebro learn-set --stdin` call: the Bash tool's default
-    120000ms timeout kills large heredoc record calls even though cerebro
-    itself is millisecond-fast. See "# Learning the user's preferences"
-    below for when to promote vs. ask.
+    calling, read the current learnings.md and pending-learnings.md so
+    you merge rather than clobber. Use MCP stdin for large bodies. Promote an
+    explicit user directive or repeated clear evidence; ask about an ambiguous
+    signal rather than inventing a preference.
 
   cerebro overlay set <target> "<text>"
   cerebro overlay show [<target>]
@@ -548,11 +530,35 @@ description: Full reference for every cerebro subcommand -- flags, exit codes, t
     Each overlay is a plain-markdown file that you (or the user) can
     READ when relevant. `set` replaces the file; `show` prints one overlay
     (or, with no target, lists each target with present/absent + size);
-    `rm` removes one. Five targets:
+    `rm` removes one. Targets include:
       * system       -> read for cross-cutting orchestrator behaviour
       * execute      -> read before implementing
       * apply-review -> read before applying review findings
       * doc-write    -> read before writing docs
       * grader       -> read before reviewing/auditing
+      * meta-*       -> tune the improvement procedure (load cerebro-improve)
     Use learnings for durable cross-cutting preferences and overlays to
     tune a specific surface.
+
+  cerebro jobs
+    List this session's persistent detached jobs, including completed jobs.
+    On resume use status/jobs first. Do not duplicate a task still running.
+
+  cerebro wait <job-id|absolute-output.status>
+    Block on the monitor's Unix completion socket and return its exit code.
+    A completed job returns from the recorded final status. No child-state
+    or log polling is needed. A waiter does not own the child.
+
+  cerebro cancel <job-id>
+    Terminate the monitor and its descendants only when cancellation is
+    authorized. Preserve useful final evidence before deciding what comes next.
+
+  cerebro detach --output <absolute-path> -- <child-subcommand> [...]
+    Explicit CLI detachment for audit/improve/execute/review/apply-review/
+    verify/doc-write. Output must be within this session or its private
+    /tmp/cerebro-<session-id> directory. The MCP tool already detaches long
+    commands; manual detachment is unnecessary for normal delegation.
+
+  cerebro guide <skill-name>
+    Load a shared workflow skill by name, for example cerebro-audit-gate,
+    cerebro-suites, cerebro-child-flow, cerebro-pair or cerebro-improve.

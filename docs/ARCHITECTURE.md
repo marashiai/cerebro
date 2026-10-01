@@ -1,617 +1,171 @@
-# cerebro architecture
+# Cerebro architecture
 
-How the `cerebro` command works: the moving parts, the architectural
-decisions behind them, the constraints the design operates under, and
-the invariants the code protects. Read this before changing anything
-structural; read [AGENTS.md](../AGENTS.md) for day-to-day conventions.
+Cerebro is a Bash command harness around three separate native backends:
+OpenCode V2, Codex, and Claude Code. A session selects one backend for its
+supervisor, implementers and reviewers. There is no communication or handoff
+between backends. See [USAGE.md](USAGE.md) for workflows and [AGENTS.md](../AGENTS.md)
+for source conventions.
 
-## The one-paragraph model
+## Roles and commands
 
-`cerebro` is a **meta-harness**: a Bash CLI that configures a native
-interactive `claude` session as an *orchestrator* and then becomes that
-orchestrator's only effector. The orchestrator can read, search, and
-browse, but it cannot edit a file, run git, or call codex — its Bash
-tool is restricted to `cerebro:*`. Every mutation happens inside a
-short-lived, non-interactive child agent that `cerebro` spawns with a
-role-scoped tool surface and `cwd` pinned to the target repo. All
-durable state — the session spec, plans, child logs, review state,
-resumable child-session ids, learned preferences — lives as plain files
-under `~/.cerebro/`, so it survives context compaction, interrupts, and
-process death. The intelligence is in the prompts; the safety is in the
-harness.
+The parent is a supervisor: it owns requirements, plans, delegation and delivery
+gates. Development, tests, runtime verification and documentation happen in
+children. A separate observer reads live activity and compares it with the
+approved spec and plan; preauthorized steering corrects drift without creating
+new requirements.
 
-## Big picture
-
-```
-you (terminal)
-  │  natural-language chat
-  ▼
-orchestrator — interactive `claude` session
-  cwd = $CEREBRO_HOME (~/.cerebro)
-  tools: Read, Grep, Glob, WebSearch, WebFetch,
-         Bash(cerebro:*)        ← nothing else (NO browser/Playwright)
-  │
-  │  Bash: `cerebro <subcommand> <repo-abs-path> ...`
-  ▼
-cerebro CLI (bash, sourced modules)
-  ├── child agents (one process per invocation)
-  │     execute       claude -p   Read/Edit/Write/Bash...  cwd=<repo>
-  │     apply-review  claude -p   Read/Edit/Write/Bash...  cwd=<repo>
-  │     doc-write     claude -p   Read/Edit/Write/Bash...  cwd=<repo>
-  │     verify        opencode    edit/bash/web + browser   cwd=<repo>
-  │     audit         codex exec  --sandbox read-only      cwd=<repo>
-  │     review        codex exec  --sandbox read-only      cwd=<repo>
-  ├── read-only bridges (no agent spawned)
-  │     git / gh      allow-listed verbs, exec'd directly
-  │     read/grep/ls  path-confined file access
-  └── session state (plain files)
-        ~/.cerebro/sessions/<id>/...
+```text
+user → native supervisor → Cerebro command(argv, stdin)
+                            ├─ guarded inspection and session records
+                            └─ detached task → native child → final handoff
+         native observer → observe / authorized steer or restart
 ```
 
-Three kinds of work, three mechanisms:
+The `cerebro` MCP server exposes one `command` tool. Arguments are literal
+strings, not shell text; plan/spec bodies travel in `stdin`. Role allow-lists
+restrict commands: the supervisor delegates work, the observer reads and steers,
+and the reviewer gets only guarded file and git inspection. The server invokes
+the same Bash CLI used from a terminal. It does not implement another planner,
+agent scheduler or model loop.
 
-* **Thinking** happens in the orchestrator's own context — it writes
-  plans itself with the full conversation in hand, and read-only `audit`
-  children (codex) give a fresh-eyes, independent-model check of those
-  plans against the actual code.
-* **Looking** happens through the read-only bridges — direct `git`,
-  `gh`, `rg`, and file reads with an enforced allow-list, no agent
-  spawn, guaranteed non-mutating.
-* **Mutating** happens only inside `execute` / `apply-review` /
-  `doc-write` children (and the orchestrator's `gh`-driven PR flow runs
-  inside those children too). The reviewer (`codex`) is sandboxed
-  read-only by construction.
+Native restrictions prevent the parent and reviewers from using unrestricted
+mutation tools. The command server runs outside the native parent's sandbox so
+it can launch authorized writable children; shell subprocesses inherited from a
+read-only sandbox could not provide that boundary. Read-only bridges validate
+verbs, flags and paths and execute argv directly. They reject unsafe git/gh
+operations and path escapes, and propagate useful diagnostics.
 
-Visual / end-to-end verification is delegated to a `verify` child (which
-has browser capability) because the orchestrator has no browser/Playwright
-tool. `cerebro verify` is a HIGH-LEVEL REQUIREMENTS / ACCEPTANCE check
-from the big picture -- it drives the real running app the plan delivers
-and judges whether the observable behaviours are present and working when
-used for real. It is NOT a second static code review (that is `review` /
-`audit`'s job); it does not raise style nits, naming, or contrived edge
-cases. Its report ends with `VERIFY: PASS|FAIL|BLOCKED`. Browser
-verification reads screenshots, which needs a model with the `vision`
-capability; the orchestrator picks the model per call via `--model`,
-discovering available models and their capabilities through `cerebro
-models` (the user's `$CEREBRO_HOME/models-config.json` catalog).
+## Shared skills, small backend adapters
 
-## Architectural decisions
+`lib/payloads/skills/` is the source of the supervisor, observer, worker and
+workflow instructions. Launch materializes these into `$CEREBRO_HOME/.agents/skills/`;
+Claude's `.claude/skills/` entries point at those same files. `guide <skill-name>`
+loads a skill through the command tool, so a backend need not expose a native
+skill loader to use the shared workflow. Specialized guidance loads when needed
+rather than living in a large always-loaded prompt.
 
-### 1. The orchestrator is a stock `claude` session, not a custom agent loop
+OpenCode uses its built-in agents with shared skill instructions. Cerebro does
+not create native OpenCode agent definitions. Known Cerebro V1 agent files are
+removed when the home is materialized; there is no V1 execution path.
 
-`cerebro` (launch) does exactly this (`lib/commands/session.sh`):
+| Backend | Parent | Children and steering | Read-only enforcement |
+|---|---|---|---|
+| OpenCode V2 (minimum 2.0.19) | Native standalone TUI | Local `opencode serve`, public session APIs and event stream | Plugin tool restriction plus session permissions; Cerebro MCP remains directly callable |
+| Codex | Native TUI and native resume | Stdio `codex app-server`, native threads/turns and atomic start-or-steer through `turn/start` | Native read-only sandbox; unrelated host tools and MCP servers disabled for guarded roles |
+| Claude Code | Native TUI and native resume | Native `claude -p` stream-json, additional input turns when paired | Native tool removal and strict Cerebro-only MCP configuration for guarded roles |
 
-```
-exec claude \
-  --session-id <uuid> \
-  --append-system-prompt "<catalog of cerebro subcommands + policy>" \
-  --allowedTools "Bash(cerebro:*) Read Grep Glob WebSearch WebFetch mcp__playwright__*"
-```
+Writable children retain the native backend's development tools and configured
+model access. `verify` needs runtime/browser capability; audit, review and
+improvement analysis are read-only roles. A review model may differ, but always
+belongs to the session's backend. Empty model settings leave model selection to
+the native backend. Authentication remains native to each CLI.
 
-There is no REPL, no event loop, no daemon in cerebro itself. The chat
-UX, context management, resume picker, and tool harness are all
-claude's. cerebro contributes only (a) the system prompt that turns the
-session into an orchestrator and (b) the subcommand surface that prompt
-catalogues.
+The OpenCode plugin must be active before guarded work starts. Its prompt hook
+pins session permissions after agent permissions, preventing a permissive user
+agent configuration from restoring mutation access. Codex explicitly selects its
+read-only sandbox on launch/resume and restricts host-side capabilities. Claude
+removes native tools rather than treating an auto-approval list as confinement.
+Backend setup failures stop the command instead of silently weakening a role.
 
-*Why:* the native session is strictly better at being a chat than
-anything a wrapper could build, and the `--allowedTools` harness gives
-real enforcement — the orchestrator's restrictions are not honor-system
-prompt text; the harness physically lacks the tools.
+## Native completion and durable jobs
 
-*Consequence:* most cerebro "features" — the plan-first default, the
-blast-radius audit, multi-plan suites, the spec discipline, the
-preference-learning loop, the plain-English readable companion written
-beside every technical plan — are **policies encoded in the system
-prompt**, not code paths. The authoritative copy lives at
-`lib/payloads/system-prompt.md`; it is materialised to
-`~/.cerebro/system-prompt.md` on every launch (see decision 7).
-Changing orchestrator behaviour usually means editing that prompt, not
-a shell function.
+The supervisor's command tool automatically detaches long child commands. A
+monitor in a separate process session owns the task and stores its job, PID,
+output and final status under the Cerebro session. Disconnecting or timing out
+the parent's tool call does not terminate the task. `status` and `jobs` let a
+resumed supervisor find existing work instead of launching a duplicate.
 
-### 2. Capability confinement by role (least privilege per process)
+`wait <job-id>` blocks on a Unix socket completion notification. The monitor
+publishes the final status before notifying waiters, so waiting after completion
+also works. There is no loop polling the child's PID, status file or logs to
+schedule the supervisor. Missing completion transport while a job still claims
+to be running is reported as a failure.
 
-Every process in the system gets the smallest tool surface its role
-needs, enforced by the harness or the OS rather than by instruction:
+Backend adapters consume native events or stdout directly. OpenCode's agent
+turn can finish while a native background shell is still running, so the adapter
+joins its shell completion notification and following agent turn. Codex likewise
+joins outstanding command items before handing back a completed turn. Workers
+must join all finite background work and clean up servers they started before
+their final handoff. Arbitrary detached OS processes are not a native completion
+contract. A configured wall-clock limit bounds child work; paired children also
+have inactivity bounds and a short post-turn steering window.
 
-| process        | mutates?           | enforcement                                      |
-|----------------|--------------------|--------------------------------------------------|
-| orchestrator   | no                 | `--allowedTools` (no Edit/Write, Bash is `cerebro:*` only) |
-| `execute` / `apply-review` / `doc-write` child | yes — that is the point | `--permission-mode bypassPermissions`, but `cwd` pinned to the one repo, role prompt constrains branch/commit behaviour |
-| `audit` / `review` (codex) | no     | `codex exec --sandbox read-only`                 |
-| bridges        | no                 | verb/flag allow-lists, path confinement, `execve` (no shell) |
+Pair mode adds a FIFO for steering; native backend input APIs deliver the next
+instruction. Restart is destructive within the task's isolated worktree,
+branch and PR, and requires explicit or prior authorization. Cancellation stops
+the detached monitor and its descendants. Neither action changes the approved
+requirements on its own.
 
-The mutating children are deliberately *un*confined inside their repo —
-they must branch, edit, run tests, commit, push, and open PRs — so the
-design contains them differently: one repo per invocation (absolute
-path is always the first positional argument, `cwd` is set to it), one
-mutating child per repo at a time (a documented invariant the
-orchestrator must sequence — see Constraints), and a non-interactive
-role prompt that forbids the moves the harness cannot (touching
-AGENTS.md, switching branches in follow-up roles).
+## Durable state and identity
 
-The bridges deserve a note: `cerebro git` / `cerebro gh` are not
-"trusted commands" — they validate the subcommand and every flag
-against explicit allow/deny lists (`lib/commands/git.sh`,
-`lib/commands/gh.sh`), reject path-escape options (`diff --no-index`,
-`blame --contents`, `gh api -X`, ...), and invoke the real binary via
-`execve` so shell metacharacters in arguments are inert. `cerebro
-read` / `grep` / `ls` resolve every path through `resolve_in_repo()`
-(realpath + prefix check, exit 6 on escape) or `resolve_bare_abs()`
-(refuses `/dev`, `/proc`, `/sys` and non-regular files). The exit-code
-contract is documented in the system prompt so the model can interpret
-failures programmatically.
+Cerebro owns a session ID independently of each backend's conversation ID.
+Metadata records the backend, role and native conversation binding. OpenCode
+binds through its plugin, Claude through its user-prompt hook, and Codex through
+its native turn-completion notification. Child IDs are captured when native
+creation events arrive, enabling same-conversation resume after an interruption.
+An invalid resume fails; it does not silently start fresh work.
 
-### 3. Everything durable is a plain file
-
-There is no database and no in-memory state that matters. The layout:
-
-```
-~/.cerebro/
-  system-prompt.md                 # copied from lib/payloads/system-prompt.md
-  hook.sh                          # UserPromptSubmit hook (from lib/payloads/)
-  .claude/settings.local.json      # registers the hook
-  learnings.md                     # confirmed preferences (→ system prompt)
-  pending-learnings.md             # append-only preference signals
-  templates/AGENTS.md, CLAUDE.md   # user-editable bootstrap defaults
-  current-session -> sessions/<id> # symlink, maintained by the hook
-  sessions/<claude-session-uuid>/
-    metadata.json                  # created_at / last_touched
-    transcript.jsonl               # user prompts + cerebro milestone events
-    spec.md                        # current requirements of record
-    spec-history.jsonl             # append-only history of spec versions
-    plans/*.md                     # orchestrator-written plans
-                                   #   (each <name>.md has a <name>-readable.md
-                                   #    plain-English companion)
-    audits/*.md                    # audit child findings
-    children/*.jsonl               # stream-json log of every child
-    children/*.steering.md         # live steering from --pair runs
-    children/codex-*.md            # review findings
-    child-sessions.json            # resumable provider ids + run status
-    review-state/<repo-key>.json   # last-reviewed SHA + last findings path
+```text
+$CEREBRO_HOME/
+  .agents/skills/                  shared role and workflow skills
+  .claude/skills/                  links to the shared skills
+  templates/                      user-editable repository bootstrap instructions
+  learnings.md, pending-learnings.md
+  overlays/                       user-owned prompt additions
+  worktrees/<task-key>/            isolated implementation worktrees
+  sessions/<id>/
+    metadata.json, transcript.jsonl
+    spec.md, spec-history.jsonl
+    plans/                        technical plans and readable companions
+    audits/, children/            findings, native logs and steering records
+    child-sessions.json           native child IDs and lifecycle status
+    detached-jobs/                persistent ownership and completion records
+    review-state/                 per-repo/branch review checkpoints
 ```
 
-*Why:* the orchestrator is an LLM whose context gets compacted. Any
-fact that must outlive compaction — what the user actually asked for,
-which plan is current, what was already reviewed, which child can be
-resumed — has to live outside the context window, in a place the
-orchestrator can re-read (`cerebro spec`, `cerebro status`, plain
-`Read`). Files are also user-inspectable: the README promises the user
-can open any plan, transcript, or findings file in their editor.
+The spec is the requirements of record. Replacing it archives the prior version.
+Plans may adapt within the approved contract; changes to requirements need user
+authority. Technical plans remain executable truth, with readable companions
+updated alongside them. Follow-up review, fixes and documentation use the
+worktree announced by `execute`, not the user's main checkout.
 
-The **session spec** (`spec.md`) is the keystone of this decision: it
-is the requirements of record every plan adjustment is measured
-against. Plans are expected not to survive contact with the code:
-detail-level deviations proceed with a narration note, but a plan-level
-discovery (a step unworkable as written, a false assumption, a
-decomposition that no longer fits) stops the work — the orchestrator
-informs the user and waits. On "adjust and continue" it reconciles the
-whole plan set: already-executed plans get the newly discovered facts
-folded into their text (their work is never re-executed), future plans
-get the adjustments, and steps are added, removed (`cerebro plans rm`),
-or replaced as needed before execution resumes. The spec itself may
-never silently change; it survives on disk and every replacement
-archives the prior version to `spec-history.jsonl` first
-(`lib/commands/spec.sh`).
+Only incomplete children auto-resume, within the configured retention period.
+Cleanly completed work gets a fresh child next time. A blocked child ends with a
+question; `answer <child-id> <answer>` resumes that exact conversation. The
+supervisor answers from the recorded contract or relays a real product decision.
 
-### 4. Session identity rides on claude's session id
+## Observation and delivery gates
 
-cerebro mints the UUID itself and passes it as `--session-id`, so the
-claude conversation id and the cerebro session directory name are the
-same string. Subcommands find their session via `CEREBRO_SESSION_ID`,
-which the orchestrator's environment inherits and every Bash tool call
-carries.
+Observation intentionally consumes log batches; it is separate from waiting for
+child completion. A per-observer cursor avoids rereading delivered activity. The
+supervisor receives concise handoffs and does not consume implementation logs.
+Steering records preserve `[observer]`, `[supervisor]` or direct `[user]` source.
+Observer/supervisor corrections may enforce the approved scope, never masquerade
+as user requirements. A cheap observer classifier using jev and typesafeai is
+planned separately and is not implemented here.
 
-The `UserPromptSubmit` hook closes the loop from claude's side: on each
-user prompt it appends `{kind:"user", ts, text}` to the matching
-session's `transcript.jsonl` (routing by the `session_id` in the hook
-payload) and repoints the `current-session` symlink. That symlink is
-the fallback identity for the bare `cerebro --resume` path, where
-claude's own picker chooses the session and cerebro doesn't learn the
-id until the first prompt fires the hook (`require_session()` in
-`lib/helpers.sh`).
+The shared workflows preserve plan approval, high-risk plan audit, isolated
+worktrees, independent review, bounded correction and real end-to-end
+verification. Each step in a suite must independently build, pass tests and keep
+the app workable. Static review cannot certify runtime criteria; a blocked
+verification requires actual confirmation before delivery. Commit, push, PR,
+infrastructure and destructive actions remain governed by user authorization and
+repository instructions. Cerebro does not serialize competing mutations against
+the same repository; the supervisor must sequence them.
 
-The hook is registered in `~/.cerebro/.claude/settings.local.json` —
-the orchestrator always runs with `cwd=$CEREBRO_HOME`, so the
-project-local settings apply. The hook no-ops for any session id that
-has no directory under `sessions/`, which makes it safe even though
-that settings file is visible to any claude run started in
-`~/.cerebro`.
+## Frontends and source boundaries
 
-`transcript.jsonl` plus the child logs are also the corpus that
-`cerebro recall` greps across *all* sessions — cross-session memory is
-just literal search over these files, with an automatic any-term
-broadening pass on a miss.
+Terminal sessions support all three backends. ACP is a thin editor proxy for
+OpenCode and Claude; it preserves native protocol capabilities, binds native
+session IDs and pins the guarded supervisor role. OpenCode uses its built-in
+mode; Claude ACP uses a small native wrapper around the shared supervisor skill.
+Codex has no native ACP endpoint and is supported through its terminal interface.
+The optional PTY MCP frontend drives real terminal sessions and provides its own
+completion notifications; it is distinct from the guarded command MCP server.
 
-### 5. Children are non-interactive; questions are a protocol, not a prompt
-
-Children run as `claude -p` with no human attached, so they cannot ask
-mid-run questions. Rather than letting them guess, the design makes
-pausing a first-class protocol:
-
-* Every child's system prompt ends with a shared note
-  (`child_noninteractive_note()`): on a genuine blocker, stop and make
-  your *final message* the question.
-* The harness captures that final message (`parse_stream.py` writes the
-  `result` event text) and surfaces it under a
-  `----- <role> child closing message -----` banner
-  (`surface_child_reply()`).
-* `cerebro answer <child-session-id> "<answer>"` is the explicit
-  bridge back into that child. It resolves the stored child record inside
-  the current cerebro session, recovers the role/repo metadata from that
-  record, and resumes the **same provider conversation**
-  (`claude --resume <id>`) with the answer as the next turn, re-passing
-  the identical role system prompt so the child's constraints stay
-  intact. The child continues from where it paused; no work is redone.
-
-The orchestrator's policy (system prompt) layers on top: answer from
-the spec/plan/recall when the record settles it, relay to the user only
-when the decision is genuinely theirs.
-
-### 6. Resumability: persist the child id at start, not at exit
-
-Long-running commands first pass through `cerebro detach`. A monitor in a new
-process session owns the real command, while a per-job record and authoritative
-PID/status sidecars live under `sessions/<id>/detached-jobs/`. The interactive
-parent can exit without killing the monitor. `cerebro jobs` and `cerebro
-status` rediscover live or completed work; `cerebro wait <job-id>` is a
-disposable notification process, and `cerebro cancel <job-id>` verifies the
-recorded monitor identity before terminating its complete descendant tree.
-
-`sessions/<id>/child-sessions.json` maps a **child key** — sha1 of
-`repo + role + discriminator` (for execute, branch plus plan path or
-inline prompt; for branch-local roles, branch; for audit, output name) —
-to `{id, provider, role, repo, branch, log, status, started_at,
-updated_at}`.
-
-Two timing decisions make interruption safe:
-
-* `child_store_begin` marks the entry `status=running` *before* the
-  child launches, and the stream parsers (`parse_stream.py` for claude,
-  `codex_capture.py` for codex) persist the provider conversation id
-  the *instant* it appears in the stream (claude's `init` event,
-  codex's `thread.started`). Killing the orchestrator mid-run therefore
-  always leaves a discoverable, resumable record. `cerebro status`
-  lists every still-fresh `running` entry as "interrupted / in-flight",
-  and the orchestrator's resume policy is to re-issue the same command,
-  which finds the stored id and adds `--resume`.
-* `child_store_done` flips it to `done` only on clean exit.
-
-Normal child launches only auto-resume fresh entries still marked
-`running`. A later plan on the same branch therefore gets a fresh
-provider conversation. `cerebro answer` is intentionally different: it is
-not a new child launch, it is the explicit pause/answer bridge and may
-resume the stored provider id for the child that asked the question.
-
-Resume has a deliberately asymmetric fallback (`cmd_execute`,
-`cmd_apply_review`, `cmd_review`): if a `--resume` is rejected up front
-— the provider GC'd the conversation — *and* the run produced no
-init/thread event (so nothing was mutated), retry once fresh. If the
-resumed run started and then failed, the failure is fatal: a fresh
-re-run of a mutating role would duplicate half-applied work. TTL
-(`CEREBRO_CHILD_SESSION_TTL`, default 24h) bounds how long a stored id
-is trusted at all.
-
-All store access goes through one python entry point
-(`lib/python/child_store.py`) that takes an exclusive `fcntl` flock on a sidecar
-`.lock` and rewrites the JSON atomically (`mkstemp` + `os.replace`), so
-concurrent `--pair` children persisting their ids at startup cannot
-clobber each other.
-
-### 7. Payloads are versioned files, materialised at launch
-
-The hook script, settings.json template, orchestrator system prompt,
-child role prompts, and template AGENTS.md/CLAUDE.md live as real files
-under `lib/payloads/`, loaded by the thin reader functions in
-`lib/payloads.sh` (resolved through `CEREBRO_LIB_DIR`, so they ride
-along with the clone). The home-resident ones are written into
-`$CEREBRO_HOME` on every launch by `materialise_home()`:
-
-* `system-prompt.md`, `hook.sh`, `settings.local.json` are
-  `write_if_changed` — the repo is the source of truth; a `git pull`
-  updates behaviour on next launch with no install step.
-* `templates/*` are `write_if_missing` — they are user-editable
-  defaults; cerebro never clobbers a customised template, and `execute`
-  children never overwrite an existing AGENTS.md in a user repo.
-
-*Why:* a single self-contained clone-and-symlink install (see
-`install.sh`), no asset paths to resolve at runtime, and a guarantee
-that the prompt version always matches the code version.
-
-**Overlays are the user-owned counterpart.** The shipped payloads are
-never edited in place by a user — a `git pull` would clobber the change.
-Instead, up to five plain-markdown files under `$CEREBRO_HOME/overlays/`
-(`system`, `execute`, `apply-review`, `doc-write`, `grader`) are
-*appended* by the loaders onto the corresponding shipped prompt/grader
-(`orchestrator_append_prompt`, `child_sys_prompt`, `cerebro_audit_prompt`,
-and the inline review grader in `cmd_review`). They are **never
-materialised** — `materialise_home()` only `mkdir`s the dir and writes no
-file, exactly like `learnings.md` — so a user tunes any prompt surface
-locally without forking and the edit survives `git pull`. An absent or
-whitespace-only overlay changes nothing, so behaviour is byte-identical
-when none is set. `cerebro overlay set/show/rm` is the only writer (the
-orchestrator has no Write tool), capped by `CEREBRO_OVERLAY_CAP`. This is
-the GitHub-free apply surface downstream users need: they install from
-the maintainer's clone and cannot push there, so improvements land in
-overlays rather than the shipped files.
-
-**The hill-climbing (analysis) loop.** `cerebro improve` closes the
-improvement loop without breaking invariant #1 (the orchestrator never
-mutates code directly). A read-only reviewer mines the on-disk trace corpus
-under `$CEREBRO_HOME` with its cwd set to the cerebro source repo, so it can
-cite real harness files. The corpus includes
-(`sessions/*/children/*.jsonl` trajectories, `transcript.jsonl`
-milestones, grader feedback, the applied learnings/overlays) for
-problems that recur across runs, and writes findings to
-`sessions/<id>/improvements/improve.md` ending in a `HILL CLIMB:`
-verdict. Same stream/`-o`/failure shape as `review` (decision 8). It
-only proposes; the orchestrator reads the findings and routes each
-accepted item back into an overlay (or `learn-set`), or — for a
-maintainer of the source — an upstream PR. No auto-apply, no scheduled
-runs. Successful fast and meta runs append to the linear
-`improvement-history.json`; the history drives the configurable meta-loop
-horizon but does not model branches, restored overlay states, acceptance
-feedback, or causal utility deltas. A trace-quality snapshot is diagnostic
-only. Reviewer output is accepted only when its exact final verdict line is
-valid, so stale or malformed reports cannot be routed.
-
-### 8. Streams over buffers: one pipeline per child
-
-Every claude child runs inside one pipeline:
-
-```
-prompt → [pair pump] → claude -p --output-format stream-json
-       → tee children/<log>.jsonl
-       → parse_stream.py  (progress lines on stderr,
-                           final message + session id captured,
-                           id persisted to the store mid-stream)
-```
-
-The stream-json log is simultaneously: the live progress feed (one
-summarised tool-call line per event on stderr), the raw audit record,
-the source `cerebro observe` narrates from, and — in pair mode — the
-turn-boundary signal the input pump watches. Nothing buffers the whole
-run in memory, and the parser exits non-zero when claude reports a
-non-`success` result so failures propagate as exit codes.
-
-`review` is the same shape with codex: `--json` events on stdout (the
-only place the resumable `thread_id` appears) are teed and scanned by
-`codex_capture.py`, while `-o` writes the human-readable findings file.
-On failure the findings path is **not** echoed — the orchestrator must
-never feed a failed review's stderr to `apply-review` as findings.
-
-### 9. Pair mode: steer over a FIFO, watch by reading logs
-
-Pair mode (`--pair` on execute/apply-review/doc-write) swaps the
-child's plain-text stdin for claude's `--input-format stream-json` and
-inserts an input pump (`lib/python/pair_pump.py`):
-
-* The pump emits the task as the first user message, then watches the
-  child's log for each turn-ending `result` event.
-* After each turn it holds the child's stdin open for a steering window
-  (`CEREBRO_PAIR_IDLE`, default 60s). `cerebro steer "<message>"` is a
-  one-shot writer: it base64-encodes the message and writes one line to
-  a named pipe next to the child log; the pump forwards it as the next
-  user turn and records it to `<log>.steering.md`. A quiet window
-  closes stdin and the child finishes normally.
-* The pump opens the FIFO `O_RDWR | O_NONBLOCK` so one-shot writers can
-  come and go without EOF or blocking-open races, and steering that
-  lands mid-turn is drained and queued rather than lost.
-
-Watching is decoupled from steering and is pure log-reading: `cerebro
-observe`, run from a *different* cerebro session, tails the target
-session's transcript and every live paired child's stream-json log,
-batches new activity (window/quiet-gap pacing, per-target cursors under
-the *observer's* session dir so successive calls never repeat), filters
-read-only navigation churn, and prints one digest per call with an
-`active`/`done` status footer. Observation can never disturb the
-observed agents because it shares no channel with them.
-
-When a paired child exits, `pair_report` prints the recorded steering
-under `=== PAIR STEERING ===` markers; folding it back into the spec
-and plans is, again, orchestrator policy.
-
-Steering's heavier sibling is `cerebro restart`: where steer nudges a
-live child, restart ABANDONS a strayed one. It writes one `R <base64>`
-line down the same FIFO; the pump reaps the child process group, drops a
-`.restart` sidecar holding the diagnosis (mirroring the `.stalled`
-stall path), and exits. Because execute always runs the child in its own
-worktree on a FRESH branch (see "Per-task worktrees" below), the clean
-slate is unconditional: `cerebro execute` tears down the branch, its PR,
-and the worktree (the user's main checkout was never touched), marks the
-child done so it is never resumed, and returns 0 with a
-`=== RESTART REQUESTED ===` block carrying the diagnosis, so the
-orchestrator can relaunch a fresh execute with a corrected prompt. An
-observer session compares the live work against the target's `spec.md`
-and, by default, FLAGS drift to the user (who then decides to restart);
-it acts autonomously only when pre-authorised.
-
-### Per-task worktrees
-
-Every `cerebro execute` runs its child in a private git worktree under
-`$CEREBRO_HOME/worktrees/<ckey>` rather than the user's live checkout,
-so an agent can never disturb the user's working tree. The worktree dir
-name IS the execute task's child-session key (`ckey`), so it is stable
-across resume (same task → same worktree) and maps a worktree back to
-its owning child. The worktree shares the repo's `.git` and remotes, so
-the child's fetch / branch / commit / push / `gh pr create` all work
-unchanged. On success execute ANNOUNCES the worktree path
-(`=== TASK WORKTREE: <path> ===`); the orchestrator passes that path as
-the `<repo>` argument for the task's follow-up review / apply-review /
-doc-write / restart — a worktree is itself a valid git dir, so those
-commands need no special-casing. Worktrees PERSIST between runs
-(follow-ups reuse them) and are removed only by a restart (which tears
-the task down entirely) or by `cerebro worktrees cleanup`, which GCs
-worktrees whose branch has no open PR, no in-flight cerebro child, and
-no unpushed commits (anything it cannot positively clear is kept).
-
-### 10. Incremental reviews keyed by repo identity
-
-`review-state/<repo-key>.json` (repo key = sha1 of the canonical
-worktree root) records the SHA that was HEAD and the findings path each
-time a review completes. The next `cerebro review` without `--base`
-prefers that SHA — codex re-reads only what `apply-review` changed, not
-the whole PR diff — but only after guards confirm the state is not
-stale: same branch, the SHA still parses, and it is an ancestor of
-HEAD. Otherwise base resolution falls back to PR base via `gh`, then
-`origin/HEAD`, then `main`, preferring the remote-tracking ref so a
-stale local base branch doesn't skew the diff.
-
-The same state file gives `apply-review` its default findings path
-(when called with neither a findings path nor `--prompt`) and lets it
-reject a guessed or stale path by naming the correct one — a direct
-countermeasure to the model reconstructing `codex-<timestamp>.md`
-filenames from memory.
-
-### 11. Benign-missing semantics on the exploration bridges
-
-The orchestrator fans out parallel bridge calls, and one failed call in
-a batch can cancel its siblings. So for `read` / `grep` / `ls`, an
-in-bounds "target doesn't exist / wrong type / zero matches" is **not
-an error**: the bridge prints a machine-recognisable marker —
-`(not found: <path>)` or `(no matches)` — to stdout and exits 0
-(`missing_target()` in `lib/helpers.sh`). `--strict-missing` restores
-hard semantics (exit 3; rg-native exit 1 for zero matches).
-
-Security refusals are exempt by design: path escapes and special-path
-reads (`/dev`, `/proc`, `/sys`) stay hard errors (exit 6) regardless of
-mode, and `resolve_bare_abs` distinguishes the benign case with a
-dedicated exit 7 sentinel so callers cannot accidentally soften a
-refusal. The `git`/`gh` bridges keep ordinary error propagation.
-
-### 12. Bash + Python helpers, sourced modules, thin entry point
-
-The CLI is Bash because it is glue: argument shapes, pipelines, exec.
-Anything needing real data structures — JSON stores, stream parsing,
-locking, path canonicalisation — is Python 3, kept as real files under
-`lib/python/` and invoked by absolute path (`python3
-"$CEREBRO_LIB_DIR/python/<name>.py"`), chosen over jq-only because the
-store needs flock + atomic rename and the parsers need stateful
-line-by-line logic. Only genuine one-liners stay inline in the shell;
-`jq` handles the simple JSON one-liners. The store-backed scripts
-import `child_store_lib.py` (with `sys.dont_write_bytecode` set first,
-so no `__pycache__` lands in the source tree).
-
-`bin/cerebro` resolves its own symlink chain by hand (macOS has no
-`readlink -f`), sources `lib/config.sh` first (the only
-ordering-sensitive module: `set -uo pipefail` + env defaults), then
-every other module in any order — they are pure function/string
-definitions — and calls `main`. The dispatch table in `lib/main.sh`
-maps each subcommand to a `cmd_*` function; adding a subcommand means a
-new file in `lib/commands/` plus one route line.
-
-## Constraints
-
-These are environmental or deliberate limits the design accepts:
-
-* **Interactive-only at the top level.** `cerebro` requires a genuine
-  interactive TTY on stdin and stdout, checked by `require_interactive()`.
-  The check is capability-based, not parent-name-based, so any controller
-  that allocates a real PTY is accepted -- a shell, a terminal
-  multiplexer, an editor, or another agent controller such as Codex
-  launched with `tty: true`. Pipes, redirected input/output, and
-  cron-style launches have no TTY on stdin/stdout and are rejected. The
-  earlier parent-executable allow-list guarded no invariant this TTY
-  check does not already cover and is gone. Sub-agents are exempt
-  through `CEREBRO_SESSION_ID`, which is exactly how subcommands run
-  inside the orchestrator's non-TTY Bash tool. Children themselves are
-  launched with `env -u CEREBRO_SESSION_ID -u CEREBRO_SESSION_DIR` so a
-  child claude that somehow ran `cerebro` would hit the guard rather
-  than impersonate the session.
-* **No concurrency control.** cerebro will not stop two mutating
-  subcommands from racing on one repo, within or across sessions.
-  Sequencing is the orchestrator's job (system-prompt rule 8) and
-  ultimately the user's. Only the child-session store is locked,
-  because concurrent `--pair` startups genuinely race on one file.
-* **No repo-specific flags to `claude` or `codex`.** Repos are
-  addressed purely by absolute path + `cwd`; provider invocations stay
-  generic. This keeps cerebro decoupled from provider flag churn and
-  makes every child launch auditable from its command line.
-* **Dependencies:** `claude`, `codex`, `jq`, `python3` are hard
-  requirements (`require_deps`); `git`/`gh` are needed by the bridges
-  and the mutating children; `rg` is recommended for `cerebro grep`.
-  macOS portability is a standing constraint (hand-rolled realpath /
-  readlink, `timeout` → `gtimeout` → `perl alarm` fallback chain in
-  `build_timeout_cmd`).
-* **No wall-clock cap by default.** `CEREBRO_TIMEOUT` defaults to 0 so
-  long-running children (browser-driven e2e verification, CI waits) are
-  never killed mid-mutation; setting a cap is the user's explicit
-  choice.
-* **System-prompt size.** `learnings.md` is injected into the
-  orchestrator's system prompt on every launch, so `learn-set` rejects
-  content over ~1600 chars. The prompt also forces consolidation
-  (rewrite, dedupe) over append.
-* **Children cannot prompt the user.** Accepted, and converted into the
-  pause/answer protocol (decision 5) rather than worked around with
-  pseudo-interactive hacks.
-
-## Invariants worth protecting
-
-If you change code in this repo, do not break these:
-
-1. **The orchestrator never mutates anything directly.** Any new
-   capability that edits files or runs side-effecting commands must be
-   a child role or stay out.
-2. **Bridges are provably read-only.** New `git`/`gh` verbs or flags go
-   through the allow-list with the same scrutiny (no path-escape, no
-   write forms, no arbitrary-code options like `gh extension install`).
-3. **A child's provider id is persisted before/as it starts**, never
-   only at exit — interruption safety depends on it.
-4. **A failed review never echoes a findings path**, and apply-review
-   never accepts a findings path that doesn't exist without naming the
-   correct one.
-5. **Mutating resume never silently re-runs fresh after partial work.**
-   The "retry fresh only if no init event" rule is the line between
-   convenience and duplicated commits.
-6. **Security refusals stay hard** (exit 6) even where benign-missing
-   softening exists.
-7. **Spec history is append-only**; `spec set` archives before it
-   replaces.
-8. **User-customised files are never clobbered**: templates are
-   write-if-missing, repo AGENTS.md/CLAUDE.md are never overwritten by
-   children.
-9. **Stdout contracts are stable.** Subcommands that echo a path
-   (`plan`, `audit`, `review`, `execute`'s child log) keep stdout clean of
-   anything else; human chatter goes to stderr (`say`/`warn`). The
-   orchestrator parses stdout.
-
-## Module map
-
-```
-bin/cerebro            # entry point: resolve symlink, source lib, main "$@"
-lib/config.sh          # set -uo pipefail + CEREBRO_* defaults (sourced first)
-lib/helpers.sh         # say/warn/die, exit-code helpers, path/repo resolution,
-                       # interactive guard, timeout chain, home materialiser
-lib/payloads.sh        # thin loaders for the files under lib/payloads/
-lib/payloads/          # hook.sh, settings.json template, system-prompt.md,
-                       # prompts/<role>.md + noninteractive note,
-                       # templates/AGENTS.md, CLAUDE.md
-lib/session-store.sh   # session metadata + child-sessions.json wrappers
-lib/python/            # child_store(_lib).py (locked JSON store),
-                       # parse_stream.py (claude stream), codex_capture.py
-                       # (codex stream), pair_pump.py / observe_pump.py /
-                       # steer_send.py, path-resolution + listing helpers
-lib/pair.sh            # pair mode: banner, FIFO lifecycle, input pump, report;
-                       # per-task worktree helpers (execute_worktree_*)
-lib/commands/*.sh      # one file per subcommand group; each defines cmd_*
-lib/main.sh            # dispatch table argv → cmd_*
-install.sh             # clone to ~/.local/share/cerebro, symlink into ~/bin
-uninstall.sh           # remove symlink + PATH block; --purge removes clone
-tests/run.sh           # plain-bash suite (bridges, spec/learn/session store)
-```
-
-Exit-code contract, tool catalogues, and orchestrator policy all live
-in `lib/payloads/system-prompt.md` — when
-behaviour and prompt must agree (e.g. bridge exit codes), the prompt is
-the documented contract and the code must match it.
-
-## Testing
-
-`bash tests/run.sh` — a plain-bash, no-framework suite that builds a
-sandbox under `mktemp -d` and exercises the surfaces where a regression
-is dangerous rather than cosmetic: the read-only bridge allow-lists and
-path guards (`git`, `gh`, `read`, `grep`, `ls`), benign-missing vs
-strict semantics, and the spec / learning / child-session store
-machinery. The `gh` tests don't require `gh` installed — they target
-validation that fires before any real invocation. Run it before
-proposing changes (AGENTS.md).
+`bin/cerebro` resolves the library and dispatches. `lib/backend.sh` selects the
+native adapter; `lib/commands/` owns workflows and read-only bridges; shared
+prompts/config live in `lib/payloads/`; Python helpers own protocol parsing,
+process lifecycle and native transport. No backend-specific workflow is
+required. Run `bash tests/run.sh` before delivery; fixtures supplement native
+runtime verification rather than replacing it.

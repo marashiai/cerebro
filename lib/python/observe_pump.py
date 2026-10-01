@@ -16,10 +16,7 @@
 # child is live (call again) or "done" when none are. Read-only: it never
 # writes to a child, so observing never disturbs the agents.
 #
-# A child's log format is auto-detected per line: claude stream-json
-# (`assistant`/`result` with `message.content`) or opencode run-json
-# (`text`/`tool_use`/`step_finish`/`error` with `part`). Both backends'
-# children are observable from one observer.
+# Native adapter events are rendered without issuing backend state queries.
 
 import glob, json, os, sys, time
 
@@ -29,6 +26,9 @@ self_id       = sys.argv[3]
 state_dir     = sys.argv[4]
 window        = float(sys.argv[5])
 quiet         = float(sys.argv[6])
+mode          = sys.argv[7] if len(sys.argv) > 7 else ""
+if target_id and (os.path.basename(target_id) != target_id or target_id in (".", "..")):
+    sys.exit("observe: target must be a Cerebro session ID")
 
 def fifo_live(fifo):
     try:
@@ -67,35 +67,12 @@ def emit_empty(msg, status="done", tid=""):
     print(msg)
     print("=== OBSERVE STATUS: %s ===" % status)
 
-# --- probe mode ---------------------------------------------------------------
-# A 7th argv of "probe" asks only "is there anything to observe right now?"
-# (a named target with live paired children, or -- with no target -- any other
-# session that has them). It prints nothing and exits 0 when observable, 3 when
-# not, so a launcher can cheaply poll without draining or blocking.
-mode = sys.argv[7] if len(sys.argv) > 7 else ""
-if mode == "probe":
-    if target_id:
-        d = os.path.join(sessions_root, target_id)
-        observable = os.path.isdir(d) and bool(live_children(d))
-    else:
-        observable = False
-        try:
-            names = os.listdir(sessions_root)
-        except OSError:
-            names = []
-        for name in names:
-            if name == self_id:
-                continue
-            d = os.path.join(sessions_root, name)
-            if os.path.isdir(d) and live_children(d):
-                observable = True
-                break
-    sys.exit(0 if observable else 3)
-
 # --- resolve the target cerebro session ---------------------------------------
 if target_id:
     target = os.path.join(sessions_root, target_id)
     if not os.path.isdir(target):
+        if mode == "probe":
+            sys.exit(3)
         emit_empty("cerebro: no such session: %s" % target_id)
         sys.exit(0)
 else:
@@ -111,6 +88,8 @@ else:
         if os.path.isdir(d) and live_children(d):
             cands.append((last_touched(d), name))
     if not cands:
+        if mode == "probe":
+            sys.exit(3)
         emit_empty("cerebro: no other cerebro session has live paired children to "
                    "observe. Start one with --pair (e.g. \"cerebro execute <repo> "
                    "... --pair\") in another session, then observe again.")
@@ -118,6 +97,14 @@ else:
     cands.sort(reverse=True)
     target_id = cands[0][1]
     target = os.path.join(sessions_root, target_id)
+
+# Startup probes bind the same target that observation would select, without
+# draining its activity or minting an observer session before work exists.
+if mode == "probe":
+    if not live_children(target):
+        sys.exit(3)
+    print(target_id)
+    sys.exit(0)
 
 target_children = os.path.abspath(os.path.join(target, "children"))
 # The orchestrator session itself, tailed alongside its children so the
@@ -238,6 +225,29 @@ def render_opencode(ev, out):
         data = err.get("data") or {}
         out.append("(error: %s)" % preview(data.get("message") or err.get("name") or "error", 200))
 
+def render_codex(ev, out):
+    kind = ev.get("type")
+    item = ev.get("item") or {}
+    if kind in ("item.started", "item.completed"):
+        if item.get("type") == "agent_message" and kind == "item.completed":
+            text = (item.get("text") or "").strip()
+            if text:
+                out.append("says: " + preview(text, 2000))
+        elif item.get("type") == "command_execution":
+            out.append("command: " + preview(item.get("command"), 400))
+            if item.get("aggregatedOutput"):
+                out.append("output: " + preview(item["aggregatedOutput"], 2000))
+        elif item.get("type") == "file_change":
+            for change in item.get("changes", []):
+                out.append("file: " + str(change["path"]) + " :: " + preview(change.get("diff"), 2000))
+        elif item.get("type") == "mcp_tool_call":
+            out.append("tool: " + item["server"] + "/" + item["tool"] + " "
+                       + preview(json.dumps(item.get("arguments")), 400))
+    elif kind == "turn.completed":
+        out.append("(turn complete)")
+    elif kind == "turn.failed":
+        out.append("(error: " + preview(json.dumps(ev.get("error")), 2000) + ")")
+
 def render(ev, out):
     # The orchestrator session's own transcript.jsonl speaks a different
     # dialect than a child's log: {kind:"user"} for prompts it received and
@@ -253,11 +263,10 @@ def render(ev, out):
         detail = (ev.get("detail") or "").strip()
         out.append(("%s: %s" % (what, preview(detail, 300))) if detail else what)
         return
-    # A child's log is either claude stream-json or opencode run-json. Detect
-    # by the event shape: opencode events carry `sessionID` + `part`; claude
-    # events carry `message.content`.
     if "sessionID" in ev or ev.get("type") in ("step_start", "step_finish"):
         render_opencode(ev, out)
+    elif ev.get("type") in ("thread.started", "item.started", "item.completed", "turn.started", "turn.completed", "turn.failed", "progress"):
+        render_codex(ev, out)
     else:
         render_claude(ev, out)
 

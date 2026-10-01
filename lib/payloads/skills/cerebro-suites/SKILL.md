@@ -1,227 +1,103 @@
 ---
 name: cerebro-suites
-description: How to decompose a too-big-for-one-PR specification into an ordered multi-plan suite -- the workable-state invariant, stacked-PR execute, checkpoint verify with the reviewer, bounded revise-and-retry, and finishing the stack. Invoke when a spec is too big for one PR.
+description: Decompose a large spec into independently workable stacked PRs, with approval, audit and bounded review/runtime checkpoints.
 ---
 # Large specifications: multi-plan suites
 
-When the user asks for a large change or a specification too big for one
-coherent PR, do NOT cram it into a single plan. Break it into an ORDERED
-SUITE of smaller plans, each of which becomes ONE pull request, stacked
-so that executing them all in order implements the specification FULLY
-and CORRECTLY. You orchestrate the whole suite yourself using the
-existing subcommands -- there is no special "suite" command. YOU are the
-persistent mind that keeps the suite coherent across plans; hold the
-plan list, their order, the branch chain, and per-checkpoint attempt
-counts in your working context and narrate progress as you go.
+Use a suite only when the work needs genuinely dependent delivery steps. Each
+step is one coherent, independently reviewable and mergeable PR. A small change
+belongs in one plan. The session and every child stay on the same backend.
+Use the guarded command tool with literal argv and stdin for plan/spec bodies.
 
-Work like a lazy senior engineer: keep it SIMPLE. The suite exists only
-to make a big change reviewable -- not as licence to gold-plate it. Use
-the FEWEST plans that deliver the spec, scope each plan to exactly what
-the spec asks for (no speculative steps, extra options, or
-future-proofing nobody requested), and never let the suite balloon
-beyond the request. Each plan must also read as a SELF-CONTAINED
-implementation plan, in its own terms: do NOT mention the suite, the
-other plans, step numbers, the decomposition, or the branch names inside
-a plan's body. Those are YOUR orchestration bookkeeping, not the plan's
-content; the overview/sibling context you thread into a plan prompt is
-there to set boundaries, not to be echoed back into the plan.
+## Keep every step workable
 
-## The workable-state invariant (non-negotiable)
+Each step must build, pass its required tests and preserve existing behavior on
+its own. Never ship code that needs a later step to compile, restore a feature
+or make an interface usable. Keep an inseparable change in one plan. If no
+ordering satisfies this invariant, explain the obstruction and propose a
+different cut before executing. Do not disguise a broken boundary as progress.
 
-Every plan in the suite MUST leave the application in a fully WORKABLE
-state on its own: it builds, its tests pass, and everything that worked
-before the plan still works after it. Each plan is a SELF-CONTAINED,
-independently shippable, independently mergeable increment -- never a
-half-finished fragment that only makes sense once a LATER plan lands.
-Merging the stack one PR at a time must NEVER, at any boundary, leave the
-app broken, non-building, or with a regressed or dead feature waiting on a
-future step.
+Implementation plans describe the requested work without branch, PR or suite
+bookkeeping in their bodies. Boundaries must not smuggle in unrelated refactors,
+shared abstractions or imagined future needs. Use behavioral acceptance criteria
+rather than guessed third-party filenames. Verify changed and preserved behavior
+through the real runtime; deleting a feature does not justify weakening valid
+coverage of the remaining contract.
 
-Concretely, no plan may: call something only a later plan defines; remove
-or rename something the running app still needs until the same plan also
-updates every user; or ship a schema / interface / API change without the
-code that keeps the app working against it. If a change cannot be split
-without breaking the app between the halves, the whole workable unit
-belongs in ONE plan -- do not cut it across plans.
+## Record the spec and decomposition, then obtain approval
 
-Decompose so this invariant holds at EVERY step boundary. If you cannot
-find an ordering where each plan is independently workable and shippable
--- if every possible split necessarily breaks the app between steps --
-then do NOT emit breaking plans. STOP and report to the user: explain why
-the spec cannot be decomposed into self-contained workable steps and
-propose the alternative (one larger plan, or a different cut). Failing
-loudly is REQUIRED; shipping a suite whose middle leaves the app broken is
-never acceptable under any circumstance.
+1. Record the complete requirements using `spec set --stdin`. This is the
+   contract against which every step is judged.
+2. Write `<slug>-00-overview`: the ordered PR-sized steps, dependencies and why
+   they together satisfy the spec. Record it with `plan --out <name> --stdin`.
+3. Write `<slug>-NN-<short>` technical plans (zero-padded 01, 02, ...). Each
+   ends with `## Acceptance criteria (checkpoint)`: concrete checks for the
+   delivered behavior, the whole app building/passing tests, and the actual
+   runtime user flow or CLI/endpoint to exercise. Scope each plan to its step.
+4. Record a faithful `<name>-readable` companion for the overview and every
+   technical plan. Its reference block names the technical plan's absolute path
+   as source of truth; its body explains the same decisions and steps plainly.
+   Regenerate the companion whenever its technical plan changes.
+5. Show the ordered companions and acceptance criteria to the user and wait for
+   approval of the decomposition. Existing explicit authorization takes
+   precedence over this default.
+6. Load `cerebro-audit-gate`: a suite is high risk. After approval and before
+   execution, audit the technical plans once, passing the overview, dependencies
+   and decisions in `--context`. Judge findings against the user's contract;
+   apply valid corrections and regenerate affected companions. A discovery that
+   changes requirements or invalidates the approved decomposition needs a user
+   decision. Do not start a repeated audit loop unless the user requests it.
 
-This invariant also binds you DURING execution. If at any point you
-discover the current plan would leave the app broken at its boundary and
-cannot be made whole within its own scope, STOP -- do not advance the
-suite. That is a plan-level discovery: follow "# Adapting plans
-mid-flight against the session spec" -- tell the user what you found and
-the re-cut you propose (fold the breaking change together with whatever
-makes it whole, or re-order the steps), and wait. On their go, apply the
-re-cut: update the executed plans with the facts, rewrite the affected
-downstream plans and <slug>-00-overview, and continue. If no workable
-re-cut exists, say so plainly rather than pushing a broken state
-forward.
+Always give audit, execute and review the technical plan, never its readable
+companion. Companions are the paths shown to the user.
 
-## 1. Decompose (then WAIT for go)
+## Execute in order with one worktree per step
 
-First record the whole specification as the session spec with
-`cerebro spec set "<the full specification and requirements>"` -- this is
-the record of record the suite as a whole must satisfy, and what you
-measure any mid-flight plan adjustment against (rule 9). Then decompose.
+After approval, execute autonomously in order, advancing only after each
+checkpoint passes. Plan 1 uses the repo's default base. Later plans use the
+previous plan's branch as both branch source and PR target:
 
-Decomposition is just `cerebro plan` called more than once -- you write
-every file yourself. Pick a short suite slug (e.g. the feature name) and:
+```text
+execute <repo> <plan-1> --branch feat/<slug>-01
+execute <repo> <plan-N> --base feat/<slug>-previous --branch feat/<slug>-NN
+```
 
-  a. Write an OVERVIEW: decompose the specification into an ORDERED set
-     of PR-sized implementation steps. For each step give a one-line
-     summary and its dependencies on earlier steps, argue why the steps
-     in order fully and correctly satisfy the spec, and keep each step
-     independently reviewable. Record it with `cerebro plan "<overview
-     markdown>" --out <slug>-00-overview`, then record its readable
-     companion `<slug>-00-overview-readable` whose reference block names
-     the overview's absolute path.
-  b. Write one DETAILED plan per step, in order, keeping the overview
-     and the spec in mind so the boundaries stay coherent. Each plan is
-     a STANDALONE deliverable in its own terms: the smallest change that
-     satisfies THIS step (no scope creep, no gold-plating, no
-     future-proofing the spec did not ask for), and it does NOT mention
-     the other steps, the overview, the suite, the decomposition, or any
-     branch names in its body -- those are your orchestration
-     bookkeeping. END each plan with a section titled exactly
-     '## Acceptance criteria (checkpoint)' -- a checklist of concrete,
-     independently VERIFIABLE conditions (commands to run, behaviours to
-     observe, files/functions that must exist and work) that define DONE
-     for this step and must be confirmed before the next step starts.
-     The criteria MUST include (a) that the whole app still builds and
-     its existing tests pass after this step -- the step leaves the app
-     in a fully workable state -- and (b) an explicit END-TO-END usage
-     check: the concrete user flow this step delivers, to be verified by
-     `cerebro verify` (which drives the running app with a browser) or
-     the real entrypoint/CLI/endpoint run end to end, not just unit
-     tests. State the exact flow to drive and what to observe. Phrase every criterion
-     BEHAVIORALLY -- tie it to observable behavior, not to a specific
-     guessed path; avoid hard-pinning guessed internal filenames/symbols
-     of third-party or vendored code, since a criterion naming the wrong
-     file reads NOT MET forever and wastes re-review rounds. Tests must
-     verify POSITIVELY: assert the new and preserved-legacy strings
-     APPEAR; never use negative-absence assertions to prove a
-     legacy/removed string is gone. Record each with
-     `cerebro plan "<plan markdown>" --out <slug>-NN-<short>`, using
-     zero-padded NN (01, 02, ...) so `cerebro plans` lists them in
-     order. For each detailed plan ALSO record a readable companion
-     `<slug>-NN-<short>-readable` whose reference block names that
-     plan's absolute path. When you summarise the suite, the paths you
-     surface to the user are the COMPANIONS (the overview companion and
-     each step's companion).
+Use repository branch conventions. Capture each `TASK WORKTREE` path and pass
+that worktree to its review, corrections, verification and documentation. Do
+not perform follow-up work in the user's main checkout. Sequence mutations;
+Cerebro does not serialize competing tasks against one repository.
 
-A multi-plan suite is HIGH blast radius by definition. Before summarising
-it to the user, AUDIT the suite against the real code (see "# Audit
-high-blast-radius plans before executing them"): run `cerebro audit` on
-every detailed plan -- always the technical `<name>.md`, never its
-`-readable` companion (the companion is user-facing only). Pass the
-overview and what earlier steps deliver in --context so the auditor
-judges the boundaries correctly, and confirm
-the steps in order actually deliver the spec against how the code works.
-Revise the overview and any affected plans (`cerebro plan ... --out
-<same-name>`) and re-check until the suite is correctly scoped. Only then
-propose it.
+## Gate each checkpoint on review and real verification
 
-Then summarise the suite to the user -- the ordered plan list, each
-plan's COMPANION path, and its acceptance criteria -- and WAIT for an
-explicit "go" before executing anything (rule 3 applies to the whole
-suite). The user approves the decomposition ONCE.
+Run `review <worktree> --criteria-file <technical-plan>`. Read its findings and
+require all of the following before advancing:
 
-## 2. Execute the suite autonomously (stacked PRs)
+- Code-reviewable criteria are met and no important in-scope finding remains.
+- Required builds/tests succeeded and the app remains workable.
+- `verify <worktree> --plan <technical-plan>` exercised the actual runtime flow
+  and reported `VERIFY: PASS`, or a blocked check received actual manual
+  confirmation from the user.
 
-After "go", execute the plans IN ORDER without pausing between them
-(pause only to escalate per step 4). Every `cerebro execute` /
-`cerebro audit` / `cerebro review --criteria-file` in the suite is
-given the technical `<slug>-NN-<short>.md` (or `<slug>-00-overview.md`),
-NEVER the `-readable` companion -- companions are user-facing only. The
-PRs STACK: the first branches off the repo's default base (main); every
-later plan branches off the PREVIOUS plan's branch and targets it as the
-PR base. Drive this with the execute flags, naming branches yourself so
-you always know the next plan's base:
+A read-only reviewer cannot run builds, browsers or external CI. Its `EXTERNAL`
+criteria require evidence from the implementation/verification child; lack of
+reviewer capability alone is not a defect. Static `MET` without runtime evidence
+is not a completed checkpoint. Do not alter criteria to hide a failed check.
 
-  * Plan 1: `cerebro execute <repo> <slug>-01-... --branch <feat/slug-01>`
-    (no --base: forks from main).
-  * Plan N (N>1): `cerebro execute <repo> <slug>-NN-...
-    --base <feat/slug-(N-1)> --branch <feat/slug-NN>`.
+## Correct within scope, then escalate when necessary
 
-Choose conventional branch names (feat/..., per AGENTS.md). Run exactly
-one mutating subcommand at a time (rule 8); finish a plan's checkpoint
-before starting the next plan's execute. Each plan's execute runs in its
-OWN worktree and announces a `=== TASK WORKTREE: <path> ... ===` line --
-capture each plan's <path> and use it as the <repo> argument for that
-plan's review / apply-review / doc-write (the next plan still passes
---base/--branch to `cerebro execute` against the main repo path, since
-the new worktree is created fresh from that base ref).
+For an implementation defect, forward only important in-scope findings to
+`apply-review <worktree>`, then repeat affected review and verification. Reject
+nits, speculative hardening and unrelated changes. Limit corrections to three
+attempts per checkpoint; if it still fails, report the unmet criteria, attempts
+and next proposed decision to the user. Never loop indefinitely.
 
-## 3. Verify each checkpoint with the reviewer
+A wrong plan is a discovery to resolve, not another implementation retry. Stop
+when an adjustment would change requirements, expand scope or break the approved
+cut. Explain the discovery and obtain the needed decision. Then reconcile the
+spec as authorized, rewrite affected plans/companions and overview, and continue
+on the same worktree/branch with a scoped `apply-review --prompt`. Update the
+text of already-executed plans with learned facts, but never redo their work.
 
-After each plan's `cerebro execute`, gate advancement on the acceptance
-criteria via the reviewer, addressing the review at THIS plan's worktree path:
-
-  `cerebro review <wt> --criteria-file <the-plan-you-just-ran>`
-
-Because the PR's base is the previous plan's branch, the review's
-default base resolves to that branch, so the reviewer sees only THIS plan's
-diff. READ the findings file. The checkpoint PASSES only when ALL THREE
-hold: the final line says `ACCEPTANCE CRITERIA: MET` for the
-code-reviewable criteria; there are no in-scope, genuinely-important
-findings (apply the same scope/importance gates as the normal loop); AND
-you have VERIFIED THE STEP END TO END per
-"# Definition of done: end-to-end verification" -- the app still builds
-and its tests pass, and you have run `cerebro verify <wt> --plan <the-plan>`
-and it reported `VERIFY: PASS` (or, when verify returned `VERIFY: BLOCKED`,
-the user has manually confirmed it). Codex never runs the app, and any
-`EXTERNAL` criterion in its output is your responsibility to verify; its
-MET verdict alone is NOT a pass. Only when all three hold do you advance to the next
-plan, using this plan's branch as the next --base. If the e2e check shows
-the step does not actually work, treat it as a failed checkpoint (step 4)
--- never advance on green static signals while the app is broken.
-
-## 4. When a checkpoint fails: bounded revise-and-retry, then escalate
-
-If the checkpoint does not pass, make corrective attempts -- but no more
-than THREE attempts on any single checkpoint. Pick the right kind of
-correction each time:
-
-  * Implementation is buggy but the plan's approach is SOUND -> scope
-    the real, in-scope findings and run `cerebro apply-review <wt>` on
-    this plan's worktree path, then re-review with --criteria-file.
-    (Small fix.)
-  * The PLAN ITSELF is wrong -- the criteria are unreachable as written,
-    or the approach can't satisfy the spec -> that is a plan-level
-    discovery, not a retry: STOP and follow "# Adapting plans mid-flight
-    against the session spec" (tell the user what you learned and what
-    you propose, and wait). On their go: update the executed plans with
-    the newly discovered facts, rewrite the failing plan to route around
-    the failure so it cannot recur (keeping the acceptance criteria
-    verifiable; `cerebro plan "<full revised plan>" --out
-    <slug>-NN-<short>` OVERWRITES it), and revise the affected
-    DOWNSTREAM plans, their criteria, and <slug>-00-overview the same
-    way so the suite stays coherent (regenerating each revised plan's
-    `-readable` companion so the pair never diverges). Shipped plans'
-    WORK is history -- never re-execute them -- but their text gets the
-    new facts folded in so the record stays true. Then re-implement the
-    revised plan on the SAME branch with `cerebro apply-review <wt>
-    --prompt "<the revised plan / the delta to apply>"` (the worktree
-    already has that branch checked out) and re-review.
-
-Count every apply-review/replan round as one attempt. If the checkpoint
-still fails after the third attempt, STOP and ask the user: summarise
-what failed, the criteria that won't pass, what you tried, and the
-revision you propose next. Do not loop indefinitely.
-
-## 5. Finish
-
-When the last checkpoint passes, summarise the full PR stack to the user
-(each PR, its base, what it delivers, that its criteria were met) so
-they can review and merge the stack in order. Optionally `cerebro
-doc-write` at the end. If the user merges and asks you to continue,
-remember the stack base may shift -- re-derive bases from the open PRs
-with `cerebro gh <repo> pr list` if unsure.
+When every checkpoint passes, report the PR stack, bases, delivered behavior and
+verification so it can be reviewed and merged in order. Merge and push actions
+still require authorization from the user and repository instructions.
