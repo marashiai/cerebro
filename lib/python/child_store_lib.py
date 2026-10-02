@@ -42,6 +42,7 @@ def _atomic_write(f, data):
             os.unlink(tmp)
         except OSError:
             pass
+        raise
 
 def store_upsert(f, key, fields):
     lf = open(f + ".lock", "w")

@@ -149,10 +149,11 @@ Ordinary sessions keep a short adjustable plan of possible commits and offer
 Hashimoto diff notes after each authorized commit, without an acceptance wait.
 Select the supervise skill for unattended work within the requested scope.
 Shared engineering, supervise and hashimoto-review skills come from marashiai/skills.
-Repository development happens in native children, with execute work isolated
-in a task worktree. Guarded Cerebro MCP commands accept literal argv and stdin;
-the parent has no unrestricted mutation tools. Review uses fresh read-only
-context on the same backend. CEREBRO_SUPERVISOR_MODEL selects the supervisor;
+Repository development happens in native children in the selected checkout.
+Execute reuses it by default; --worktree requests isolation. Guarded Cerebro MCP
+commands accept literal argv and stdin; the parent has no unrestricted mutation
+tools. Review uses fresh read-only context on the same backend.
+CEREBRO_SUPERVISOR_MODEL selects the supervisor;
 CEREBRO_MODEL selects implementation; CEREBRO_REVIEW_MODEL selects
 review (defaulting to CEREBRO_MODEL). Empty selections use the native default;
 --model overrides one child call. The optional models-config.json catalog helps
@@ -166,7 +167,8 @@ reported instead of silently creating a fresh child.
 
 Pair execute/apply-review/doc-write for live output and steering.
 Preauthorized autosteering may correct drift. Restart additionally needs
-permission to abandon and remove the task's isolated branch, PR and worktree.
+authority to replace the agent conversation; files, branch and PR are retained.
+Workspace cleanup is a separately authorized action.
 Supervisor steering cannot add user requirements. Paired children have
 a short post-turn steering window and bounded native inactivity handling.
 

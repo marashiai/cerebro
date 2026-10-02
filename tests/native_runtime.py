@@ -105,7 +105,7 @@ def action(body, backend):
                 'Write native-proof.txt in the task worktree and verify its contents. No billing, payment, publishing or unrelated changes are authorized.']})
         if call == 2:
             return invoke('mcp__cerebro__command', {'argv': ['execute', str(ROOT / backend / 'repo'), '--prompt',
-                'NATIVE_WORKER: write only native-proof.txt containing NATIVE_PROOF. Billing and payment features are forbidden. Do not commit or publish.', '--watch']})
+                'NATIVE_WORKER: write only native-proof.txt containing NATIVE_PROOF. Billing and payment features are forbidden. Do not commit or publish.', '--watch', *(['--worktree'] if '--worktree' in sys.argv else [])]})
         results = job_results(body)
         terminal = [result for result in results if result['state'] == 'completed' and 'notice' not in result]
         if terminal:
@@ -123,7 +123,7 @@ def action(body, backend):
     if parent and call == 1:
         name = 'mcp__cerebro__command'
         assert name in names or code_mode, names
-        return invoke(name, {'argv': ['execute', str(ROOT / backend / 'repo'), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch']})
+        return invoke(name, {'argv': ['execute', str(ROOT / backend / 'repo'), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch', *(['--worktree'] if '--worktree' in sys.argv else [])]})
     if parent:
         results = job_results(body)
         assert call == 2 and results and results[-1]['state'] == 'completed', 'parent woke without a terminal handoff'
@@ -235,10 +235,12 @@ def prepare(backend):
     (session / 'children').mkdir(parents=True)
     (session / 'plans').mkdir()
     repo.mkdir()
-    (repo / 'AGENTS.md').write_text('Work only in the announced isolated worktree.\n')
+    (repo / 'AGENTS.md').write_text('Work only in the selected checkout; preserve existing user work.\n')
     subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
     subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
     subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Native Verification', '-c', 'user.email=native@localhost', 'commit', '-qm', 'test fixture'], check=True)
+    subprocess.run(['git', '-C', str(repo), 'branch', 'feat/native-proof'], check=True)
+    (repo / 'user-work.txt').write_text('preserve existing work')
     env = dict(os.environ)
     for key in list(env):
         if key.startswith(('CEREBRO_', 'PI', 'ANTHROPIC', 'OPENAI', 'GEMINI', 'GOOGLE', 'AWS', 'AZURE', 'CLAUDE', 'PI_CODING_AGENT_DIR')):
@@ -338,7 +340,7 @@ def paired(env, repo, session):
     with error_path.open('w') as errors:
         proc = subprocess.Popen([str(SOURCE / 'bin' / 'cerebro'), 'execute', str(repo), '--pair',
                                  '--prompt', 'NATIVE_WORKER: write the proof file and report completion.',
-                                 '--branch', 'feat/native-proof'], env=env, text=True, stdout=subprocess.PIPE,
+                                 '--branch', 'feat/native-proof', *(['--worktree'] if '--worktree' in sys.argv else [])], env=env, text=True, stdout=subprocess.PIPE,
                                 stderr=errors, start_new_session=True)
         try:
             assert PAIR_READY.wait(30), 'native first turn did not finish; see ' + str(error_path)
@@ -441,14 +443,18 @@ if __name__ == '__main__':
                 session = parent(env)
                 env.update(CEREBRO_SESSION_ID=session.name, CEREBRO_SESSION_DIR=str(session))
             else:
-                stdout = paired(env, repo, session) if '--pair' in sys.argv else call(env, 'execute', str(repo), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch')
+                stdout = paired(env, repo, session) if '--pair' in sys.argv else call(env, 'execute', str(repo), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch', *(['--worktree'] if '--worktree' in sys.argv else []))
                 assert ('NATIVE_WORKER_STEERED' if '--pair' in sys.argv else 'NATIVE_WORKER_DONE') in stdout, stdout
             children = json.loads((session / 'child-sessions.json').read_text())
             worker = next(v for v in children.values() if v['role'] == 'execute')
-            trees = subprocess.check_output(['git', '-C', str(repo), 'worktree', 'list', '--porcelain'], text=True)
-            path = next(Path(line[9:]) for line in trees.splitlines() if line.startswith('worktree ') and Path(line[9:]).resolve() != repo.resolve())
+            path = Path(worker['repo'])
+            assert (path.resolve() != repo.resolve()) == ('--worktree' in sys.argv)
             assert (path / 'native-proof.txt').read_text() == 'NATIVE_PROOF'
-            assert not (repo / 'native-proof.txt').exists()
+            assert (repo / 'user-work.txt').read_text() == 'preserve existing work'
+            if '--worktree' in sys.argv:
+                assert not (repo / 'native-proof.txt').exists()
+            if '--watch' not in sys.argv:
+                assert subprocess.check_output(['git', '-C', str(path), 'branch', '--show-current'], text=True).strip() == 'feat/native-proof'
             if '--watch' in sys.argv:
                 assert not (path / 'billing.py').exists(), 'child did not remove its scope deviation'
             if not parent_mode:
@@ -456,7 +462,7 @@ if __name__ == '__main__':
                 children2 = json.loads((session / 'child-sessions.json').read_text())
                 assert next(v for v in children2.values() if v['role'] == 'execute')['id'] == worker['id']
             criteria = session / 'plans' / 'native-review.md'
-            criteria.write_text('NATIVE_REVIEW: inspect the isolated proof file.')
+            criteria.write_text('NATIVE_REVIEW: inspect the proof file in the selected checkout.')
             report = Path(call(env, 'review', str(path), '--criteria-file', str(criteria), '--explain').strip())
             assert 'NATIVE_REVIEW_DONE' in report.read_text(), report.read_text()
             if '--watch' in sys.argv or '--jev-review' in sys.argv:
@@ -474,7 +480,7 @@ if __name__ == '__main__':
                 requests = [request for request in REQUESTS if request['backend'] == backend and request['scenario'] == 'parent']
                 assert len(requests) == (4 if backend == 'codex' else 2), requests
                 assert requests[-1]['time'] - requests[-2]['time'] >= 35, requests
-            print(backend + ': native role models verified; isolated implementation and guarded review completed'
+            print(backend + ': native role models verified; selected-checkout implementation and guarded review completed'
                   + (' after parent delegation' if parent_mode else ' with same-session child resume'), flush=True)
         print('native backend checks passed', flush=True)
     finally:

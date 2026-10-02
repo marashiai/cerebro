@@ -40,7 +40,7 @@ cerebro cancel <job-id>       # stop a detached job and its descendants
 ## Develop in small commits
 
 Describe the outcome and constraints. The supervisor keeps a short plan of
-possible commits, delegates development into isolated worktrees and adjusts the
+possible commits, delegates development into an appropriate checkout and adjusts the
 plan as facts or your input change within the agreed requirements. You do not
 need to approve each plan revision or read a second companion plan.
 
@@ -65,10 +65,23 @@ findings are corrected within scope, followed by affected verification and a
 fresh review of the next commit. A real product decision or missing authority
 still needs resolution.
 
-Use the worktree announced by `execute` for review, corrections, verification and
-documentation. The user's main checkout remains separate. The `engineering`
-skill guides verification through the changed runtime boundary; a static review
-cannot prove runtime behavior. Report any verification gap accurately.
+Prefer continuing a related branch and checkout, including relevant unfinished
+edits. Inspect the diff, history and task before choosing; a branch name or clean
+status alone does not establish relevance. Protect unrelated work on every branch,
+including main/master, and sequence mutations in a shared checkout.
+
+`execute` uses its supplied checkout and current branch by default. `--branch`
+selects an existing local or origin-tracking branch, or creates it if absent.
+`--base` supplies an exact locally available ref/commit for new work; otherwise
+new work starts at current HEAD. It never resets an existing branch or silently
+substitutes a different base. `--worktree` explicitly requests a separate checkout;
+without `--branch` it starts detached. A branch already checked out elsewhere
+should be continued in that checkout when it is available.
+
+Use the checkout announced by `execute` for later development, review, corrections,
+verification and documentation. These choices are guidelines, subject to the task,
+repository instructions and user preferences. The `engineering` skill guides
+verification through the changed runtime boundary; report verification gaps.
 
 ### Review notes in Hunk
 
@@ -170,11 +183,12 @@ the labels do not authorize fixes or waive verification. A classification error
 or changed input returns an explicit failure while retaining the original
 report. A development task's `--no-watch` does not disable later review checks.
 
-Execute restart removes a fresh task's worktree and branch. It refuses teardown
-when the child switched away from a pinned branch, when that local or origin
-branch predates the worktree, or when the initial branch inventory is unavailable.
-The retained work remains available for inspection. Sequence competing mutations
-in the same repository; the initial inventory is not a lock on branch names.
+Execute restart retires the native conversation while preserving the checkout,
+changes, branches and PRs. Inspect the retained work and invoke the corrected task
+with that checkout path, without `--worktree`. Cleanup requires separate authority;
+`worktrees cleanup` considers only recorded Cerebro-created worktrees and retains
+those with unfinished work or uncertain status. Sequence competing mutations in
+the same checkout; Cerebro does not serialize external Git operations.
 
 Use the guarded MCP command tool for watched tasks, for example:
 
@@ -211,10 +225,10 @@ prompt injection or log polling.
 
 Jev has no mutation or delivery authority. A notice is evidence for the parent,
 not a user instruction or automatic restart request. Steering stays within the
-agreed requirements. Restart cleanup is reserved for a fresh `execute` task when
-abandonment of its isolated branch, PR and worktree is preauthorized; follow-up
-`apply-review`/`doc-write` tasks use steering or cancellation. A user requirement
-change is recorded in the spec and plans before the parent continues.
+agreed requirements. An authorized restart retires an `execute` child's native
+conversation and retains its workspace. Follow-up `apply-review`/`doc-write`
+tasks use steering or cancellation. A user requirement change is recorded in
+the spec and plans before the parent continues.
 
 ## Drive it from your editor (ACP)
 
@@ -704,7 +718,7 @@ open in your editor:
   .claude/skills/                    # links to the same skill files
   learnings.md                       # confirmed preferences read by the supervisor
   overlays/<target>.md               # user-owned prompt overlays (append onto shipped prompts)
-  worktrees/<ckey>/                  # isolated per-task execute worktrees
+  worktrees/<session>-<ckey>/        # explicitly requested execute worktrees
                                      #   (GC stale ones with `cerebro worktrees cleanup`)
   sessions/<id>/
     metadata.json                    # backend, role and native conversation binding

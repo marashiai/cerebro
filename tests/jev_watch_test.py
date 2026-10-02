@@ -454,7 +454,7 @@ class WatchTests(unittest.TestCase):
         child = next(iter(json.loads((self.session / 'child-sessions.json').read_text()).values()))
         self.assertEqual(child['id'], 'native-watch-child')
         self.assertEqual(child['status'], 'running')
-        self.assertTrue(Path(self.home / 'worktrees').is_dir())
+        self.assertEqual(Path(child['repo']).resolve(), self.repo.resolve())
         self.assertEqual(list((self.session / 'children').glob('*.steer.fifo')), [])
         trace = next((self.session / 'children').glob('*.jev.jsonl'))
         records = [json.loads(line) for line in trace.read_text().splitlines()]

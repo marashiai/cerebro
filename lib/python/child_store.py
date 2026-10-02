@@ -2,6 +2,7 @@
 #   begin <key> <provider> <role> <repo> <branch> <log> <ts>  -- mark running
 #   set-id <key> <provider> <id> <ts>                          -- record the id
 #   done <key> <ts>                                            -- mark finished
+#   retire <key> <ts>                     -- finish and remove the resumable ID
 #   get <key>                  -- print the stored id (empty if none)
 #   running-fresh <key> <ttl>  -- exit 0 if status=running and fresh
 #   find-id <ttl> <id>         -- TSV of fresh entries with that provider id
@@ -30,6 +31,9 @@ elif op == "set-id":
 elif op == "done":
     key, ts = sys.argv[3:5]
     store_upsert(f, key, {"status": "done", "updated_at": ts})
+elif op == "retire":
+    key, ts = sys.argv[3:5]
+    store_upsert(f, key, {"status": "done", "updated_at": ts, "id": None})
 elif op == "get":
     e = _load(f).get(sys.argv[3]) or {}
     sys.stdout.write(e.get("id") or "")

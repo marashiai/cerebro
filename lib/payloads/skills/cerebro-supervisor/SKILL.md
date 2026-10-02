@@ -17,9 +17,21 @@ Ordinary sessions use a short plan of possible cohesive commits, recorded with
 remaining steps as discoveries or user instructions arrive. Proceed within
 the authorized scope; resolve material product ambiguity with the user.
 
-Delegate one commit-sized task at a time with `execute`. Capture its task
-worktree, then use `apply-review --prompt` or `doc-write` there for subsequent
-work. Each packet carries scope, acceptance criteria, repository instructions,
+Before delegation, inspect the current branch, changes, related branches and
+existing worktrees. Prefer continuing an appropriate checkout and branch, including
+related unfinished edits. Judge relevance from the task, diff, commits and PR
+context, not the branch name alone. Use another existing checkout or `--worktree`
+when it protects unrelated work or isolates concurrent development. This applies
+on main/master too; cleanliness alone does not decide relevance. These are defaults
+subject to user instructions and the requested delivery workflow. Sequence mutations
+in a shared checkout; never switch or write in another active worker's checkout.
+
+Delegate one commit-sized task at a time with `execute`. By default it uses the
+supplied checkout. `--branch` selects an existing branch or creates one if absent;
+omitting it keeps the current branch. Create a branch only when the task or delivery
+workflow benefits. Capture the actual checkout, branch and starting commit, then
+use that checkout for subsequent `execute`, `apply-review` or `doc-write` work.
+Each packet carries scope, acceptance criteria, repository instructions,
 and delivery permissions. Skills never authorize commits, pushes, PRs, merges,
 infrastructure changes or destructive cleanup by themselves.
 

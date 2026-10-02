@@ -8,7 +8,7 @@ The animation was recorded with an earlier workflow.
 
 `cerebro` turns your chosen backend — **Pi, Codex, or Claude Code** —
 into a supervisor. You describe the work; it records the requirements, delegates
-implementation to children in isolated worktrees, and keeps a short, adjustable
+implementation to children in an appropriate checkout, and keeps a short, adjustable
 plan of possible commits. Fresh review and appropriate verification accompany
 the work. The supervisor uses guarded Cerebro
 commands and never edits the repo itself. Each session and all its children
@@ -136,9 +136,10 @@ A significant or uncertain result returns a notice with the running job ID,
 steering pipe, sequence and original cited event. The supervisor can steer or
 continue waiting with `wait <job-id> --after <sequence>`. It assesses notices
 against the current requirements; an older stored warning can be dismissed and
-acknowledged. Jev makes no steering or restart decision. Restarting a fresh
-execute task requires authority to abandon its isolated branch, PR and worktree;
-follow-up tasks use steering or cancellation.
+acknowledged. Jev makes no steering or restart decision. Restarting an execute
+task retires its native conversation and retains its checkout, files, branch
+and PR. Run the corrected task in that retained checkout;
+follow-up tasks use steering or cancellation. Destructive cleanup is separate.
 
 Watched tasks use MCP or a detached completion socket. Classification failures
 stop the child explicitly while preserving resumable work. See the

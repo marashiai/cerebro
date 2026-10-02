@@ -1050,14 +1050,6 @@ STDERR_CONTAINS="requires <plan-path> or --prompt" \
 run_case 112 "execute --base/--branch needs plan or prompt" 1 -- \
   "$CEREBRO_BIN" execute "$REPO" --base feat/step-1 --branch feat/step-2
 
-# --- 112b. execute: identical --base and --branch is the removed existing-branch
-# invocation -- it must error (the child only ever cuts a FRESH branch, so
-# create-X-from-origin/X-and-PR-back-to-X is impossible), not silently enter
-# stacked mode. Fires before any child Pi session spawns. ---
-STDERR_CONTAINS="--base and --branch must differ" \
-run_case 112b "execute identical base/branch errors" 1 -- \
-  "$CEREBRO_BIN" execute "$REPO" --prompt "follow-up" --base feat/step-1 --branch feat/step-1
-
 # --- 112c. verify: missing repo arg rejected ---
 STDERR_CONTAINS="usage: cerebro verify" \
 run_case 112c "verify no repo arg rejected" 1 -- "$CEREBRO_BIN" verify
@@ -1354,6 +1346,7 @@ if (( STUB_OK )); then
   install_pi_fixture "$PROMPT_STUB_DIR" '{}'
   PROMPT_STUB_PATH="$PROMPT_STUB_DIR:$PATH"
   PROMPT_CAPTURE="$WORKDIR/stacked-prompt.txt"
+  git -C "$REPO" branch feat/slug-01 main
   env PATH="$PROMPT_STUB_PATH" CEREBRO_SESSION_ID="$ESESS" \
     PROMPT_CAPTURE="$PROMPT_CAPTURE" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "stack on plan one" \
@@ -1361,9 +1354,9 @@ if (( STUB_OK )); then
   erc=$?
   eprompt="$(cat "$PROMPT_CAPTURE" 2>/dev/null || true)"
   if [[ $erc -eq 0 \
-        && "$eprompt" == *"create your new branch from origin/feat/slug-01"* \
-        && "$eprompt" == *"Name the new branch EXACTLY 'feat/slug-02'"* \
-        && "$eprompt" == *"If a pull request is authorized, set its base to 'feat/slug-01'"* ]]; then
+        && "$eprompt" == *"Requested starting reference: feat/slug-01"* \
+        && "$eprompt" == *"Selected branch: feat/slug-02"* \
+        && "$eprompt" == *"PR targeting comes from the task delivery instructions"* ]]; then
     printf 'PASS  126c task branch source, name and authorized PR target\n'; pass=$((pass + 1))
   else
     printf 'FAIL  126c task branch constraints wrong [rc=%d prompt=%s]\n' \
@@ -1379,9 +1372,10 @@ if (( STUB_OK )); then
   initialize_session "$FDIR"
   FKEY="$(printf '%s\0execute\0branch:feat/test|prompt:go' "$REPO" | shasum | cut -d' ' -f1 | cut -c1-16)"
   MISSING_PI_SESSION="$REJECT_STUB_DIR/missing-session.jsonl"
-  jq -n --arg k "$FKEY" --arg repo "$REPO" --arg id "$MISSING_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  SELECTED_WORKSPACE="$(python3 "$here/../lib/python/task_workspace.py" prepare "$REPO" "" feat/test "" "$FDIR/child-sessions.json" "$FKEY" 0)"
+  jq -n --argjson workspace "$SELECTED_WORKSPACE" --arg k "$FKEY" --arg repo "$REPO" --arg id "$MISSING_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
      '{($k): {id:$id, provider:"pi", role:"execute", repo:$repo,
-              branch:"feat/test", status:"running", updated_at:$ts}}' \
+              branch:"feat/test", status:"running", updated_at:$ts, workspace:$workspace}}' \
      > "$FDIR/child-sessions.json"
   env PATH="$REJECT_STUB_PATH" CEREBRO_SESSION_ID="$FSESS" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "go" --branch feat/test >/dev/null 2>&1
@@ -1409,9 +1403,10 @@ if (( STUB_OK )); then
   # Seed a fresh running stored id so resume is attempted.
   WKEY="$(printf '%s\0execute\0branch:feat/test|prompt:go' "$REPO" | shasum | cut -d' ' -f1 | cut -c1-16)"
   PRIOR_PI_SESSION="$WORK_STUB_DIR/prior-session.jsonl"; seed_pi_session "$PRIOR_PI_SESSION"
-  jq -n --arg k "$WKEY" --arg repo "$REPO" --arg id "$PRIOR_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  SELECTED_WORKSPACE="$(python3 "$here/../lib/python/task_workspace.py" prepare "$REPO" "" feat/test "" "$WDIR/child-sessions.json" "$WKEY" 0)"
+  jq -n --argjson workspace "$SELECTED_WORKSPACE" --arg k "$WKEY" --arg repo "$REPO" --arg id "$PRIOR_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
      '{($k): {id:$id, provider:"pi", role:"execute", repo:$repo,
-              branch:"feat/test", status:"running", updated_at:$ts}}' \
+              branch:"feat/test", status:"running", updated_at:$ts, workspace:$workspace}}' \
      > "$WDIR/child-sessions.json"
   : > "$WORK_COUNT"
   env PATH="$WORK_STUB_PATH" CEREBRO_SESSION_ID="$WSESS" \
@@ -1441,7 +1436,7 @@ if (( STUB_OK )); then
   main_head_before="$(git -C "$REPO" rev-parse HEAD)"
   main_branch_before="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
   wtout="$(env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$WTSESS" \
-    "$CEREBRO_BIN" execute "$REPO" --prompt "do work in a worktree" 2>/dev/null)"
+    "$CEREBRO_BIN" execute "$REPO" --prompt "do work in a worktree" --worktree 2>/dev/null)"
   wt145="$(printf '%s\n' "$wtout" | sed -n 's/^=== TASK WORKTREE: \(.*\) (branch .*$/\1/p' | head -1)"
   main_head_after="$(git -C "$REPO" rev-parse HEAD)"
   main_branch_after="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
@@ -1514,6 +1509,14 @@ EOF
   git -C "$REPO" worktree add -q -b feat/gc-pr     "$WT_GC_PR"     main >/dev/null 2>&1
   git -C "$REPO" worktree add -q -b feat/gc-dirty  "$WT_GC_DIRTY"  main >/dev/null 2>&1
   git -C "$REPO" worktree add -q -b feat/gc-prfail "$WT_GC_PRFAIL" main >/dev/null 2>&1
+  python3 - "$WTDIR/child-sessions.json" "$WT_GC_STALE" "$WT_GC_AHEAD" "$WT_GC_PR" "$WT_GC_DIRTY" "$WT_GC_PRFAIL" <<'PYWORKSPACES'
+import json, subprocess, sys
+from pathlib import Path
+p = Path(sys.argv[1]); records = json.loads(p.read_text())
+for value in sys.argv[2:]:
+    records[Path(value).name] = {'workspace': {'path': str(Path(value).resolve()), 'created_worktree': True, 'common_dir': str((Path(value) / subprocess.check_output(['git', '-C', value, 'rev-parse', '--git-common-dir'], text=True).strip()).resolve())}, 'status': 'done'}
+p.write_text(json.dumps(records))
+PYWORKSPACES
   # gc-ahead carries a commit ahead of the base ref (unpushed) -> must be kept.
   printf 'ahead\n' >> "$WT_GC_AHEAD/main.sh"
   git -C "$WT_GC_AHEAD" add main.sh >/dev/null 2>&1
@@ -2350,7 +2353,7 @@ if [[ -x "$PAIR_STUB_DIR/pi" ]]; then
   pair_drive "$WORKDIR/steer.out" &
   STEERER_PID=$!
   pout="$(env PATH="$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$PSESS" CEREBRO_PAIR_IDLE=10 \
-    "$CEREBRO_BIN" execute "$REPO" --prompt "do the work" --pair 2>"$WORKDIR/perr")"
+    "$CEREBRO_BIN" execute "$REPO" --prompt "do the work" --pair --worktree 2>"$WORKDIR/perr")"
   prc=$?
   wait "$STEERER_PID" 2>/dev/null
   perr="$(cat "$WORKDIR/perr")"
@@ -2429,7 +2432,7 @@ if [[ -x "$PAIR_STUB_DIR/pi" ]]; then
   if [[ $rprc -eq 0 && "$rpout" == *"=== RESTART REQUESTED ==="* \
         && "$rpout" == *"$RESTART_DIAG"* \
         && "$rpout" == *"=== END RESTART REQUESTED ==="* ]]; then
-    printf 'PASS  134c  execute --pair restart reverts + surfaces diagnosis\n'; pass=$((pass + 1))
+    printf 'PASS  134c  execute --pair restart retains work + surfaces diagnosis\n'; pass=$((pass + 1))
   else
     printf 'FAIL  134c  execute --pair restart wrong [rc=%d out=%s]\n' \
       "$rprc" "$rpout"; fail=$((fail + 1))
@@ -2444,68 +2447,6 @@ if [[ -x "$PAIR_STUB_DIR/pi" ]]; then
     printf 'FAIL  134d  restart left a live steer fifo [%s]\n' "$rst_fifo"; fail=$((fail + 1))
     failures+=("134d restart fifo not cleaned :: $rst_fifo")
   fi
-
-  # --- 134e. execute --pair restart tears down the strayed run entirely ---
-  STRAY_BR="feat/strayed-fresh-branch"
-  GC_CLOSE_LOG="$WORKDIR/restart-gh-close.log"
-  GC_CLOSE_DIR="$WORKDIR/restart-gh-stub"; mkdir -p "$GC_CLOSE_DIR"
-  cat > "$GC_CLOSE_DIR/gh" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$GC_CLOSE_LOG"
-exit 0
-EOF
-  chmod +x "$GC_CLOSE_DIR/gh"
-  : > "$GC_CLOSE_LOG"
-  printf 'precious main-checkout work\n' > "$REPO/RESTART-PRECIOUS.txt"
-  restart_stray_drive() {
-    local f="" i j wt
-    for i in $(seq 1 1000); do
-      f="$(ls "$PDIR"/children/*.steer.fifo 2>/dev/null | head -1)"
-      [[ -n "$f" ]] && break
-      sleep 0.05
-    done
-    [[ -n "$f" ]] || return 0
-    ls -1 "$CEREBRO_HOME/worktrees" 2>/dev/null | sort > "$WORKDIR/wt-after"
-    wt="$CEREBRO_HOME/worktrees/$(comm -13 "$WORKDIR/wt-before" "$WORKDIR/wt-after" | head -1)"
-    printf '%s' "$wt" > "$WORKDIR/stray-wt"
-    git -C "$wt" checkout -q -b "$STRAY_BR" 2>/dev/null
-    printf 'strayed branch work\n' >> "$wt/main.sh"
-    git -C "$wt" add main.sh 2>/dev/null
-    git -C "$wt" commit -q -m "strayed work" 2>/dev/null
-    for i in $(seq 1 200); do
-      [[ -e "${f%.steer.fifo}.restart" ]] && break
-      "$CEREBRO_BIN" restart "$f" "strayed onto a fresh branch" >/dev/null 2>&1
-      sleep 0.3
-    done
-  }
-
-  ls -1 "$CEREBRO_HOME/worktrees" 2>/dev/null | sort > "$WORKDIR/wt-before"
-  restart_stray_drive &
-  STRAY_PID=$!
-  env PATH="$GC_CLOSE_DIR:$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$PSESS" CEREBRO_PAIR_IDLE=15 \
-    "$CEREBRO_BIN" execute "$REPO" --prompt "do the work then stray off-branch" --pair \
-    >/dev/null 2>&1
-  wait "$STRAY_PID" 2>/dev/null
-  stray_wt="$(cat "$WORKDIR/stray-wt" 2>/dev/null || true)"
-  stray_branch_gone=0
-  git -C "$REPO" show-ref --verify --quiet "refs/heads/$STRAY_BR" || stray_branch_gone=1
-  stray_wt_gone=0
-  [[ -n "$stray_wt" && ! -d "$stray_wt" ]] && stray_wt_gone=1
-  stray_main_ok=0
-  [[ -f "$REPO/RESTART-PRECIOUS.txt" \
-     && "$(cat "$REPO/RESTART-PRECIOUS.txt")" == "precious main-checkout work" ]] && stray_main_ok=1
-  stray_remote_attempted=0
-  grep -q "pr close $STRAY_BR --delete-branch" "$GC_CLOSE_LOG" 2>/dev/null && stray_remote_attempted=1
-  if [[ $stray_branch_gone -eq 1 && $stray_wt_gone -eq 1 && $stray_main_ok -eq 1 \
-        && $stray_remote_attempted -eq 1 ]]; then
-    printf 'PASS  134e  execute --pair restart tears down fresh branch + PR + worktree; main intact\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  134e  restart teardown wrong [branch_gone=%d wt_gone=%d main_ok=%d remote=%d wt=%s]\n' \
-      "$stray_branch_gone" "$stray_wt_gone" "$stray_main_ok" "$stray_remote_attempted" "$stray_wt"; fail=$((fail + 1))
-    failures+=("134e restart teardown :: branch_gone=$stray_branch_gone wt_gone=$stray_wt_gone main_ok=$stray_main_ok")
-  fi
-  git -C "$REPO" branch -D "$STRAY_BR" >/dev/null 2>&1 || true
-  rm -f "$REPO/RESTART-PRECIOUS.txt"
 
   # --- 135. an unpaired native child completes without a live-steering banner. ---
   env PATH="$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$PSESS" \
@@ -2761,6 +2702,10 @@ if (( STUB_OK )); then
           ($k2): {id:$id2, provider:"pi", role:"execute", repo:$repo,
                   branch:"feat/ans", status:"done", updated_at:$ts}}' \
         > "$AXDIR/child-sessions.json"
+  for answer_key in "$AXK1" "$AXK2"; do
+    python3 "$here/../lib/python/task_workspace.py" prepare "$REPO" "" feat/ans "" \
+      "$AXDIR/child-sessions.json" "$answer_key" 0 >/dev/null
+  done
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$AXSESS" \
     "$CEREBRO_BIN" answer "$AXID2" "use option B" >/dev/null 2>&1
   if grep -qF "resume=$AXID2" "$AXDIR/transcript.jsonl" \
@@ -3947,6 +3892,8 @@ run_case 211 "independent role models reach native supervisor launch and resume"
   python3 "$here/role_models_test.py"
 run_case 213 "typed Jev classifications and live steering handoffs" 0 -- \
   python3 "$here/jev_watch_test.py"
+run_case 215 "checkout/branch reuse, explicit isolation and recovery" 0 -- \
+  python3 "$here/workspace_test.py"
 run_case 214 "recall searches space, newline and glob-bearing session paths" 0 -- \
   python3 "$here/recall_test.py"
 

@@ -20,4 +20,4 @@ For an interrupted child with no live job, repeat the same command, repo,
 branch and original task-file/prompt. Cerebro uses those keys to resume its
 stored native ID. A failed native resume reports an error and preserves that
 ID; diagnose it rather than creating a fresh conversation. Authorized restart
-is abandonment, with different cleanup consequences; load `cerebro-pair`.
+retires the conversation while retaining work; load `cerebro-pair`.

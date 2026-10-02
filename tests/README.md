@@ -20,6 +20,7 @@ printed `/tmp/cerebro-real-backends-*` directory:
 ```bash
 python3 tests/native_runtime.py --pair --background pi
 python3 tests/native_runtime.py --parents --quiet codex pi claude
+python3 tests/native_runtime.py --parents --worktree codex pi claude
 python3 tests/native_runtime.py --parents --jev-review codex pi claude
 CEREBRO_TEST_PYTHON=/path/to/python-with-mcp2 python3 tests/pi_runtime_test.py
 python3 tests/native_runtime.py --watch pi
@@ -33,6 +34,10 @@ resume and the PTY MCP frontend. `CEREBRO_TEST_PYTHON` supplies the optional MCP
 exposure. The watch run additionally uses the configured live Jev key against
 synthetic scope drift. These tests verify native integration and controls;
 scripted replies do not establish a real model's judgment or provider login.
+
+The default native run reuses a related branch in the supplied checkout and preserves
+existing user files. `--worktree` exercises explicit isolation with the same backends.
+Both routes continue reviews and answers in the recorded actual checkout.
 
 The quiet-parent run leaves each child silent for 35 seconds and requires the
 next parent model request to contain its completed handoff, with no intermediate

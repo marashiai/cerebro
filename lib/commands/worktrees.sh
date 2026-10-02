@@ -2,9 +2,9 @@
 # subcommand: worktrees (list / GC the per-task execute worktrees)
 # Sourced by bin/cerebro; not meant to be executed directly.
 
-# `cerebro execute` runs each task in a persistent worktree under
-# $CEREBRO_HOME/worktrees/<ckey>. They are removed only by a restart or by this
-# command. `cerebro worktrees` (or `... list`) reports every worktree with its
+# `cerebro execute --worktree` creates a persistent managed checkout under
+# $CEREBRO_HOME/worktrees. Only this cleanup command removes it.
+# `cerebro worktrees` (or `... list`) reports every worktree with its
 # branch, owning repo, and in-use verdict; `cerebro worktrees cleanup` removes
 # the ones that are safe to delete. A worktree is KEPT when it is still in use
 # by any of: uncommitted/untracked changes in the tree, an OPEN PR for its
@@ -16,18 +16,16 @@
 # set), or empty when <wt> is not a live worktree.
 worktree_owner() {
   git -C "$1" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree /{print $2; exit}'
+    | awk '/^worktree /{sub(/^worktree /, ""); print; exit}'
 }
 
-# worktree_has_live_child <wt> -- true when some still-fresh status=running
-# cerebro child (in ANY session's store) belongs to <wt>.
-worktree_has_live_child() {
-  local wt="$1" key f
-  key="$(basename "$wt")"
+# Check creation ownership or active children across all session records.
+worktree_has_record() {
+  local mode="$1" wt="$2" f
   shopt -s nullglob
   for f in "$CEREBRO_HOME"/sessions/*/child-sessions.json; do
     if python3 "$CEREBRO_LIB_DIR/python/worktree_inuse.py" \
-         "$f" "$wt" "$key" "${CEREBRO_CHILD_SESSION_TTL:-86400}"; then
+      "$mode" "$f" "$wt" "${CEREBRO_CHILD_SESSION_TTL:-86400}"; then
       shopt -u nullglob; return 0
     fi
   done
@@ -41,6 +39,8 @@ WT_USE_REASON=""
 worktree_in_use() {
   local wt="$1" branch="$2"
   WT_USE_REASON=""
+
+  if ! worktree_has_record owned "$wt"; then WT_USE_REASON="no task creation record"; return 0; fi
 
   # 1. Uncommitted or untracked work in the tree. A non-empty `status
   # --porcelain` means there are local changes that were never committed (let
@@ -65,7 +65,7 @@ worktree_in_use() {
   fi
 
   # 3. An in-flight or resumable cerebro child on this worktree.
-  if worktree_has_live_child "$wt"; then WT_USE_REASON="in-flight cerebro child"; return 0; fi
+  if worktree_has_record live "$wt"; then WT_USE_REASON="in-flight cerebro child"; return 0; fi
 
   # 4. Local commits not yet pushed/merged. With an upstream, anything in
   # @{upstream}..HEAD is unpushed; with none, anything ahead of the base ref is.

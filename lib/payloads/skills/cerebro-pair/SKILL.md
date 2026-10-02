@@ -31,8 +31,9 @@ messages enforce the current spec and delegated task; they never grant new
 user authority. Direct `[user]` messages can change requirements, which the
 parent records in the spec and adjustable plan. Resolve real product ambiguity.
 
-`restart <pipe> <diagnosis>` applies to execute children, for unrecoverable work with preauthorized or
-explicit abandonment and cleanup. It reaps that native child and removes its
-isolated worktree, branch and PR. Revise the task from the terminal diagnosis
-within the user's requirements and execute afresh; never resume the abandoned
-conversation. Use `cancel` for authorized termination without that cleanup.
+`restart <pipe> <diagnosis>` replaces an execute child's native conversation when
+that intervention is authorized. It preserves the checkout, changes, branch and
+PR. Inspect the retained work and run the corrected task in that checkout without
+`--worktree`; never resume the retired conversation. Removing work or abandoning
+a branch/PR requires separate authority. Use `cancel` to stop without retiring the
+conversation; incomplete work remains resumable.

@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import shutil
 import subprocess
 import tempfile
 
@@ -93,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-native-tests-') as temporary
         if scenario == 'stall-resume':
             paired_environment['FAKE_STALL_STATE'] = str(directory / 'stall-once')
         result = subprocess.run([str(root / 'bin' / 'cerebro'), 'execute', str(repo),
-                                 '--prompt', 'paired native worktree ' + scenario, '--pair'],
+                                 '--prompt', 'paired native worktree ' + scenario, '--pair', '--worktree'],
                                 env=paired_environment, text=True, capture_output=True, timeout=20)
         assert result.returncode == 0, result.stderr
         launches = [json.loads(line) for line in request_log.read_text().splitlines() if '"argv"' in line]
@@ -115,32 +114,6 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-native-tests-') as temporary
             assert Path(resumed_file).resolve() == Path(native_file).resolve(), (resumed_file, native_file)
         store = json.loads((session / 'child-sessions.json').read_text())
         child = next(child for child in store.values() if child['id'] == native_file)
-        assert child['status'] == 'done' and Path(child['repo']).resolve() == repo.resolve()
-
-    # A failed initial inventory must never become trusted on worktree reuse.
-    real_git = shutil.which('git')
-    failed_git = guards / 'git'
-    failed_git.write_text('#!/bin/sh\nfor arg; do\n'
-                          '  if [ "$arg" = for-each-ref ]; then\n'
-                          '    printf "refs/heads/main\\n"; exit 1\n'
-                          '  fi\ndone\nexec ' + shlex.quote(real_git) + ' "$@"\n')
-    failed_git.chmod(0o755)
-    inventory_worktree = directory / 'inventory-failure'
-    setup = ('CEREBRO_LIB_DIR="$1"; . "$1/config.sh"; . "$1/helpers.sh"; . "$1/pair.sh"; '
-             'execute_worktree_create "$2" "$3" main')
-    try:
-        failed = subprocess.run(['bash', '-c', setup, '_', str(root / 'lib'),
-                                 str(repo), str(inventory_worktree)], env=environment,
-                                text=True, capture_output=True, timeout=10)
-        assert failed.returncode != 0 and 'cannot record initial branches' in failed.stderr, failed.stderr
-    finally:
-        failed_git.unlink()
-    inventory = Path(subprocess.check_output([real_git, '-C', str(inventory_worktree),
-                                             'rev-parse', '--git-path', 'cerebro-initial-branches'], text=True).strip())
-    assert inventory_worktree.is_dir() and not inventory.exists(), 'failed snapshot was published'
-    reused = subprocess.run(['bash', '-c', setup, '_', str(root / 'lib'),
-                             str(repo), str(inventory_worktree)], env=environment,
-                            text=True, capture_output=True, timeout=10)
-    assert reused.returncode == 0 and not inventory.exists(), 'reuse trusted an incomplete branch inventory'
+        assert child['status'] == 'done' and Path(child['repo']).resolve() == worktree
 
 print('all checks passed')

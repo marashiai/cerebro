@@ -141,9 +141,10 @@ configuration is an explicit error. Network or protocol errors stop the watched
 child without destructive cleanup, preserving resumable work; there is no silent
 fallback.
 
-Steering uses native child input APIs. Restart cleanup is restricted to a fresh
-execute task with preauthorized abandonment of its isolated branch, PR and
-worktree. Follow-up tasks use steering or cancellation, which terminates the
+Steering uses native child input APIs. An authorized execute restart retires the
+native conversation while retaining the checkout, changes, branches and PRs.
+The corrected task targets that retained checkout; destructive cleanup is
+separate. Follow-up tasks use steering or cancellation, which terminates the
 monitor and its descendants. Jev does not authorize these actions or change
 requirements.
 
@@ -180,7 +181,7 @@ $CEREBRO_HOME/
   .claude/skills/                  links to the shared skills
   learnings.md, pending-learnings.md
   overlays/                       user-owned prompt additions
-  worktrees/<task-key>/            isolated implementation worktrees
+  worktrees/<session>-<task-key>/  explicitly requested isolated checkouts
   sessions/<id>/
     metadata.json, transcript.jsonl
     spec.md, spec-history.jsonl
@@ -196,8 +197,13 @@ Plans can adapt within the agreed requirements as facts or user input change.
 An ordinary plan is a short list of possible commits, not a separate approval or
 paired technical/readable artifact. `plan` and `audit` remain optional commands.
 Repository instructions are respected; Cerebro does not bootstrap instruction
-files or templates. Follow-up review, fixes and documentation use the
-worktree announced by `execute`, not the user's main checkout.
+files or templates. `execute` defaults to the supplied checkout; `--worktree`
+requests isolation and `--branch` selects or creates a branch without resetting
+existing history. The parent chooses based on task relevance, existing edits and
+concurrent work. Follow-ups use the announced checkout. The child record stores
+its actual cwd and workspace selection/creation metadata, independently of native
+conversation lifetime. Resume verifies checkout identity and refreshes the observed
+branch without switching it. Missing or replaced checkouts fail explicitly.
 
 Only incomplete children auto-resume, within the configured retention period.
 Cleanly completed work gets a fresh child next time. A blocked child ends with a

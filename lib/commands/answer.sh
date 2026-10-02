@@ -50,9 +50,18 @@ cmd_answer() {
   local agent; agent="$(backend_child_agent_name "$role")"
   local child_log; child_log="$(child_log_path "answer-$role")"
   local store_file; store_file="$(child_sessions_file)"
+  local workspace
+  if [[ "$role" == execute ]]; then
+    workspace="$(python3 "$CEREBRO_LIB_DIR/python/task_workspace.py" refresh "$store_file" "$ckey")" || return $?
+    repo="$(jq -r '.path' <<<"$workspace")"
+    label="$(jq -r '.branch' <<<"$workspace")"
+  fi
 
   local child_prompt
   child_prompt="$(printf 'The cerebro orchestrator is answering the question you raised when you paused. Use this answer and CONTINUE the task from where you stopped -- do not restart work you have already completed. If you hit another genuine blocker, pause again the same way (end with a single clear question).\n\n<answer>\n%s\n</answer>\n' "$answer")"
+  if [[ "$role" == execute ]]; then
+    child_prompt+=$'\n\n'"$(printf 'Selected checkout: %s\nSelected branch: %s\nInspect the retained work before continuing; preserve unrelated changes.' "$repo" "$label")"
+  fi
 
   say "cerebro: answering $role child session $prior in $repo"
   log_event "answer_started" "role=$role repo=$repo child=$ckey resume=$prior"
@@ -67,6 +76,9 @@ cmd_answer() {
   child_run 0 "$repo" "$child_prompt" "$agent" "$prior" \
     "$child_log" "$msg_capture" "$id_capture" "$store_file" "$ckey" "$model"
   rc=$?
+  if [[ "$role" == execute ]]; then
+    python3 "$CEREBRO_LIB_DIR/python/task_workspace.py" refresh "$store_file" "$ckey" >/dev/null || return $?
+  fi
   rm -f "$id_capture"
 
   if (( rc != 0 )); then

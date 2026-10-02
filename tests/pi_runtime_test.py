@@ -103,19 +103,22 @@ def action(body, backend):
             'verify': "test \"$(cat native-proof.txt)\" = NATIVE_PATCHED && test -s pi-docs.md && echo PI_VERIFIED_RUNTIME",
             'incomplete': "printf '%s' RETAINED > recovery-proof.txt",
             'restart': "printf '%s' STRAYED > restart-proof.txt",
-            'restart-existing': "git switch feat/unrelated && printf '%s' STRAYED > restart-proof.txt",
-            'restart-remote': "git fetch origin feat/remote-existing:refs/remotes/origin/feat/remote-existing && git switch -c feat/remote-existing origin/feat/remote-existing && printf '%s' STRAYED > restart-proof.txt",
+            'restart-existing': "printf '%s' STRAYED > restart-proof.txt",
+            'restart-remote': "printf '%s' STRAYED > restart-proof.txt",
             'detach': "sleep 2; printf '%s' DETACHED > detached-proof.txt",
-            'cancel': "printf '%s' $$ > cancellation-pid; sleep 60; printf BAD > after-cancel.txt",
+            'cancel': "git switch -c feat/pi-cancel && printf '%s' $$ > cancellation-pid; sleep 60; printf BAD > after-cancel.txt",
             'stall': "printf '%s' $$ > stall-pid; sleep 60; printf BAD > after-stall.txt",
             'timeout': "printf '%s' $$ > timeout-pid; sleep 60; printf BAD > after-timeout.txt",
             'deviation': "printf '%s' BILLING > billing.py",
         }
         if role == 'restart':
-            commands[role] = ("git switch -c feat/pi-restart && " + commands[role] +
+            commands[role] = (commands[role] +
                               " && git add restart-proof.txt && git -c user.name='Native Verification' "
                               "-c user.email=native@localhost commit -qm 'test fixture' && git push origin HEAD")
         return 'bash', {'command': commands[role]}, None
+    if role == 'cancel' and turn == 2:
+        assert 'Selected branch: feat/pi-cancel' in raw
+        return 'bash', {'command': 'test "$(git branch --show-current)" = feat/pi-cancel && printf RECOVERED > after-resume.txt'}, None
     if role == 'mcp' and MCP_EXPOSURE == 'deferred' and turn == 2:
         name = 'mcp__verification__echo_proof'
         assert name in names, 'discovered native Pi MCP tool is missing: ' + str(names)
@@ -129,7 +132,7 @@ def action(body, backend):
         return None, None, 'PI_WATCH_CORRECTED'
     READY.set()
     if readonly:
-        assert ('session:' if role == 'resume' else 'announced isolated worktree') in raw, raw[-1000:]
+        assert ('session:' if role == 'resume' else 'selected checkout') in raw, raw[-1000:]
     if role == 'verify':
         assert 'PI_VERIFIED_RUNTIME' in body['messages'][-1]['content'], body['messages'][-1]
     if role == 'mcp':
@@ -186,7 +189,7 @@ def paired_control(repo, session, name, control, ok=True):
     selected = {**ENV, 'CEREBRO_PAIR_IDLE': '10'}
     branch = {'restart': 'feat/pi-restart', 'restart-existing': 'feat/unrelated',
               'restart-remote': 'feat/remote-existing'}[name]
-    args = ['execute', str(repo), '--pair', '--no-watch', '--branch', branch,
+    args = ['execute', str(repo), '--pair', '--no-watch', '--worktree', '--branch', branch,
             '--prompt', 'PI_CHECK_' + name.upper() + ': exercise the native lifecycle.']
     with (native.ROOT / (name + '.stderr')).open('w') as errors:
         proc = subprocess.Popen([str(native.SOURCE / 'bin/cerebro'), *args], env=selected,
@@ -196,26 +199,25 @@ def paired_control(repo, session, name, control, ok=True):
             fifo, = (session / 'children').glob('*.steer.fifo')
             row = next(row for row in children(session).values()
                        if row['role'] == 'execute' and row['branch'] == branch)
-            with Path(row['id']).open() as stream:
+            native_id = row['id']
+            with Path(native_id).open() as stream:
                 worktree = Path(json.loads(stream.readline())['cwd'])
             before = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', branch], text=True).strip()
             run(control, str(fifo), 'Replace the strayed task with a clean native task.')
             output, _ = proc.communicate(timeout=15)
             assert (proc.returncode == 0) == ok, (name, proc.returncode, output)
             assert not list((session / 'children').glob('*.steer.fifo'))
-            if ok:
-                assert 'RESTART REQUESTED' in output, output
-                assert not worktree.exists(), 'restart retained its worktree: ' + str(worktree)
-                assert not any(row['status'] == 'running' for row in children(session).values())
-                assert subprocess.run(['git', '-C', str(repo), 'show-ref', '--verify',
-                                       'refs/heads/' + branch], capture_output=True).returncode != 0
-                assert not subprocess.check_output(['git', '-C', str(repo), 'ls-remote', '--heads',
-                                                    'origin', branch], text=True).strip()
-                print('PASS native restart removes the strayed worktree, local and remote branch', flush=True)
-            else:
-                assert worktree.is_dir(), 'refused restart removed its worktree: ' + str(worktree)
-                assert subprocess.check_output(['git', '-C', str(repo), 'rev-parse', branch], text=True).strip() == before
-                print('PASS native restart refuses to destroy a pre-existing branch', flush=True)
+            assert 'RESTART REQUESTED' in output, output
+            assert worktree.is_dir(), 'restart removed retained workspace'
+            assert (worktree / 'restart-proof.txt').read_text() == 'STRAYED'
+            assert subprocess.check_output(['git', '-C', str(repo), 'rev-parse', branch], text=True).strip() == before
+            assert not any(row['status'] == 'running' for row in children(session).values())
+            assert not any(row.get('id') == native_id for row in children(session).values())
+            run('answer', native_id, 'Do not resume this retired conversation.', ok=False)
+            if name == 'restart':
+                assert subprocess.check_output(['git', '-C', str(repo), 'ls-remote', '--heads',
+                                                'origin', branch], text=True).strip()
+            print('PASS native restart retains work and retires the native conversation', flush=True)
         finally:
             if proc.poll() is None:
                 os.killpg(proc.pid, signal.SIGTERM)
@@ -405,7 +407,7 @@ def main():
     subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin', str(origin)], check=True)
     subprocess.run(['git', '-C', str(repo), 'push', '-q', 'origin', 'main'], check=True)
     native.call(ENV, 'execute', str(repo), '--prompt', 'NATIVE_WORKER: write the proof file.',
-                '--branch', 'feat/matrix-proof')
+                '--branch', 'feat/matrix-proof', '--worktree')
     worker = child(session, 'execute')
     with Path(worker['id']).open() as stream:
         WORKTREE = Path(json.loads(stream.readline())['cwd'])
@@ -457,12 +459,13 @@ def main():
 
     paired_control(repo, session, 'restart', 'restart')
     subprocess.run(['git', '-C', str(repo), 'branch', 'feat/unrelated', 'main'], check=True)
-    paired_control(repo, session, 'restart-existing', 'restart', ok=False)
+    paired_control(repo, session, 'restart-existing', 'restart')
     subprocess.run(['git', '-C', str(repo), 'push', '-q', 'origin', 'main:refs/heads/feat/remote-existing'], check=True)
-    paired_control(repo, session, 'restart-remote', 'restart', ok=False)
+    subprocess.run(['git', '-C', str(repo), 'fetch', '-q', 'origin'], check=True)
+    paired_control(repo, session, 'restart-remote', 'restart')
 
     scenario('stall')
-    run('execute', repo, '--pair', '--no-watch', '--branch', 'feat/pi-stall',
+    run('execute', repo, '--pair', '--no-watch', '--worktree', '--branch', 'feat/pi-stall',
         '--prompt', 'PI_CHECK_STALL: exercise bounded native stall recovery.',
         env={**ENV, 'CEREBRO_PAIR_STALL': '3', 'CEREBRO_PAIR_STALL_BUSY': '0.5',
              'CEREBRO_PAIR_STALL_RETRIES': '1', 'CEREBRO_PAIR_STALL_BACKOFF': '0'})
@@ -474,7 +477,7 @@ def main():
     print('PASS native stalled tool is bounded and the same session resumes', flush=True)
 
     scenario('timeout')
-    run('execute', repo, '--branch', 'feat/pi-timeout',
+    run('execute', repo, '--worktree', '--branch', 'feat/pi-timeout',
         '--prompt', 'PI_CHECK_TIMEOUT: exercise the native wall-clock timeout.', ok=False,
         env={**ENV, 'CEREBRO_TIMEOUT': '3'})
     marker, = (Path(ENV['CEREBRO_HOME']) / 'worktrees').glob('*/timeout-pid')
@@ -494,7 +497,7 @@ def main():
 
     scenario('cancel')
     output = session / 'cancel.out'
-    result = run('detach', '--output', output, '--', 'execute', repo, '--branch', 'feat/pi-cancel',
+    result = run('detach', '--output', output, '--', 'execute', repo, '--worktree',
                  '--prompt', 'PI_CHECK_CANCEL: exercise cancellation.')
     job_path = next(p for p in (session / 'detached-jobs').glob('*.json') if json.loads(p.read_text()).get('output') == str(output.resolve()))
     job = json.loads(job_path.read_text())
@@ -522,6 +525,14 @@ def main():
         raise AssertionError('native Pi process survived cancellation: ' + str(pi_pid))
     assert not (marker.parent / 'after-cancel.txt').exists()
     print('PASS native detached cancellation reaps Pi and its shell tool; wait reports 130', flush=True)
+    cancelled = next(row for row in children(session).values()
+                     if Path(row['repo']).resolve() == marker.parent.resolve())
+    assert cancelled['workspace']['branch'] == 'HEAD', 'cancellation should leave the initial branch observation'
+    run('answer', cancelled['id'], 'Continue in the retained checkout and branch.')
+    resumed = next(row for row in children(session).values() if row.get('id') == cancelled['id'])
+    assert resumed['workspace']['branch'] == 'feat/pi-cancel'
+    assert (marker.parent / 'after-resume.txt').read_text() == 'RECOVERED'
+    print('PASS native cancellation resumes the exact child on its retained branch', flush=True)
 
     # The initial parent uses the real TUI, then resumes its recorded Pi file.
     scenario('')

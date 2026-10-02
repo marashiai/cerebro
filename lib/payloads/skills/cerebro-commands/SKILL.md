@@ -36,7 +36,7 @@ and proceed within the user's authority. `supervise` owns unattended workflow.
 
 ```text
 execute <repo> (<task-file> | --prompt <task>)
-        [--base <branch>] [--branch <new-branch>] [--pair] [--watch|--no-watch] [--model <id>]
+        [--worktree] [--base <ref>] [--branch <name>] [--pair] [--watch|--no-watch] [--model <id>]
 apply-review <worktree> (<findings-file> [--notes <context>] | --prompt <task>)
              [--pair] [--watch|--no-watch] [--model <id>]
 doc-write <worktree> (<task-file> [--notes <context>] | --prompt <task>)
@@ -48,10 +48,15 @@ audit <repo> <plan-path> [--context <context>] [--out <name>] [--model <id>]
 answer <child-session-id> <answer> [--model <id>]
 ```
 
-`execute` creates an isolated task worktree and announces its path. Subsequent
-commits, corrections, documentation and verification use that worktree.
-`--base` pins the source/PR base; `--branch` pins the fresh branch. They must
-differ. Include the authorized delivery actions in every task packet.
+`execute` defaults to the supplied checkout and current branch. `--branch` reuses
+an existing local or origin-tracking branch, or creates it when absent. `--base`
+is an exact locally available Git ref/commit for new branches or detached worktrees;
+it never resets an existing branch. Without it, new work starts at current HEAD.
+`--worktree` requests an isolated checkout; without `--branch` it starts detached.
+If a branch is checked out elsewhere, use that checkout when available instead of
+forcing another checkout. Capture the announced path and starting commit; use the
+same checkout for subsequent development, reviews and verification. Include the
+authorized delivery actions in every task packet.
 
 Children return terminal handoffs. A question is incomplete work: answer from
 the contract when possible or relay the material decision, then use `answer`
@@ -94,7 +99,8 @@ the existing parent with original evidence and confidence. Load `cerebro-pair`.
 The parent assesses the concern, steers within its authority, and calls
 `wait <job-id> --after <sequence>`. Classifications never grant permissions.
 Use `--pair` for manual steering. Restart of execute work additionally requires
-authority to abandon and remove the task's worktree/branch/PR; use steer or
+authority to replace the native conversation; it preserves files, branch and PR.
+Run the corrected task in the retained checkout without `--worktree`; use steer or
 cancel for follow-up children.
 
 ## Completion and recovery
