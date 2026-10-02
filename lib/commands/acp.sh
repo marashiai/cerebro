@@ -12,8 +12,8 @@
 # `cerebro acp` is the ACP (Agent Client Protocol) front-end for editors like
 # Zed. It is a THIN PROXY (lib/python/acp_server.py, on the official
 # agent-client-protocol Python SDK): per ACP session it mints a cerebro session,
-# spawns a per-session upstream ACP child (`opencode acp` or
-# claude-agent-acp), injects CEREBRO_SESSION_ID, pins the restricted
+# spawns a per-session upstream claude-agent-acp child, injects
+# CEREBRO_SESSION_ID, pins the restricted
 # cerebro-orchestrator agent, and relays JSON-RPC unchanged with sessionId
 # remap. The upstream child owns the entire ACP capability surface (images,
 # @-mentions, thinking, elicitation, terminals, MCP, permissions, edit review,
@@ -68,9 +68,13 @@ acp_require_python_deps() {
 # then exec the python server. The server reads CEREBRO_ACP_CHILD_SPEC and
 # shells out to `cerebro acp mint` / `cerebro acp set-foreign` per session.
 cmd_acp() {
+  case "$(current_backend)" in
+    claude) ;;
+    pi|codex) backend_acp_child_spec; return $? ;;
+    *) die "unsupported ACP backend: $(current_backend)" ;;
+  esac
   case "${1:-}" in
     restart)     shift; cmd_acp_restart     "$@" ; return $? ;;
-    opencode-child) shift; backend_opencode_launch_acp "$@" ; return $? ;;
     # internal: called by lib/python/acp_server.py over `cerebro acp <name>`
     mint)        shift; cmd_acp_mint        "$@" ; return $? ;;
     set-foreign) shift; cmd_acp_set_foreign "$@" ; return $? ;;
@@ -90,27 +94,18 @@ cmd_acp() {
   acp_require_python_deps
   materialise_home
   export CEREBRO_ACP_CHILD_SPEC="$(backend_acp_child_spec)"
-  # config.sh sets the CEREBRO_* vars as plain shell variables (only
-  # OPENCODE_CONFIG_DIR is exported there). cmd_launch exports CEREBRO_HOME
-  # before spawning the orchestrator; cmd_acp must do the same before exec'ing
-  # the python server, which reads CEREBRO_HOME directly. The server also
-  # copies its own env into every upstream child (and the orchestrator's
-  # `cerebro <subcmd>` children inherit that env), so export the backend /
-  # model / endpoint vars too -- otherwise a claude-backend ACP session would
-  # spawn `cerebro execute` children that default back to opencode and fail to
-  # bind the session, and a user-overridden CEREBRO_HOME would be lost.
+  # The proxy and its native parents must preserve separate child model defaults.
   export CEREBRO_HOME \
          CEREBRO_BACKEND \
-         CEREBRO_MODEL CEREBRO_REVIEW_MODEL \
+         CEREBRO_MODEL CEREBRO_SUPERVISOR_MODEL CEREBRO_REVIEW_MODEL \
          CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN
   exec "$CEREBRO_ACP_PYTHON" "$CEREBRO_LIB_DIR/python/acp_server.py"
 }
 
 # cmd_acp_mint (internal) -- mint a cerebro session for one ACP session/new and
 # prepare its Cerebro-owned ACP project dir, then print only the sid. Native
-# launch happens after the proxy injects the session binding. OpenCode uses
-# built-in mode and skills; Claude discovers its restricted wrapper in this
-# project. The user's repo is passed as an additional directory.
+# launch happens after the proxy injects the session binding. Claude discovers
+# its restricted wrapper here. The user's repo is an additional directory.
 cmd_acp_mint() {
   local sid sess_dir ts proj
   sid="$(mint_uuid)"
@@ -124,15 +119,13 @@ cmd_acp_mint() {
   write_metadata_new "$sess_dir" "$sid" "$ts"
   CEREBRO_SESSION_ID="$sid" CEREBRO_SESSION_DIR="$sess_dir" \
     backend_supervisor_config supervisor > /dev/null
-  if backend_is claude; then
-    cp "$sess_dir/tools-supervisor.json" "$proj/.mcp.json"
-    write_if_changed "$proj/.claude/agents/cerebro-orchestrator.md" "$(claude_orchestrator_agent_file)"
-  fi
+  cp "$sess_dir/tools-supervisor.json" "$proj/.mcp.json"
+  write_if_changed "$proj/.claude/agents/cerebro-orchestrator.md" "$(claude_orchestrator_agent_file)"
   printf '%s\n' "$sid"
 }
 
 # cmd_acp_set_foreign <sid> <foreign-id> (internal) -- record the upstream
-# child's session id (opencode's own session id / claude's session id) into the
+# child's native session id into the
 # cerebro session metadata, so ACP session/load + session/resume can reopen the
 # same upstream conversation. Called by the python server after new_session /
 # load_session / resume_session.
@@ -149,7 +142,7 @@ cmd_acp_set_foreign() {
 # is a long-lived process spawned by the editor; SIGTERM closes the JSON-RPC
 # pipe and the editor (Zed, ...) respawns `cerebro acp` automatically. After
 # the proxy exits, also reap any orphan upstream children (the per-session
-# `opencode acp` / `claude-agent-acp` processes the old proxy spawned); they
+# `claude-agent-acp` processes the old proxy spawned); they
 # were attached to the dead proxy, so leaving them alive means the new
 # proxy's `session/load` for those session ids will conflict with the orphan
 # and the editor sees "ACP connection closed" on its next prompt. The new
@@ -280,13 +273,13 @@ acp_reap_orphans() {
   done
   [[ "$known_sids" != " " ]] || return 0
   # Single ps pass: PPID==1 processes whose command line looks like an
-  # upstream ACP child (opencode acp, claude-agent-acp, or the npx
+  # upstream ACP child (claude-agent-acp or the npx
   # shim that wraps claude-agent-acp). We pre-filter on a command
   # substring before paying the `ps eww` cost for the env read -- on a
   # busy system there can be ~600 PPID==1 processes (every macOS system
   # service is reparented to launchd), and we only care about the few
   # that are ours. The cmdline filter is generous on purpose: any
-  # process that doesn't even mention `acp` / `opencode` / `claude`
+  # process that doesn't even mention `acp` / `claude`
   # couldn't be a child of the cerebro acp proxy.
   local -a to_reap
   local pid ppid cmdline env_sid
@@ -296,7 +289,7 @@ acp_reap_orphans() {
     cmdline="$line"
     [[ "$ppid" == "1" ]] || continue
     case "$cmdline" in
-      *acp*|*opencode*|*claude*|*npx*) ;;  # could be one of ours
+      *acp*|*claude*|*npx*) ;;  # could be one of ours
       *) continue ;;
     esac
     env_sid="$(acp_pid_env_get "$pid" "CEREBRO_SESSION_ID")"

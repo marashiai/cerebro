@@ -26,11 +26,12 @@ def main():
         shutil.copytree(fixture, home)
 
         # Four real-schema `kind:user` prompts, one completed review, one
-        # explicit correction, and three failures among four completed child
-        # logs (including Claude/OpenCode errors and a pair-pump stall):
+        # explicit correction, and three failures among four child outcomes
+        # (including Claude/Pi errors and a pair-pump stall):
         # .4*.25 + .3*.75 + .3*.75 = .55. The incomplete assistant log is not
         # guessed to be either success or failure.
-        assert compute_utility(home) == 0.55
+        utility = compute_utility(home)
+        assert utility == 0.55, utility
         assert compute_utility(home, "2026-01-03T00:00:00Z") == 0.5
 
         history = os.path.join(home, "improvement-history.json")

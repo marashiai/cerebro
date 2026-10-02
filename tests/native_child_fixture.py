@@ -2,7 +2,6 @@
 
 import json
 import os
-from pathlib import Path
 import sys
 import threading
 import time
@@ -58,10 +57,6 @@ if backend == 'codex':
         print('[{"name":"untrusted.server","enabled":true}]')
         raise SystemExit
     if 'app-server' not in sys.argv:
-        if mode == 'observer-parent':
-            directory = Path(os.environ['CEREBRO_SESSION_DIR'])
-            record({'parent_metadata': json.loads((directory / 'metadata.json').read_text())})
-            raise SystemExit
         raise SystemExit('expected native app-server')
     for line in sys.stdin:
         event = json.loads(line)

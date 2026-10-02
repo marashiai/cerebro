@@ -49,19 +49,6 @@ spec_set() {
   local sf hf ts
   sf="$(spec_file)"; hf="$(spec_history_file)"
   ts="$(ts_iso)"
-  # Defense-in-depth for rule 9: when REPLACING an existing non-empty spec,
-  # surface the current spec head plus a reminder that switching to a
-  # DIFFERENT task mid-flight is not allowed. Advisory only -- it never
-  # blocks and never alters the record/archive flow below. First-ever set
-  # (empty/absent spec) and same-task refinement see only this note.
-  if [[ -s "$sf" ]]; then
-    {
-      printf 'cerebro: WARNING -- replacing the current session spec. If this is a DIFFERENT task, do not switch unless the current task is complete or the user asked; refining the same task is fine.\n'
-      printf 'cerebro: current spec (head):\n'
-      head -c 200 "$sf" | sed 's/^/    /'
-      printf '\n'
-    } >&2
-  fi
   jq -nc --arg ts "$ts" --arg text "$text" '{ts:$ts, text:$text}' \
     >> "$hf" || die "spec set: cannot write history ($hf)"
   printf '%s\n' "$text" > "$sf" || die "spec set: cannot write spec ($sf)"

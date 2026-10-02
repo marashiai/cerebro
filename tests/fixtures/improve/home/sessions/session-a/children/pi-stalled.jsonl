@@ -1,0 +1,3 @@
+{"type": "session.started", "session_id": "/fixture/pi-stalled.jsonl"}
+{"type": "agent_start"}
+{"type": "message_end", "message": {"role": "user", "content": "work that stalled before a native settlement"}}

@@ -15,7 +15,6 @@ cmd_verify() {
       *) die "verify: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" verify
   [[ -n "$repo" ]] \
     || die "usage: cerebro verify <repo-abs-path> (--plan <path> | --prompt \"<text>\") [--context \"<text>\"] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "verify: repo path must be absolute: $repo"
@@ -66,22 +65,18 @@ cmd_verify() {
   say "cerebro: verifying $repo (${verify_branch:-unknown branch})"
   log_event "verify_started" "repo=$repo branch=${verify_branch:-none} resume=${prior:-none}"
 
-  # Compose the verify prompt: a preamble framing the task, then the plan
-  # block (or --prompt text), then the orchestrator's --context string.
   local verify_prompt
-  verify_prompt="You are verifying a shipped change in the git worktree at $repo on branch ${verify_branch:-unknown}. Perform a HIGH-LEVEL REQUIREMENTS / ACCEPTANCE check: confirm from the big picture that the delivered change, USED FOR REAL, satisfies what the spec/plan asked for end-to-end. Build/run the REAL deployment artifact the change ships (e.g. docker compose up -d --build from the repo root, against the real data dir -- NOT an isolated/temp-HOME hand-launched dev server), drive the actual user flow(s) the plan delivers with a real browser (Playwright snapshot + click/fill/press/select on visible elements; browser_evaluate may inspect but is NOT interaction proof), and judge whether the REQUIREMENTS are met -- not whether every line is perfect. Do NOT do a nitpicky line review (style, naming, defensive code, contrived edge cases) -- that is a different agent's job. If the core capability works against real usage and the plan's observable behaviours are present, return PASS."
+  verify_prompt="$(cat "$(cerebro_payloads_dir)/prompts/verify.md")"
 
   if [[ -n "$plan_block" ]]; then
-    verify_prompt+=$'\n\nThe plan you are verifying follows between the markers.\n<plan>\n'"$plan_block"'\n</plan>'
+    verify_prompt+=$'\n\n<requirements>\n'"$plan_block"$'\n</requirements>'
   else
     verify_prompt+=$'\n\nThe ad-hoc verification request: '"$prompt_text"
   fi
 
   if [[ -n "$context" ]]; then
-    verify_prompt+=$'\n\n# Context from the orchestrator\n'"$context"
+    verify_prompt+=$'\n\n<parent-context>\n'"$context"$'\n</parent-context>'
   fi
-
-  verify_prompt+=$'\n\nWrite your verification report (what you did, what you observed, and your judgement), then end with a SINGLE final line that is exactly one of: `VERIFY: PASS` (requirements met, used for real), `VERIFY: FAIL` (list which requirements are not met, with what you observed vs what was expected), or `VERIFY: BLOCKED` (genuine blocker -- no browser, credentials you lack, an env you cannot reach; end with a single clear question the orchestrator can relay to the user). Do not soften a real failure into PASS, and do not manufacture a failure out of a nitpick. Converge.'
 
   # Verification retains runtime/browser tools, unlike read-only review.
   local agent; agent="$(backend_child_agent_name verify)"

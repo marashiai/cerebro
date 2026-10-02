@@ -45,10 +45,10 @@ def check(cond: bool, msg: str) -> None:
 class McpClient:
     """A minimal newline-delimited JSON-RPC 2.0 client over stdio."""
 
-    def __init__(self, cmd: list[str]):
+    def __init__(self, cmd: list[str], env: dict[str, str] | None = None):
         self.proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE, bufsize=0,
+            stderr=subprocess.PIPE, bufsize=0, env=env,
         )
         self._next_id = 1
 
@@ -115,7 +115,7 @@ class McpClient:
         result = self.request("tools/call", {"name": name, "arguments": arguments})
         if result.get("isError"):
             raise RuntimeError(f"tool {name} returned isError: {result}")
-        # FastMCP wraps the tool's returned string in a text content block.
+        # MCPServer wraps the tool's returned string in a text content block.
         content = result.get("content", [])
         text = ""
         for block in content:
@@ -214,7 +214,7 @@ def main() -> None:
         # requirement. Spawn N sessions each sleeping S seconds, then fire N
         # cerebro_wait calls CONCURRENTLY and assert the wall time is ~S (parallel),
         # not ~N*S (which is what would happen if tools ran serialized on the
-        # event loop -- the FastMCP-sync-tool trap the async+threadpool design
+        # event loop -- the blocking-sync-tool trap the async+threadpool design
         # exists to avoid). Margin is generous so this is not flaky on slow CI. ---
         import time as _time
         N, S = 4, 2

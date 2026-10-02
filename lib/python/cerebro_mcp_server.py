@@ -14,10 +14,7 @@
 # The ANSI -> normalized-text parser (lib/python/cerebro_mcp_ansi.py) is pure stdlib
 # and unit-tested separately.
 #
-# Concurrency: FastMCP calls a SYNC tool directly on the event-loop thread
-# (mcp/.../func_metadata.py: `return fn(...)`), so a blocking sync tool would
-# stall the loop and serialize every call. Every tool here is therefore `async
-# def` and offloads its blocking work via `anyio.to_thread.run_sync` -- the loop
+# Every tool offloads blocking PTY work via `anyio.to_thread.run_sync` -- the loop
 # stays free and concurrent tool calls run in parallel threadpool workers. Each
 # session owns a dedicated daemon reader thread + a threading.Condition, so many
 # agents can drive many sessions at once (independent readers + locks -> true
@@ -43,11 +40,11 @@ import time
 import uuid
 from typing import Any, Optional
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from cerebro_mcp_ansi import AnsiStreamParser
 
-mcp = FastMCP("cerebro-mcp")
+mcp = MCPServer("cerebro-mcp")
 
 
 def _log(msg: str) -> None:
@@ -501,7 +498,7 @@ def _list_impl() -> dict[str, Any]:
 
 
 # ---- MCP tools (async; offload blocking work to a threadpool worker) --------
-# FastMCP keys JSON-RPC arguments off the Python parameter names, so the wire
+# MCPServer keys JSON-RPC arguments off the Python parameter names, so the wire
 # keys are exactly the param names below (camelCase, the documented API). The
 # blocking _impl_* helpers take snake_case and are called positionally.
 

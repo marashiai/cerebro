@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parent.parent
 libraries = root / 'lib' / 'python'
 sys.path.insert(0, str(libraries))
 from codex_launch import guarded_options
-from opencode_config import config as opencode_config
+from pi_launch import run_argv
 
 
 with tempfile.TemporaryDirectory(prefix='cerebro-mcp-environment-tests-') as temporary:
@@ -20,9 +20,10 @@ with tempfile.TemporaryDirectory(prefix='cerebro-mcp-environment-tests-') as tem
     session = home / 'sessions' / 'configured-session'
     (session / 'children').mkdir(parents=True)
     (session / 'transcript.jsonl').touch()
+    (session / 'metadata.json').write_text(json.dumps({'backend': 'codex', 'role': 'supervisor'}))
     guards = home / 'guards'
     guards.mkdir()
-    for backend in ('opencode', 'claude', 'codex'):
+    for backend in ('pi', 'claude', 'codex'):
         guard = guards / backend
         guard.write_text('#!/usr/bin/env bash\nprintf "unexpected backend fixture\\n" >&2\nexit 97\n')
         guard.chmod(0o755)
@@ -35,40 +36,53 @@ with tempfile.TemporaryDirectory(prefix='cerebro-mcp-environment-tests-') as tem
         'CEREBRO_HOME': str(home), 'CEREBRO_SESSION_ID': session.name,
         'CEREBRO_SESSION_DIR': str(session), 'CEREBRO_ROLE': 'supervisor',
         'CEREBRO_BACKEND': 'codex', 'CEREBRO_CODEX_CMD': str(wrapper),
-        'CEREBRO_OPENCODE_CMD': str(guards / 'opencode'), 'CEREBRO_CLAUDE_CMD': str(guards / 'claude'),
+        'CEREBRO_PI_CMD': str(guards / 'pi'), 'CEREBRO_CLAUDE_CMD': str(guards / 'claude'),
         'CEREBRO_MODEL': 'configured/native-model', 'CEREBRO_REVIEW_MODEL': 'configured/review-model',
+        'CEREBRO_SUPERVISOR_MODEL': 'configured/supervisor-model',
+        'CEREBRO_JEV_ENABLED': '0', 'CEREBRO_JEV_API_KEY': '',
         'CEREBRO_TIMEOUT': '10', 'CEREBRO_CHILD_IDLE_TIMEOUT': '0',
         'CEREBRO_PAIR_IDLE': '0.15', 'CEREBRO_PAIR_STALL': '5', 'CEREBRO_PAIR_STALL_BUSY': '5',
         'CEREBRO_PAIR_STALL_RETRIES': '1', 'CEREBRO_PAIR_STALL_BACKOFF': '0',
         'CEREBRO_PLAYWRIGHT_ISOLATED': '1',
         'CEREBRO_CLAUDE_BASE_URL': 'http://127.0.0.1:9/fixture', 'CEREBRO_CLAUDE_AUTH_TOKEN': 'fixture-token',
         'CLAUDE_CONFIG_DIR': str(home / 'claude-config'),
-        'OPENCODE_CONFIG_DIR': str(home / 'opencode-config'), 'XDG_CONFIG_HOME': str(home / 'xdg-config'),
+        'PI_CODING_AGENT_DIR': str(home / 'pi-config'), 'XDG_CONFIG_HOME': str(home / 'xdg-config'),
     }
     if 'CODEX_HOME' in os.environ:
         settings['CODEX_HOME'] = os.environ['CODEX_HOME']
     host = {'HOME': os.environ['HOME'], 'PATH': str(guards) + ':' + os.environ['PATH']}
-    shell = 'CEREBRO_LIB_DIR="$1"; . "$1/config.sh"; . "$1/backend.sh"; backend_supervisor_config supervisor'
+    shell = 'CEREBRO_LIB_DIR="$1"; . "$1/config.sh"; . "$1/backend.sh"; backend_supervisor_config "$2"'
     previous = dict(os.environ)
     try:
-        for backend in ('claude', 'opencode', 'codex'):
+        for backend in ('claude', 'pi', 'codex'):
             selected = {**settings, 'CEREBRO_BACKEND': backend}
             environment = {**host, **selected, 'OPENAI_API_KEY': 'fixture-provider-token'}
-            prepared = subprocess.run(['bash', '-c', shell, '_', str(root / 'lib')], env=environment,
+            prepared = subprocess.run(['bash', '-c', shell, '_', str(root / 'lib'), 'supervisor'], env=environment,
                                       text=True, capture_output=True, timeout=5)
             assert prepared.returncode == 0, prepared.stderr
             config_path = Path(prepared.stdout.strip())
             assert config_path.stat().st_mode & 0o777 == 0o600, 'MCP configuration must remain private'
             server = json.loads(config_path.read_text())['mcpServers']['cerebro']
+            reviewed = subprocess.run(['bash', '-c', shell, '_', str(root / 'lib'), 'reviewer'], env=environment,
+                                     text=True, capture_output=True, timeout=5)
+            assert reviewed.returncode == 0, reviewed.stderr
+            reviewer = json.loads(Path(reviewed.stdout.strip()).read_text())['mcpServers']['cerebro']
+            for owned in (server, reviewer):
+                if backend == 'claude':
+                    assert owned.get('alwaysLoad') is True, 'Claude must expose its guarded command without native tool search'
+                else:
+                    assert 'alwaysLoad' not in owned, 'Claude discovery policy escaped its backend'
             os.environ.clear()
             os.environ.update(environment)
             if backend == 'claude':
                 for key, value in selected.items():
                     assert server['env'].get(key) == value, 'Claude MCP lost ' + key
-            elif backend == 'opencode':
-                opencode = opencode_config(home, 'supervisor')['mcp']['servers']['cerebro']
+            elif backend == 'pi':
+                argv = run_argv(str(guards / 'pi'), 'supervisor', str(home), str(session), '', '', 'managed context')
+                emitted = Path(argv[argv.index('--cerebro-mcp-config') + 1])
+                native = json.loads(emitted.read_text())['mcpServers']['cerebro']
                 for key, value in selected.items():
-                    assert opencode['environment'].get(key) == value, 'OpenCode MCP lost ' + key
+                    assert native['env'].get(key) == value, 'Pi MCP lost ' + key
             else:
                 options = guarded_options(str(wrapper), 'supervisor', str(home), str(session))
                 codex = next(option for option in options if option.startswith('mcp_servers='))

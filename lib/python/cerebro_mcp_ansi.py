@@ -16,7 +16,7 @@
 # expands to the next 8-col stop. Carries an in-escape state so a sequence split
 # across two reads is handled, and an incremental UTF-8 decoder so a multi-byte
 # char split across reads is handled. This is a minimal terminal model for
-# chat-style TUIs (cerebro's opencode/claude chat); it does not emulate
+# chat-style TUIs (cerebro's native chat); it does not emulate
 # alternate-screen cursor addressing.
 from __future__ import annotations
 

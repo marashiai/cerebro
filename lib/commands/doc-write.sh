@@ -9,6 +9,8 @@ cmd_doc_write() {
   local prompt_text=""
   local notes=""
   local pair=0
+  local CEREBRO_JEV_ENABLED="$CEREBRO_JEV_ENABLED" CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE"
+  local CEREBRO_WATCH_PLAN=""
   local model=""
   if [[ $# -gt 0 && "${1:-}" != --* ]]; then
     plan="$1"; shift
@@ -19,10 +21,11 @@ cmd_doc_write() {
       --notes)  shift; notes="${1:-}";       shift || true ;;
       --model)  shift; model="${1:-}";       shift || true ;;
       --pair)   pair=1; shift ;;
+      --watch)  CEREBRO_JEV_ENABLED=1; shift ;;
+      --no-watch) CEREBRO_JEV_ENABLED=0; shift ;;
       *) die "doc-write: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" doc-write
   [[ -n "$repo" ]] \
     || die "usage: cerebro doc-write <repo-abs-path> (<plan-path> [--notes \"...\"] | --prompt \"<text>\") [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "doc-write: repo path must be absolute: $repo"
@@ -49,6 +52,9 @@ cmd_doc_write() {
     source_desc="prompt=inline"
   fi
 
+  CEREBRO_WATCH_PLAN="$plan"
+  watch_prepare || return $?
+
   local child_log; child_log="$(child_log_path doc-write)"
 
   local provider; provider="$(backend_child_provider doc-write)"
@@ -74,7 +80,7 @@ cmd_doc_write() {
   (( pair )) && pair_begin doc-write "$repo" "$dw_branch" "$child_log" "$prior"
 
   local child_prompt
-  child_prompt="$(printf 'Update the docs to reflect the work described in the plan and the recent commits on this branch. Commit and push on the current branch.\n\n<orchestrator-notes>\n%s\n</orchestrator-notes>\n\n<plan>\n%s\n</plan>\n' "$notes" "$plan_body")"
+  child_prompt="$(printf 'Update documentation for the delegated task and actual changes on this branch within the supplied delivery permissions.\n\n<orchestrator-notes>\n%s\n</orchestrator-notes>\n\n<plan>\n%s\n</plan>\n' "$notes" "$plan_body")"
 
   local rc id_capture msg_capture; id_capture="$(mktemp)"; msg_capture="$(mktemp)"
   local stall_n=0

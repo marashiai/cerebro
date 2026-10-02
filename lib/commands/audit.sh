@@ -15,7 +15,6 @@ cmd_audit() {
       *) die "audit: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" audit
   [[ -n "$repo" && -n "$plan_path" ]] \
     || die "usage: cerebro audit <repo-abs-path> <plan-path> [--context \"<crucial context>\"] [--out <name>] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "audit: repo path must be absolute: $repo"

@@ -1,10 +1,26 @@
 # Using cerebro
 
 Talk to Cerebro's supervisor in plain English; it delegates the work through
-guarded commands. Choose a backend with `CEREBRO_BACKEND=opencode|codex|claude`.
-OpenCode requires V2, minimum 2.0.19; V1 is not supported. Each session and every
-child stay on the selected backend, including review and verification. For what
-happens under the hood, see [ARCHITECTURE.md](ARCHITECTURE.md).
+guarded commands. Choose a backend with `CEREBRO_BACKEND=pi|codex|claude`.
+Pi is the library default; existing backend/model configuration takes precedence.
+Each session and every child stay on the selected backend, including review and
+verification. For what happens under the hood, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Pi requires version **0.99.2 or later** and **Node ≥ 22.19.0**. Install the
+official [Pi CLI](https://pi.dev/) with:
+
+```bash
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.99.2
+```
+
+Cerebro supplies a small managed extension using Pi's native MCP support and the
+shared skills. No third-party MCP, subagent or permission extension is needed.
+Authenticate through Pi's native provider configuration before delegating work.
+Native provider, authentication and UI settings remain in use.
+Writable Pi children keep native tool defaults and configured MCP servers through
+Pi's bundled MCP, CodeMode and tool-search extensions. Supervisor and reviewer
+sessions load only Cerebro's
+guarded command server.
 
 ## Sessions
 
@@ -12,90 +28,93 @@ happens under the hood, see [ARCHITECTURE.md](ARCHITECTURE.md).
 cerebro                       # mint a new session, drop into the chat
 cerebro --resume <id>         # resume a specific session
 cerebro --resume              # resume the most recently touched session
-cerebro --observe [<id>]      # watch-and-steer-only session for another
-                              #   session's live paired children
 cerebro list                  # list sessions, newest first
 cerebro detach --output <path> -- <child-command> [...]
                               # launch a child outside harness task cleanup
 cerebro jobs                  # list persistent detached child jobs
-cerebro wait <job-id>         # wait for a detached job's completion
+cerebro wait <job-id> [--after <notice-sequence>]
+                              # wait for completion or a new scope notice
 cerebro cancel <job-id>       # stop a detached job and its descendants
 ```
 
-`cerebro --observe` opens a separate chat for watching another session's live
-paired children. It waits for live activity, then reads substantial batches
-through `observe` and compares them with the approved spec and plan. Its guarded
-commands allow observation and steering, never repository edits or new
-requirements. Pass a target session ID, or omit it to select the most recently
-active other session with paired children. Ctrl-C cancels the initial wait.
+## Develop in small commits
 
-Authorize autosteering if you want the observer to correct drift unattended.
-Restart needs explicit or prior permission to abandon the task and remove its
-isolated branch, PR and worktree. Observer messages remain marked `[observer]`;
-they cannot change the spec. A cheap classifier using jev and typesafeai is a
-separate future change.
+Describe the outcome and constraints. The supervisor keeps a short plan of
+possible commits, delegates development into isolated worktrees and adjusts the
+plan as facts or your input change within the agreed requirements. You do not
+need to approve each plan revision or read a second companion plan.
 
-## Ship a feature (the core loop)
+Commit, push, PR and merge authority comes from your instructions and the
+repository's rules. If commits are authorized, each is a coherent, workable
+increment with appropriate engineering verification. If they are not, the worker
+leaves the requested changes for inspection. Existing repository instructions
+are read and respected; Cerebro does not create or modify `AGENTS.md`/`CLAUDE.md`
+as a bootstrap step.
 
-Describe the change and the repo. The orchestrator:
+After each authorized commit, a fresh read-only reviewer follows
+`hashimoto-review` and explains that commit's behavior, architecture, choices,
+risks and failure paths. Pin the range to the preceding HEAD:
 
-1. Records what you asked for as the **session spec** — the
-   requirements of record (see [Guardrails](#guardrails-and-autonomy)).
-2. Drafts a plan into the session's `plans/` dir. Alongside the
-   detailed technical plan it also writes a plain-English **companion**
-   (`<name>-readable.md`) — the same plan with the dense code references
-   stripped — and the path it gives you is the companion's; the
-   companion links back to the technical plan, which stays the source of
-   truth that gets executed.
-3. Waits for your explicit **"go"**. For high-blast-radius changes (many
-   files, shared modules, public APIs, schemas, auth paths), it then
-   **audits** the technical plan once against the actual code before execution
-   and folds in valid findings. User corrections apply directly.
-4. Executes the plan in a sub-agent running in an **isolated git
-   worktree** of the repo (under `$CEREBRO_HOME/worktrees/`), never your
-   live checkout: it fetches the base branch, creates a feature branch,
-   implements, commits, pushes, and opens a PR via `gh` — all inside the
-   worktree. On success it announces the worktree path, which the
-   orchestrator then uses as the repo argument for that task's review /
-   apply-review / doc-write. Worktrees persist between runs; stale ones
-   are reclaimed with `cerebro worktrees cleanup`.
-5. Runs independent read-only review against the diff, summarises the findings,
-   applies the in-scope important ones, and loops review →
-   apply-review until the in-scope findings are resolved. Re-reviews inspect
-   changes since the last review so the loop stays cheap. Out-of-scope or gold-plating findings are named to you, not
-   silently applied.
-6. **Verifies the change end to end by actually using the running
-   app** — Playwright-driven where possible, or manual testing with
-   you when it can't be automated. Static review and unit tests never
-   count as "done" on their own.
-7. Optionally updates docs on the same branch (`doc-write`).
+```bash
+cerebro review /absolute/task-worktree --base <previous-head> --explain
+```
 
-First time it touches a repo with no `AGENTS.md`/`CLAUDE.md`, it adds
-them from the user-editable templates at `~/.cerebro/templates/` as a
-separate first commit (defaults: Conventional Commits, ≤ 80-char
-subjects, `feat/`-style branches, no commits and no DB/infra changes
-without an explicit ask). It never overwrites existing files.
+The report includes findings and a guided explanation. Human review is offered;
+a lack of acceptance does not pause the next authorized step. Significant
+findings are corrected within scope, followed by affected verification and a
+fresh review of the next commit. A real product decision or missing authority
+still needs resolution.
 
-## Ship a large change (stacked PRs)
+Use the worktree announced by `execute` for review, corrections, verification and
+documentation. The user's main checkout remains separate. The `engineering`
+skill guides verification through the changed runtime boundary; a static review
+cannot prove runtime behavior. Report any verification gap accurately.
 
-Give it a spec too big for one coherent PR and it decomposes the work
-into an **ordered suite of plans — one PR each**, stacked so each PR
-branches off the previous one. Every step must satisfy the
-**workable-state invariant**: each PR is independently shippable and
-leaves the app building, green, and fully working — merging the stack
-one PR at a time never leaves the app broken at any boundary. If the
-spec can't be split that way, it says so and proposes a different cut
-instead of emitting breaking plans.
+### Review notes in Hunk
 
-You approve the decomposition once; it then executes the suite
-autonomously. Each step is gated by a **checkpoint**: an independent review
-fed the plan's acceptance criteria (verdict line `ACCEPTANCE CRITERIA:
-MET` / `NOT MET`), zero important in-scope findings, *and* an
-end-to-end check of that step's user flow against the running app. On
-a failing checkpoint it makes up to three bounded corrective attempts
-(scoped fixes, or replanning the failing step and its downstream
-plans), then escalates to you. At the end you get the full PR stack,
-ready to review and merge in order.
+When Hunk is available, the reviewer offers the exact command for you to run in
+another terminal from the task worktree, for example:
+
+```bash
+hunk diff <previous-head>...<new-head>
+```
+
+You own that live Hunk window. Cerebro uses a guarded bridge to inspect the
+session, navigate the diff and add explanatory notes without changing source
+files. It first reads Hunk's bundled review instructions:
+
+```bash
+cerebro hunk skill path hunk-review
+cerebro hunk session list --json
+```
+
+The bridge permits safe session inspection/navigation and additive comments.
+Interactive `diff`/`show`, reload, deletion and clearing are unavailable through
+it. Existing notes are preserved. Without a live Hunk window, the review still
+provides the prepared notes inline with relevant excerpts and exact file/line
+anchors, and offers the command to open the review. Work does not wait for that
+window or human acceptance merely to continue.
+
+### Optional plans and audits
+
+`plan` still records a plan you wrote; `plans` lists or removes recorded plans.
+`audit` still checks a plan against the code when useful or requested. These
+commands do not introduce a mandatory approval, audit round or paired
+technical/readable-plan workflow.
+
+## Use supervise for unattended work
+
+Explicitly invoke the upstream `supervise` skill when you want an unattended
+handoff. State the requested workflow phase, outcome, scope and delivery
+permissions. For example: "Use supervise to implement and verify this change;
+you may commit and open PRs, but leave merging to me."
+
+The skill applies within that authorized phase, delegates the work and tracks
+real dependencies. It does not require routine confirmation to continue already
+authorized work. It also does not add earlier/later phases or grant commit,
+push, PR, merge, infrastructure or destructive authority that you have not
+given. Cerebro does not impose a second suite or audit-gate policy on top of it.
+Jev watching is optional and can be selected per delegated development task.
 
 ## Ask about a repo
 
@@ -107,56 +126,94 @@ checks `cerebro recall` — a literal search across all your past
 sessions' transcripts and agent logs — before re-asking you something
 you already answered in a prior session.
 
-## Pair: watch and steer a live agent
+## Watch development scope with Jev
 
-Ask to *pair* (or *watch*, *steer*, *let me drive*) and the child runs
-in pair mode (`execute`, `apply-review`, `doc-write`). Planning remains the
-supervisor's responsibility; read-only reviews have no live steering:
+`execute`, `apply-review` and `doc-write` accept `--watch` or `--no-watch`.
+Watching is off by default; `jev_enabled=1` enables it for development children
+unless the parent opts out. The parent can also opt in for an individual task.
+`--watch` enables the native pair transport so an explicit FIFO can deliver
+steering while the task runs. It adds no post-turn idle window unless `--pair`
+is also explicitly selected. The child stays open while classification or
+notice acknowledgment is pending, then completes promptly.
 
-* **Observe** — from a *second* cerebro session, say "observe
-  \<session-id\>" (the id from the `PAIR MODE` banner; it names the
-  orchestrator session, not a child). That session tails every live
-  paired child at once and narrates in plain English what each one is
-  doing — following the gist, flagging the decisions that matter (new
-  abstractions, schema changes, security paths, public APIs) and
-  quoting the shaping code. Observation only reads logs; it never
-  disturbs the agents.
-* **Steer** — `cerebro steer "<message>"` injects one instruction into
-  the live child as its next turn and returns immediately. (Pass the
-  pipe path from the banner first when several paired children run at
-  once.) After each turn the child waits a short window
-  (`CEREBRO_PAIR_IDLE`, default 60s) for steering; a quiet window lets
-  it finish on its own. Steer is for small nudges.
-* **Restart** — `cerebro restart "<diagnosis>"` is for when a paired
-  execute child has gone fundamentally off (wrong assumptions, drifted
-  from the spec) and steering its poisoned context is futile. It
-  abandons the child and unconditionally tears down everything the run
-  produced — the fresh branch, its PR, and the task's worktree are all
-  deleted (your main checkout was never touched) — then hands the
-  orchestrator the diagnosis so it can relaunch a fresh execute with a
-  corrected prompt. Same arg shape as steer (pass the pipe path first
-  when several run at once).
+Provide a private `CEREBRO_JEV_API_KEY` or `jev_api_key` in
+`$CEREBRO_HOME/config.json`. The defaults are model `jev-latest`, endpoint
+`https://api.typesafe.ai/v1/systemone` and confidence threshold `0.8`. Jev is a
+scope classifier; it does not change your supervisor, implementation or review
+model settings. See [Configuration](#configuration) for all Jev options.
 
-When the child finishes, steering is reported back with its source. Observer
-and supervisor corrections restore the approved contract and do not change the
-spec. An unambiguous requirement change from a direct user steering command is
-folded into the spec and affected plans; a real ambiguity is returned to you.
-The supervisor reports what changed.
+The child adapter batches direct native events for a cheap typed `Choice`
+classification against the current session spec, delegated task and adjustable
+plans. Each result is `in_scope`, `possible_deviation` or `uncertain`, with
+confidence and the original cited event. In-scope work stays silent. A
+`possible_deviation` below the confidence threshold is presented as `uncertain`;
+both significant deviation and uncertainty notify the waiting parent while the
+job continues. A confident deviation notice requires a supporting native event.
+Updating the spec or plan changes the scope context. If it changes while a
+classification request is in flight, the watcher reclassifies that batch against
+the new context before publication.
+
+Execute restart removes a fresh task's worktree and branch. It refuses teardown
+when the child switched away from a pinned branch, when that local or origin
+branch predates the worktree, or when the initial branch inventory is unavailable.
+The retained work remains available for inspection. Sequence competing mutations
+in the same repository; the initial inventory is not a lock on branch names.
+
+Use the guarded MCP command tool for watched tasks, for example:
+
+```json
+{"argv":["execute","/absolute/repo","--prompt","Build the CSV export","--watch"]}
+```
+
+A scope notice includes the still-running job ID, explicit steering FIFO and
+monotonically increasing notice sequence. The parent assesses the cited evidence
+against the current requirements and decides whether to steer, cancel or
+continue. Published notices remain historical evidence across disconnects;
+changing scope does not withdraw them. The parent may dismiss an older warning
+against the current spec and acknowledge it without steering. It acknowledges
+the notice and re-arms the wait through the same command tool:
+
+```json
+{"argv":["steer","/explicit/child.steer.fifo","Return to the agreed export scope"]}
+{"argv":["wait","<job-id>","--after","<notice-sequence>"]}
+```
+
+An explicit CLI launch must run through `detach`, which owns the completion
+socket. The output must be inside the active Cerebro session, for example:
+
+```bash
+cerebro detach --output /absolute/session/export.out -- execute /absolute/repo --prompt "Build the CSV export" --watch
+```
+
+Watched direct CLI use without MCP or a detached monitor fails with an explicit
+socket error. A missing Jev key also fails explicitly. Network or protocol errors
+stop the watched child with a clear failure, preserving resumable work without
+destructive cleanup. There is no silent fallback. Notices wake the waiting parent
+through the completion transport; there is no separate observing agent, parent
+prompt injection or log polling.
+
+Jev has no mutation or delivery authority. A notice is evidence for the parent,
+not a user instruction or automatic restart request. Steering stays within the
+agreed requirements. Restart cleanup is reserved for a fresh `execute` task when
+abandonment of its isolated branch, PR and worktree is preauthorized; follow-up
+`apply-review`/`doc-write` tasks use steering or cancellation. A user requirement
+change is recorded in the spec and plans before the parent continues.
 
 ## Drive it from your editor (ACP)
 
-`cerebro acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com),
-so an ACP-aware editor such as Zed can drive the supervisor turn by turn.
-Cerebro relays native protocol features and preserves the same guarded role;
-available tools remain constrained by that role.
+With the Claude backend, `cerebro acp` speaks the
+[Agent Client Protocol](https://agentclientprotocol.com), so an ACP-aware editor
+such as Zed can drive the supervisor turn by turn. Cerebro relays native protocol
+features and preserves the same guarded role; available tools remain constrained
+by that role. Cerebro's Pi and Codex backends use terminal sessions; ACP requests
+for either backend fail before session or project creation.
 
 For each editor session the proxy:
 
 1. Mints a durable Cerebro session and a Cerebro-owned project directory.
-2. Spawns `opencode acp` or `claude-agent-acp` with the session environment.
-3. Pins the guarded supervisor role: OpenCode's built-in mode plus shared skill
-   instructions and session permissions, or a small Claude ACP agent wrapper
-   around the same supervisor skill. No native OpenCode agent definition is used.
+2. Spawns `claude-agent-acp` with the session environment.
+3. Pins the guarded supervisor role through a small Claude ACP agent wrapper
+   around the shared supervisor skill.
 4. Relays JSON-RPC with session ID remapping and records the native conversation
    ID for subsequent load/resume.
 
@@ -166,18 +223,24 @@ project dir.
 
 ### Register it in Zed
 
-Add a custom agent server to your Zed `settings.json`:
+Add a [custom agent server](https://zed.dev/docs/ai/external-agents#custom-agents)
+to your Zed `settings.json`, selecting Claude for this launcher:
 
 ```jsonc
 "agent_servers": {
-  "Cerebro": { "type": "custom", "command": "cerebro", "args": ["acp"] }
+  "Cerebro": {
+    "type": "custom",
+    "command": "cerebro",
+    "args": ["acp"],
+    "env": { "CEREBRO_BACKEND": "claude" }
+  }
 }
 ```
 
 Zed launches `cerebro acp` once (long-lived); each thread's cwd comes from the
-editor. Open a Cerebro thread in a repo, send "draft a plan first" → "go", and
-the `cerebro execute` child binds to the session (visible in `cerebro list`),
-opens its PR, and reports back through the editor. Restart Zed and resume the
+editor. Open a Cerebro thread in a repo and describe the change and delivery
+authority. A delegated child binds to the session (visible in `cerebro list`)
+and reports back through the editor. Restart Zed and resume the
 thread — the upstream conversation reopens.
 
 ### Restart the proxy after a config change
@@ -197,15 +260,10 @@ fresh config. Idempotent — a no-op when no proxy is running.
 
 ### Backends and dependencies
 
-* **opencode (default):** uses native V2 `opencode acp` (minimum 2.0.19).
 * **claude:** uses `@agentclientprotocol/claude-agent-acp` via `npx`, which
   needs **Node ≥ 22** + `npx` on PATH. Set `CEREBRO_BACKEND=claude` (and, for a
   gateway, `CEREBRO_CLAUDE_BASE_URL`).
-* **codex:** supported in terminal sessions; it has no native ACP endpoint.
-
-OpenCode 2.0.19's native ACP catalog may initially select a stock model before
-a custom provider loads. Check the selected model before sending work when
-using a custom provider.
+* **pi and codex:** supported in terminal sessions; ACP is unavailable.
 
 ACP needs **Python ≥ 3.10** plus the `agent-client-protocol` package. `cerebro
 acp` prefers Homebrew's `python3` (`/opt/homebrew/bin/python3`) — macOS system
@@ -220,11 +278,11 @@ brew install python
 
 ### Scope
 
-ACP is **editor-driven and turn-by-turn**. The interactive **pair / observe /
-watch-and-steer** features stay TUI-only (`cerebro` / `cerebro --observe`): the
-ACP orchestrator is a sequence of per-turn upstream sessions, not a persistent
-pairable process. `cerebro list` shows ACP-created sessions and `cerebro
---resume <id>` works on them like any other.
+ACP is editor-driven and turn-by-turn. Development remains delegated through the
+same guarded command tool, including optional Jev watching. `cerebro list` shows
+ACP-created sessions and `cerebro --resume <id>` reopens their native conversation.
+The editor's upstream connection still controls the duration of an individual
+parent turn; persistent child jobs can be rediscovered with `status`/`jobs`.
 
 ## Drive it from another agent (PTY MCP)
 
@@ -303,13 +361,13 @@ master close + an `atexit` SIGTERM) when the server exits.
 
 ### Dependencies
 
-Python **≥ 3.10** plus the `mcp` package. `cerebro cerebro-mcp` prefers Homebrew's
+Python **≥ 3.10** plus `mcp` **≥ 2, < 3**. `cerebro cerebro-mcp` prefers Homebrew's
 `python3` (`/opt/homebrew/bin/python3`) — macOS system python3 is 3.9, too old —
 and auto-installs the SDK to your user site on first run if it's missing:
 
 ```bash
 brew install python
-/opt/homebrew/bin/python3 -m pip install --user --break-system-packages mcp
+/opt/homebrew/bin/python3 -m pip install --user --break-system-packages 'mcp>=2,<3'
 ```
 
 ## Resume and interrupted work
@@ -324,14 +382,17 @@ outside the agent harness's process group. On "continue" the orchestrator
 checks `cerebro status`: the command tool automatically creates a durable job
 for long child commands and waits on its completion socket. A live detached job is allowed to finish rather than
 being duplicated, and a completed job remains discoverable through `cerebro
-jobs`. `cerebro wait <job-id>` blocks on completion notification without polling logs,
-status files or child PIDs; `cerebro cancel <job-id>` deliberately stops the monitor and its
-full descendant process tree.
+jobs`. `cerebro wait <job-id>` blocks on completion or a new scope notice;
+use `--after <notice-sequence>` to acknowledge a received notice and wait again.
+No log or child-state polling is needed. `cerebro cancel <job-id>` deliberately
+stops the monitor and its full descendant process tree.
 
-If the child process itself is interrupted, its resumable conversation id was
-persisted the instant it started. The orchestrator resumes each interrupted
-child via `--resume` instead of redoing it (and instead of duplicating commits).
-Stored ids stay resumable for `CEREBRO_CHILD_SESSION_TTL` seconds
+If the child process itself is interrupted, its native conversation binding was
+persisted when the session was created. Pi's binding is an absolute JSONL session
+file path; Cerebro validates the file before resume so a missing or empty file
+cannot silently start fresh work. The orchestrator resumes each interrupted
+child via `--resume` instead of duplicating work. Stored bindings stay resumable
+for `CEREBRO_CHILD_SESSION_TTL` seconds
 (default 24h), but normal child launches only auto-resume children still
 marked in-flight. Once a child finishes cleanly, the next sub-agent starts
 a fresh provider conversation even if it runs on the same repo and branch.
@@ -380,37 +441,25 @@ history and can propose a change to one of the local `meta-*` overlays. The
 history records findings and verdicts, not acceptance decisions or causal
 utility deltas.
 
-## Skip the ceremony
+## Scope and authority
 
-Planning and review are the default, never skipped on the
-orchestrator's own judgement. Say "just do it", "skip the plan", or
-"fix it directly" and it uses the inline-prompt shortcuts instead —
-straight to an editing child, no plan file or findings file in
-between.
+The requirements are the contract. A short plan can adapt to new facts and user
+input within them. A requirement change comes from you, not from a classifier
+or an implementation assumption; when the recorded spec changes, prior versions
+remain in its history. Material uncertainty about your intended outcome is
+returned to you, while routine engineering choices stay delegated.
 
-## Guardrails and autonomy
+Native permissions and the guarded command tool keep repository mutation in
+writable children. Reviewers inspect and annotate without source writes. Human
+review is an invitation to understand and steer the work, not a routine
+acceptance gate. Publication, merge, infrastructure and destructive actions
+still depend on your authorization and applicable instructions.
 
-cerebro is built to be autonomous *within* your requirements, never
-about them:
-
-* **The session spec is the contract.** Before planning, the
-  orchestrator records what you actually asked for; every requirement
-  change updates it (prior versions are archived, never lost). It
-  lives on disk, so it survives context compaction. During execution
-  the orchestrator may adapt a plan that turns out wrong and keep
-  going **as long as the adjusted work still satisfies the spec** — but
-  anything that would (or even might) drop a requirement, change
-  asked-for behaviour, or expand scope stops and asks you first. Doubt
-  counts as divergence.
-* **Plan-first by default.** Skipping the plan or the review requires
-  you to ask for it explicitly.
-* **The orchestrator cannot mutate anything.** Its tools are
-  restricted by native backend permissions and an allow-listed Cerebro MCP
-  command tool. Large bodies use the tool's `stdin` field; arguments never go
-  through a shell. Mutations happen only in
-  role-scoped children; the reviewer is sandboxed read-only.
-* **Done means observed working.** End-to-end verification in the
-  running app is a non-negotiable part of the definition of done.
+Cerebro reuses the pinned upstream `engineering`, `supervise` and
+`hashimoto-review` skills rather than maintaining a parallel workflow policy.
+See [ARCHITECTURE.md](ARCHITECTURE.md#shared-skills-small-backend-adapters) for
+provenance. Optional Jev watching supplies cited scope notices; the parent owns
+the response and all authorization decisions.
 
 ## Install details
 
@@ -449,8 +498,10 @@ file lives under it).
 ```json
 {
   "backend": "codex",
+  "supervisor_model": "",
   "model": "",
   "review_model": "",
+  "jev_enabled": 0,
   "timeout": 0,
   "pair_idle": 60,
   "child_session_ttl": 86400,
@@ -463,20 +514,26 @@ Options and their defaults (all optional):
 | option (key) | env var | meaning | default |
 |-----|-----|---------|---------|
 | `home` | `CEREBRO_HOME` | base dir for all state (env-only, not read from config.json) | `~/.cerebro` |
-| `backend` | `CEREBRO_BACKEND` | CLI for the supervisor and all children: `opencode`, `codex`, `claude` | `opencode` |
-| `model` | `CEREBRO_MODEL` | native model ID for the supervisor and editing children | backend default |
+| `backend` | `CEREBRO_BACKEND` | CLI for the supervisor and all children: `pi`, `codex`, `claude` | `pi` |
+| `supervisor_model` | `CEREBRO_SUPERVISOR_MODEL` | native model ID for the supervisor, including resume and ACP | backend default |
+| `model` | `CEREBRO_MODEL` | native model ID for implementation children | backend default |
 | `review_model` | `CEREBRO_REVIEW_MODEL` | native model ID for review/audit/verify/improve on the same backend | `model`, or backend default |
-| `claude_base_url` | `CEREBRO_CLAUDE_BASE_URL` | optional Anthropic-compatible endpoint for the claude backend (e.g. a local Ollama `/v1/messages` server, or any proxy). empty = the claude.ai subscription `claude` is logged into. when set, the effective model (`CEREBRO_MODEL`, or `CEREBRO_REVIEW_MODEL` for review/verification) must name a model the endpoint serves | empty (subscription) |
+| `claude_base_url` | `CEREBRO_CLAUDE_BASE_URL` | optional Anthropic-compatible endpoint for the claude backend (e.g. a local Ollama `/v1/messages` server, or any proxy). empty = the claude.ai subscription `claude` is logged into. when set, every configured role model must name a model the endpoint serves | empty (subscription) |
 | `claude_auth_token` | `CEREBRO_CLAUDE_AUTH_TOKEN` | bearer token for the optional Claude gateway | empty (`ollama` placeholder for a local gateway) |
+| `jev_enabled` | `CEREBRO_JEV_ENABLED` | enable watching for development children by default (`0`/`1`); per-task flags override | `0` |
+| `jev_api_key` | `CEREBRO_JEV_API_KEY` | private Jev credential; required for watched tasks | empty |
+| `jev_model` | `CEREBRO_JEV_MODEL` | scope-classification model | `jev-latest` |
+| `jev_endpoint` | `CEREBRO_JEV_ENDPOINT` | typed classification endpoint | `https://api.typesafe.ai/v1/systemone` |
+| `jev_confidence` | `CEREBRO_JEV_CONFIDENCE` | threshold for significant deviation; lower-confidence deviations become uncertain notices | `0.8` |
 | `timeout` | `CEREBRO_TIMEOUT` | wall-clock cap (s) per child call | `0` (no cap, so e2e runs and CI waits are never killed) |
 | `child_idle_timeout` | `CEREBRO_CHILD_IDLE_TIMEOUT` | optional parser inactivity bound (s); native transports own completion/stall handling | `0` (disabled) |
 | `child_session_ttl` | `CEREBRO_CHILD_SESSION_TTL` | how long (s) a stored child id stays resumable | `86400` (24h) |
-| `pair_idle` | `CEREBRO_PAIR_IDLE` | steering window (s) after each paired turn | `60` |
+| `pair_idle` | `CEREBRO_PAIR_IDLE` | steering window (s) after each turn when `--pair` is explicit; watching alone adds no idle window | `60` |
 | `pair_stall` | `CEREBRO_PAIR_STALL` | native stream inactivity bound (s) when no tool is running | `180` |
 | `pair_stall_busy` | `CEREBRO_PAIR_STALL_BUSY` | native stream inactivity bound (s) while a tool runs | `450` |
 | `pair_stall_retries` | `CEREBRO_PAIR_STALL_RETRIES` | max restart attempts for a stalled paired child | `2` |
 | `pair_stall_backoff` | `CEREBRO_PAIR_STALL_BACKOFF` | base (s) for the exponential restart backoff | `5` |
-| `opencode_cmd` | `CEREBRO_OPENCODE_CMD` | opencode executable | `opencode` |
+| `pi_cmd` | `CEREBRO_PI_CMD` | Pi executable | `pi` |
 | `claude_cmd` | `CEREBRO_CLAUDE_CMD` | claude executable | `claude` |
 | `codex_cmd` | `CEREBRO_CODEX_CMD` | codex executable | `codex` |
 | `playwright_isolated` | `CEREBRO_PLAYWRIGHT_ISOLATED` | isolate the @playwright/mcp browser profile per child (in-memory) so concurrent browser-capable children don't collide on Chromium's SingletonLock; set `0` to keep the shared persistent profile (sequential-only) | `1` |
@@ -510,6 +567,7 @@ housekeeping calls also stay local:
 ollama serve                       # local server on :11434
 CEREBRO_BACKEND=claude \
 CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
+CEREBRO_SUPERVISOR_MODEL=qwen2.5-coder:14b \
 CEREBRO_MODEL=qwen2.5-coder:14b \
 cerebro
 ```
@@ -519,7 +577,7 @@ For an authenticated gateway, set `CEREBRO_CLAUDE_AUTH_TOKEN` to the
 real key (the default is a placeholder local no-auth servers ignore).
 Claude Code can't infer the context window for a model id it doesn't
 recognize (anything not a built-in Claude alias) and falls back to 200k.
-If your catalog entry for `CEREBRO_MODEL` declares a `contextTokens`
+If the catalog entry for a role's selected model declares a `contextTokens`
 field (see "Model catalog" below), cerebro also exports
 `CLAUDE_CODE_AUTO_COMPACT_WINDOW=<tokens>` into every spawned `claude` so
 auto-compaction doesn't fire at the 200k default on a larger-window model.
@@ -529,19 +587,38 @@ status line can read 200k); for direct `claude --model <id>` launches use
 `--no-compact` as the escape hatch that forces the true window at the cost
 of disabling compaction.
 
-### Review and model selection
+### Role model selection
+
+Configure each role separately in `$CEREBRO_HOME/config.json`, for example:
+
+```json
+{
+  "backend": "codex",
+  "supervisor_model": "gpt-6-astra",
+  "model": "gpt-6.1-sol",
+  "review_model": "gpt-6-astra"
+}
+```
+
+`CEREBRO_SUPERVISOR_MODEL` selects the supervisor for new sessions,
+resume and editor launches. Leaving it empty uses the backend's configured
+default. `CEREBRO_MODEL` selects implementation children. A supervisor model
+change does not change either child default.
 
 Review, audit, verification and improvement use the session's backend, with fresh
 role-scoped context. `CEREBRO_REVIEW_MODEL` optionally selects another model on
-that backend; it otherwise inherits `CEREBRO_MODEL`. Leaving both empty uses the
-native backend's configured default. `--model` overrides the model for one
+that backend; it otherwise inherits `CEREBRO_MODEL`. Leaving both child settings
+empty uses the native backend's configured default. `--model` overrides the model for one
 child command. Changing the model never changes the backend.
 
-OpenCode needs native `provider/model` IDs. Codex and Claude accept their own
-native IDs; Cerebro does not infer a backend from punctuation. Keep the model
-catalog relevant to the selected backend, and choose a vision-capable model when
-runtime verification needs screenshots. Resuming a session restores its recorded
-backend, regardless of the current `CEREBRO_BACKEND` default.
+Pi accepts native `provider/id` or fuzzy model IDs, with an optional `:<thinking>`
+suffix; an unset model preserves Pi's selected/default model. Codex and Claude
+accept their own native IDs. Cerebro does not infer a backend from punctuation.
+Keep the model catalog relevant to the selected backend, and choose a
+vision-capable model when runtime verification needs screenshots. Resuming a
+session restores its recorded backend, regardless of the current
+`CEREBRO_BACKEND` default. See Pi's [model options](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/cli.md#model-options)
+for its native selection syntax.
 
 ### Model catalog
 
@@ -606,21 +683,18 @@ open in your editor:
 
 ```
 ~/.cerebro/
-  .agents/skills/                    # shared supervisor, observer and child skills
+  .agents/skills/                    # shared supervisor, worker and workflow skills
   .claude/skills/                    # links to the same skill files
   learnings.md                       # confirmed preferences read by the supervisor
   overlays/<target>.md               # user-owned prompt overlays (append onto shipped prompts)
-  templates/AGENTS.md, CLAUDE.md     # defaults dropped into new repos (edit freely)
   worktrees/<ckey>/                  # isolated per-task execute worktrees
                                      #   (GC stale ones with `cerebro worktrees cleanup`)
   sessions/<id>/
-    metadata.json                    # backend, role and native conversation ID
+    metadata.json                    # backend, role and native conversation binding
     detached-jobs/                   # job ownership, result and final status
     spec.md                          # current session spec (requirements of record)
     spec-history.jsonl               # every prior spec version
-    plans/                           # plan markdown files
-                                     #   (each <name>.md has a plain-English
-                                     #    <name>-readable.md companion beside it)
+    plans/                           # optional recorded plans
     children/                        # native logs of every child + review findings
     audits/                          # independent plan-audit findings
     improvements/improve.md          # latest `cerebro improve` hill-climbing findings

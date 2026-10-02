@@ -29,8 +29,7 @@ cmd_steer() {
   fi
   [[ -n "$msg" ]] || die "steer: empty steering message"
   case "${CEREBRO_ROLE:-user}" in
-    observer) msg="[observer] Enforce the approved spec and plan only; this is not a new user requirement. $msg" ;;
-    supervisor) msg="[supervisor] Enforce the approved spec and plan only; this is not a new user requirement. $msg" ;;
+    supervisor) msg="[supervisor] Enforce the current spec and delegated task only; this is not a new user requirement. $msg" ;;
     *) msg="[user] $msg" ;;
   esac
   pair_resolve_live_fifo "$fifo" steer

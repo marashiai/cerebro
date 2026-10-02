@@ -11,20 +11,23 @@ CEREBRO_BIN="$here/../bin/cerebro"
 
 # Isolated sandbox.
 WORKDIR="$(mktemp -d)"
+WORKDIR="$(cd "$WORKDIR" && pwd -P)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 export CEREBRO_HOME="$WORKDIR/cerebro-home"
 export CEREBRO_SESSION_ID="test-session"
+export CEREBRO_JEV_ENABLED=0
 # No backend invocation may escape to a personal installation or credential.
 # Per-test fixtures prepend their directory; an unexpected backend fails closed.
 unset CEREBRO_BACKEND CEREBRO_RESUME_BACKEND \
-      CEREBRO_MODEL CEREBRO_REVIEW_MODEL \
-      CEREBRO_OPENCODE_CMD CEREBRO_CLAUDE_CMD CEREBRO_CODEX_CMD \
+      CEREBRO_MODEL CEREBRO_SUPERVISOR_MODEL CEREBRO_REVIEW_MODEL \
+      CEREBRO_PI_CMD CEREBRO_CLAUDE_CMD CEREBRO_CODEX_CMD \
       CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN \
-      OPENCODE_CONFIG_CONTENT OPENCODE_CONFIG_DIR CEREBRO_OPENCODE_CHECKED
+      PI_CODING_AGENT_DIR CEREBRO_PI_CHECKED \
+      CEREBRO_JEV_API_KEY
 BACKEND_GUARDS="$WORKDIR/backend-guards"
 mkdir -p "$BACKEND_GUARDS"
-for backend in opencode claude codex; do
+for backend in pi claude codex; do
   cat > "$BACKEND_GUARDS/$backend" <<'EOF'
 #!/usr/bin/env bash
 printf 'test refused unconfigured backend fixture: %s\n' "$0" >&2
@@ -33,9 +36,14 @@ EOF
   chmod +x "$BACKEND_GUARDS/$backend"
 done
 export PATH="$BACKEND_GUARDS:$PATH"
-mkdir -p "$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID/plans" \
-         "$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID/children"
-: > "$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID/transcript.jsonl"
+
+initialize_session() {
+  local directory="$1" backend="${2:-pi}"
+  mkdir -p "$directory/children" "$directory/plans"
+  : > "$directory/transcript.jsonl"
+  jq -cn --arg backend "$backend" '{backend:$backend,role:"supervisor"}' > "$directory/metadata.json"
+}
+initialize_session "$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID"
 
 REPO="$WORKDIR/repo"
 mkdir -p "$REPO"
@@ -54,18 +62,22 @@ pass=0
 fail=0
 failures=()
 
-# install_opencode_fixture <dir> <JSON configuration> -- native V2 HTTP/SSE
-# fixture. Scenario hooks run in the actual child cwd and receive the prompt on
+# install_pi_fixture <dir> <JSON configuration> -- native Pi JSON RPC.
+# Scenario hooks run in the actual child cwd and receive the prompt on
 # stdin, so worktree and mutation tests exercise the real CLI boundary.
-install_opencode_fixture() {
+install_pi_fixture() {
   local directory="$1" configuration="$2"
   mkdir -p "$directory"
   printf '%s\n' "$configuration" > "$directory/fixture.json"
-  cat > "$directory/opencode" <<EOF
+  cat > "$directory/pi" <<EOF
 #!/usr/bin/env bash
-exec python3 "$here/opencode_fixture.py" "$directory" "\$@"
+exec python3 "$here/pi_fixture.py" "$directory" "\$@"
 EOF
-  chmod +x "$directory/opencode"
+  chmod +x "$directory/pi"
+}
+
+seed_pi_session() {
+  python3 "$here/pi_fixture.py" --seed "$1" "$REPO"
 }
 
 # run_case <id> <description> <expected-rc> -- <cmd...>
@@ -758,7 +770,7 @@ run_case 92 "ls /dev denied (security)" 6 -- "$CEREBRO_BIN" ls /dev
 # ========================================================================
 # apply-review default-findings and staleness validation.
 # These validation paths fire BEFORE any child spawn, so the error cases need
-# no backend. The happy cases use a served native V2 fixture, so apply-review
+# no backend. The happy cases use a native Pi RPC fixture, so apply-review
 # exercises the real transport and completes.
 # ========================================================================
 
@@ -771,13 +783,13 @@ RKEY="$(git -C "$REPO" rev-parse --show-toplevel \
         | python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.stdin.read().strip().encode()).hexdigest()[:16])')"
 BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
 
-# Native V2 fixture: one successful served session. The production API adapter
+# Native Pi fixture: one successful RPC session. The production adapter
 # and parser are used by every successful child path below.
-OPENCODE_STUB_DIR="$WORKDIR/opencode-stub"
-mkdir -p "$OPENCODE_STUB_DIR"
-install_opencode_fixture "$OPENCODE_STUB_DIR" '{"sid":"STUBSESS-1"}'
-STUB_OK=0; [[ -x "$OPENCODE_STUB_DIR/opencode" ]] && STUB_OK=1
-STUB_PATH="$OPENCODE_STUB_DIR:$PATH"
+PI_STUB_DIR="$WORKDIR/pi-stub"
+mkdir -p "$PI_STUB_DIR"
+install_pi_fixture "$PI_STUB_DIR" '{}'
+STUB_OK=0; [[ -x "$PI_STUB_DIR/pi" ]] && STUB_OK=1
+STUB_PATH="$PI_STUB_DIR:$PATH"
 
 seed_review_state() {  # $1 = last_findings path
   mkdir -p "$RSTATE"
@@ -796,7 +808,7 @@ if (( STUB_OK )); then
   run_case 93 "apply-review defaults to last review findings" 0 -- \
     env PATH="$STUB_PATH" "$CEREBRO_BIN" apply-review "$REPO"
 else
-  printf 'SKIP  93  apply-review default findings (opencode stub unavailable)\n'
+  printf 'SKIP  93  apply-review default findings (Pi fixture unavailable)\n'
 fi
 
 # --- 94. apply-review, no findings + no prior review -> clear error ---
@@ -819,7 +831,7 @@ if (( STUB_OK )); then
   run_case 96 "apply-review stale findings warns, applies" 0 -- \
     env PATH="$STUB_PATH" "$CEREBRO_BIN" apply-review "$REPO" "$WORKDIR/older.md"
 else
-  printf 'SKIP  96  apply-review stale findings (opencode stub unavailable)\n'
+  printf 'SKIP  96  apply-review stale findings (Pi fixture unavailable)\n'
 fi
 
 # --- 99. regression: --notes with --prompt still rejected ---
@@ -863,7 +875,7 @@ if (( STUB_OK )); then
     failures+=("102 branch-cross staleness :: rc=$rc err=$err")
   fi
 else
-  printf 'SKIP  102  apply-review branch-switch staleness (opencode stub unavailable)\n'
+  printf 'SKIP  102  apply-review branch-switch staleness (Pi fixture unavailable)\n'
 fi
 
 # ========================================================================
@@ -880,7 +892,7 @@ fi
 if (( STUB_OK )); then
   CONC_STUB_DIR="$WORKDIR/conc-stub"
   mkdir -p "$CONC_STUB_DIR"
-  install_opencode_fixture "$CONC_STUB_DIR" '{"sid":"CONC-1","mode":"concurrent","delay":0.4,"text_count":300}'
+  install_pi_fixture "$CONC_STUB_DIR" '{"mode":"concurrent","delay":0.4,"text_count":300}'
   CONC_PATH="$CONC_STUB_DIR:$PATH"
 
   env PATH="$CONC_PATH" "$CEREBRO_BIN" apply-review "$REPO" \
@@ -906,8 +918,10 @@ if (( STUB_OK )); then
   if [[ ! -f "$clog1" || ! -f "$clog2" ]]; then
     conc_ok=0; conc_why="${conc_why:+$conc_why; }child log file(s) missing"
   else
-    a1="$(grep -c 'AAAA' "$clog1")"; b1="$(grep -c 'BBBB' "$clog1")"
-    a2="$(grep -c 'AAAA' "$clog2")"; b2="$(grep -c 'BBBB' "$clog2")"
+    a1="$(jq -s '[.[] | select(.type == "message_update" and .assistantMessageEvent.delta == "AAAA")] | length' "$clog1")"
+    b1="$(grep -c 'BBBB' "$clog1")"
+    b2="$(jq -s '[.[] | select(.type == "message_update" and .assistantMessageEvent.delta == "BBBB")] | length' "$clog2")"
+    a2="$(grep -c 'AAAA' "$clog2")"
     if (( a1 != 300 || b1 != 0 || b2 != 300 || a2 != 0 )); then
       conc_ok=0
       conc_why="${conc_why:+$conc_why; }interleave/truncation (A1=$a1 B1=$b1 A2=$a2 B2=$b2)"
@@ -923,7 +937,7 @@ if (( STUB_OK )); then
     failures+=("103 concurrent child-log collision :: $conc_why")
   fi
 else
-  printf 'SKIP  103  concurrent child-log distinctness (opencode stub unavailable)\n'
+  printf 'SKIP  103  concurrent child-log distinctness (Pi fixture unavailable)\n'
 fi
 
 # ========================================================================
@@ -985,7 +999,7 @@ run_case 110 "learn-set blank errors" 1 -- "$CEREBRO_BIN" learn-set ""
 # --- 110a. learn-set --stdin records body verbatim (backticks/dollar signs) ---
 LSSESS="lsess"
 LSHOME="$WORKDIR/learn-home"
-mkdir -p "$LSHOME/sessions/$LSSESS"
+initialize_session "$LSHOME/sessions/$LSSESS"
 env CEREBRO_HOME="$LSHOME" CEREBRO_SESSION_ID="$LSSESS" \
   "$CEREBRO_BIN" learn-set --stdin >/dev/null 2>&1 <<'STDIN_EOF'
 - Keep diffs small; use `$VAR` literally.
@@ -1031,7 +1045,7 @@ run_case 111 "execute unknown arg rejected" 1 -- "$CEREBRO_BIN" execute "$REPO" 
 
 # --- 112. execute: --base/--branch without a plan or --prompt still errors ---
 # Confirms the new flags parse but don't bypass the plan/prompt requirement,
-# and fire before any child OpenCode session is spawned.
+# and fire before any child Pi session is spawned.
 STDERR_CONTAINS="requires <plan-path> or --prompt" \
 run_case 112 "execute --base/--branch needs plan or prompt" 1 -- \
   "$CEREBRO_BIN" execute "$REPO" --base feat/step-1 --branch feat/step-2
@@ -1039,7 +1053,7 @@ run_case 112 "execute --base/--branch needs plan or prompt" 1 -- \
 # --- 112b. execute: identical --base and --branch is the removed existing-branch
 # invocation -- it must error (the child only ever cuts a FRESH branch, so
 # create-X-from-origin/X-and-PR-back-to-X is impossible), not silently enter
-# stacked mode. Fires before any child OpenCode session spawns. ---
+# stacked mode. Fires before any child Pi session spawns. ---
 STDERR_CONTAINS="--base and --branch must differ" \
 run_case 112b "execute identical base/branch errors" 1 -- \
   "$CEREBRO_BIN" execute "$REPO" --prompt "follow-up" --base feat/step-1 --branch feat/step-1
@@ -1082,7 +1096,7 @@ else
   failures+=("112h verify agent name :: $vname")
 fi
 
-# --- 112i. backend_answerable_pattern verify echoes opencode:verify ---
+# --- 112i. backend_answerable_pattern verify echoes pi:verify ---
 vprov="$(bash -c '
   set -uo pipefail
   CEREBRO_LIB_DIR="$1"; shift
@@ -1090,8 +1104,8 @@ vprov="$(bash -c '
   . "$CEREBRO_LIB_DIR/helpers.sh"
   . "$CEREBRO_LIB_DIR/backend.sh"
   backend_answerable_pattern "$1"' _ "$here/../lib" verify 2>/dev/null)"
-if [[ "$vprov" == "opencode:verify" ]]; then
-  printf 'PASS  112i backend_answerable_pattern verify -> opencode:verify\n'; pass=$((pass + 1))
+if [[ "$vprov" == "pi:verify" ]]; then
+  printf 'PASS  112i backend_answerable_pattern verify -> pi:verify\n'; pass=$((pass + 1))
 else
   printf 'FAIL  112i answerable provider wrong [%s]\n' "$vprov"; fail=$((fail + 1))
   failures+=("112i verify provider :: $vprov")
@@ -1105,7 +1119,7 @@ vbody="$(bash -c '
   . "$CEREBRO_LIB_DIR/payloads.sh"
   child_sys_prompt verify' _ "$here/../lib" 2>/dev/null)"
 if python3 "$here/backend_contract_test.py" verify \
-   && [[ "$vbody" == *"VERIFY: PASS"* && "$vbody" == *"HIGH-LEVEL REQUIREMENTS"* && "$vbody" == *"non-interactive"* ]]; then
+   && [[ "$vbody" == *"engineering skill"* && "$vbody" == *"production-equivalent"* && "$vbody" == *"non-interactive"* ]]; then
   printf 'PASS  112j verifier native permissions and shared skill carry the verification contract\n'; pass=$((pass + 1))
 else
   printf 'FAIL  112j verifier policy/skill contract missing\n'; fail=$((fail + 1))
@@ -1204,41 +1218,16 @@ run_case 121b "spec unknown action errors" 1 -- "$CEREBRO_BIN" spec frobnicate
 STDOUT_CONTAINS="session spec: present" \
 run_case 122 "status shows session spec" 0 -- "$CEREBRO_BIN" status
 
-# ========================================================================
-# 123-124. spec set guard (rule 9 defense-in-depth). Replacing an existing
-# non-empty spec prints the current-spec head plus a warning to stderr, but
-# never blocks and never alters the record/archive flow. First-ever set is
-# silent. Use a fresh session dir so spec state is controlled.
-# ========================================================================
-GSESS="guard-session"
+# --- 124. requirement revisions preserve the current contract and its history.
+GSESS="requirements-session"
 GDIR="$CEREBRO_HOME/sessions/$GSESS"
-mkdir -p "$GDIR"
-
-# --- 123. first-ever spec set emits no replace warning ---
+initialize_session "$GDIR"
 env CEREBRO_SESSION_ID="$GSESS" "$CEREBRO_BIN" spec set "Task A: first task" \
   >/dev/null 2>"$WORKDIR/stderr"
-gerr="$(cat "$WORKDIR/stderr")"
-if [[ "$gerr" != *"replacing the current session spec"* ]]; then
-  printf 'PASS  123  first spec set emits no replace warning\n'; pass=$((pass + 1))
-else
-  printf 'FAIL  123  first spec set warned unexpectedly\n'; fail=$((fail + 1))
-  failures+=("123 first set warned :: $gerr")
-fi
-
-# --- 124. replacing an existing spec warns (with current head) on stderr ---
 env CEREBRO_SESSION_ID="$GSESS" "$CEREBRO_BIN" spec set "Task B: a different task" \
   >/dev/null 2>"$WORKDIR/stderr"
-grc=$?
-gerr="$(cat "$WORKDIR/stderr")"
-if [[ $grc -eq 0 && "$gerr" == *"replacing the current session spec"* \
-      && "$gerr" == *"Task A: first task"* ]]; then
-  printf 'PASS  124  spec replace warns with current head\n'; pass=$((pass + 1))
-else
-  printf 'FAIL  124  spec replace warning missing [rc=%d err=%s]\n' "$grc" "$gerr"; fail=$((fail + 1))
-  failures+=("124 replace warn :: rc=$grc")
-fi
 
-# --- 124b. the warning is advisory: record + archive still happened ---
+# --- 124b. both versions are archived and the current requirement is updated ---
 if grep -q "Task B: a different task" "$GDIR/spec.md" \
    && [[ "$(grep -c '' "$GDIR/spec-history.jsonl" 2>/dev/null || printf 0)" -eq 2 ]]; then
   printf 'PASS  124b  replace still recorded spec + history\n'; pass=$((pass + 1))
@@ -1251,7 +1240,7 @@ fi
 SSDIR="$WORKDIR/ssess-home"
 mkdir -p "$SSDIR/sessions"
 SSSESS="spec-stdin-sess"
-mkdir -p "$SSDIR/sessions/$SSSESS"
+initialize_session "$SSDIR/sessions/$SSSESS"
 env CEREBRO_HOME="$SSDIR" CEREBRO_SESSION_ID="$SSSESS" \
   "$CEREBRO_BIN" spec set --stdin >/dev/null 2>&1 <<'STDIN_EOF'
 # Spec via stdin
@@ -1298,14 +1287,14 @@ fi
 # completed child sessions, and resumes only entries left in status=running.
 # ========================================================================
 if (( STUB_OK )); then
-  # The native session endpoint assigns an ID before the execution starts.
-  ID_STUB_DIR="$WORKDIR/opencode-id-stub"
+  # Native state reports a durable session path after the user prompt persists.
+  ID_STUB_DIR="$WORKDIR/pi-id-stub"
   mkdir -p "$ID_STUB_DIR"
-  install_opencode_fixture "$ID_STUB_DIR" '{"sid":"STUBSESSION-1111"}'
+  install_pi_fixture "$ID_STUB_DIR" '{}'
   ID_STUB_PATH="$ID_STUB_DIR:$PATH"
 
   ESESS="exec-session"; EDIR="$CEREBRO_HOME/sessions/$ESESS"
-  mkdir -p "$EDIR/children" "$EDIR/plans"; : > "$EDIR/transcript.jsonl"
+  initialize_session "$EDIR"
   EPLAN1="$EDIR/plans/plan-one.md"
   EPLAN2="$EDIR/plans/plan-two.md"
   printf 'plan one\n' > "$EPLAN1"
@@ -1316,7 +1305,8 @@ if (( STUB_OK )); then
     "$CEREBRO_BIN" execute "$REPO" "$EPLAN1" --branch feat/test \
     >/dev/null 2>&1
   exec_id="$(jq -r '.[].id' "$EDIR/child-sessions.json" 2>/dev/null)"
-  if [[ "$exec_id" == "STUBSESSION-1111" ]]; then
+  if [[ "$exec_id" == /* && -s "$exec_id" ]] \
+     && head -1 "$exec_id" | jq -e '.type == "session" and .version == 3 and (.id | type) == "string"' >/dev/null; then
     printf 'PASS  125  execute --branch records child session id\n'; pass=$((pass + 1))
   else
     printf 'FAIL  125  execute did not record child id [got=%s]\n' "$exec_id"; fail=$((fail + 1))
@@ -1336,7 +1326,8 @@ if (( STUB_OK )); then
     "$CEREBRO_BIN" execute "$REPO" "$EPLAN2" --branch feat/test \
     >/dev/null 2>&1
   exec_entries="$(jq 'length' "$EDIR/child-sessions.json" 2>/dev/null)"
-  if [[ "$exec_entries" -eq 2 ]] && ! grep -q 'resume=STUBSESSION-1111' "$EDIR/transcript.jsonl"; then
+  if [[ "$exec_entries" -eq 2 ]] && ! grep -qF "resume=$exec_id" "$EDIR/transcript.jsonl" \
+     && jq -e '[.[].id] | unique | length == 2' "$EDIR/child-sessions.json" >/dev/null; then
     printf 'PASS  126  same-branch second plan starts its own child session\n'; pass=$((pass + 1))
   else
     printf 'FAIL  126  same-branch plan reused a child [entries=%s transcript=%s]\n' \
@@ -1348,7 +1339,7 @@ if (( STUB_OK )); then
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$ESESS" \
     "$CEREBRO_BIN" execute "$REPO" "$EPLAN1" --branch feat/test \
     >/dev/null 2>&1
-  if ! grep -q 'resume=STUBSESSION-1111' "$EDIR/transcript.jsonl"; then
+  if ! grep -qF "resume=$exec_id" "$EDIR/transcript.jsonl"; then
     printf 'PASS  126b completed execute child is not auto-resumed\n'; pass=$((pass + 1))
   else
     printf 'FAIL  126b completed execute child was resumed [transcript=%s]\n' \
@@ -1356,11 +1347,11 @@ if (( STUB_OK )); then
     failures+=("126b completed execute auto-resume")
   fi
 
-  # --- 126c. distinct --base/--branch drives STACKED-BRANCH MODE; the deleted
-  # existing-branch mode wording never appears. ---
-  PROMPT_STUB_DIR="$WORKDIR/opencode-prompt-stub"
+  # --- 126c. distinct --base/--branch specifies the task's source and branch
+  # name, with the PR target conditional on delivery authority. ---
+  PROMPT_STUB_DIR="$WORKDIR/pi-prompt-stub"
   mkdir -p "$PROMPT_STUB_DIR"
-  install_opencode_fixture "$PROMPT_STUB_DIR" '{"sid":"PROMPTSTUB-1"}'
+  install_pi_fixture "$PROMPT_STUB_DIR" '{}'
   PROMPT_STUB_PATH="$PROMPT_STUB_DIR:$PATH"
   PROMPT_CAPTURE="$WORKDIR/stacked-prompt.txt"
   env PATH="$PROMPT_STUB_PATH" CEREBRO_SESSION_ID="$ESESS" \
@@ -1369,33 +1360,34 @@ if (( STUB_OK )); then
       --base feat/slug-01 --branch feat/slug-02 >/dev/null 2>&1
   erc=$?
   eprompt="$(cat "$PROMPT_CAPTURE" 2>/dev/null || true)"
-  if [[ $erc -eq 0 && "$eprompt" == *"STACKED-BRANCH MODE"* \
+  if [[ $erc -eq 0 \
         && "$eprompt" == *"create your new branch from origin/feat/slug-01"* \
         && "$eprompt" == *"Name the new branch EXACTLY 'feat/slug-02'"* \
-        && "$eprompt" != *"EXISTING-BRANCH MODE"* ]]; then
-    printf 'PASS  126c distinct base/branch drives stacked mode (no existing-branch mode)\n'; pass=$((pass + 1))
+        && "$eprompt" == *"If a pull request is authorized, set its base to 'feat/slug-01'"* ]]; then
+    printf 'PASS  126c task branch source, name and authorized PR target\n'; pass=$((pass + 1))
   else
-    printf 'FAIL  126c stacked-mode prompt wrong [rc=%d prompt=%s]\n' \
+    printf 'FAIL  126c task branch constraints wrong [rc=%d prompt=%s]\n' \
       "$erc" "$eprompt"; fail=$((fail + 1))
-    failures+=("126c stacked-mode prompt :: rc=$erc")
+    failures+=("126c task branch constraints :: rc=$erc")
   fi
 
   # --- 129. a rejected stored session fails without restarting mutating work.
-  REJECT_STUB_DIR="$WORKDIR/opencode-reject-stub"
-  install_opencode_fixture "$REJECT_STUB_DIR" '{"mode":"reject"}'
+  REJECT_STUB_DIR="$WORKDIR/pi-reject-stub"
+  install_pi_fixture "$REJECT_STUB_DIR" '{"mode":"reject"}'
   REJECT_STUB_PATH="$REJECT_STUB_DIR:$PATH"
   FSESS="rejected-session"; FDIR="$CEREBRO_HOME/sessions/$FSESS"
-  mkdir -p "$FDIR/children"; : > "$FDIR/transcript.jsonl"
+  initialize_session "$FDIR"
   FKEY="$(printf '%s\0execute\0branch:feat/test|prompt:go' "$REPO" | shasum | cut -d' ' -f1 | cut -c1-16)"
-  jq -n --arg k "$FKEY" --arg repo "$REPO" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     '{($k): {id:"BOGUS-OLD", provider:"opencode", role:"execute", repo:$repo,
+  MISSING_PI_SESSION="$REJECT_STUB_DIR/missing-session.jsonl"
+  jq -n --arg k "$FKEY" --arg repo "$REPO" --arg id "$MISSING_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     '{($k): {id:$id, provider:"pi", role:"execute", repo:$repo,
               branch:"feat/test", status:"running", updated_at:$ts}}' \
      > "$FDIR/child-sessions.json"
   env PATH="$REJECT_STUB_PATH" CEREBRO_SESSION_ID="$FSESS" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "go" --branch feat/test >/dev/null 2>&1
   frc=$?
   rejected_id="$(jq -r --arg k "$FKEY" '.[$k].id' "$FDIR/child-sessions.json" 2>/dev/null)"
-  if [[ $frc -ne 0 && "$rejected_id" == "BOGUS-OLD" ]]; then
+  if [[ $frc -ne 0 && "$rejected_id" == "$MISSING_PI_SESSION" && ! -e "$MISSING_PI_SESSION" ]]; then
     printf 'PASS  129  rejected resume surfaces failure and preserves the stored session\n'; pass=$((pass + 1))
   else
     printf 'FAIL  129  rejected resume restarted work [rc=%d id=%s]\n' "$frc" "$rejected_id"; fail=$((fail + 1))
@@ -1405,19 +1397,20 @@ if (( STUB_OK )); then
   # --- 130. a native resume that performs work and then fails must not be
   # replayed as a fresh execution. Its existing ID stays resumable.
   WORK_COUNT="$WORKDIR/realfail-count"
-  WORK_STUB_DIR="$WORKDIR/opencode-realfail-stub"
+  WORK_STUB_DIR="$WORKDIR/pi-realfail-stub"
   mkdir -p "$WORK_STUB_DIR"
-  install_opencode_fixture "$WORK_STUB_DIR" \
+  install_pi_fixture "$WORK_STUB_DIR" \
     "$(jq -n --arg count "$WORK_COUNT" '{mode:"worked-failure",count_file:$count}')"
   WORK_STUB_PATH="$WORK_STUB_DIR:$PATH"
   export WORK_COUNT
 
   WSESS="realfail-session"; WDIR="$CEREBRO_HOME/sessions/$WSESS"
-  mkdir -p "$WDIR/children"; : > "$WDIR/transcript.jsonl"
+  initialize_session "$WDIR"
   # Seed a fresh running stored id so resume is attempted.
   WKEY="$(printf '%s\0execute\0branch:feat/test|prompt:go' "$REPO" | shasum | cut -d' ' -f1 | cut -c1-16)"
-  jq -n --arg k "$WKEY" --arg repo "$REPO" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     '{($k): {id:"PRIOR-1234", provider:"opencode", role:"execute", repo:$repo,
+  PRIOR_PI_SESSION="$WORK_STUB_DIR/prior-session.jsonl"; seed_pi_session "$PRIOR_PI_SESSION"
+  jq -n --arg k "$WKEY" --arg repo "$REPO" --arg id "$PRIOR_PI_SESSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     '{($k): {id:$id, provider:"pi", role:"execute", repo:$repo,
               branch:"feat/test", status:"running", updated_at:$ts}}' \
      > "$WDIR/child-sessions.json"
   : > "$WORK_COUNT"
@@ -1429,7 +1422,7 @@ if (( STUB_OK )); then
   stored_status="$(jq -r --arg k "$WKEY" '.[$k].status' "$WDIR/child-sessions.json" 2>/dev/null)"
   # Exactly one prompt reached the native session; no fresh execution was
   # created after its failed terminal event.
-  if [[ $wrc -ne 0 && "$invocations" -eq 1 && "$stored_id" == "PRIOR-1234" \
+  if [[ $wrc -ne 0 && "$invocations" -eq 1 && "$stored_id" == "$PRIOR_PI_SESSION" \
         && "$stored_status" == "running" ]] \
      && ! grep -q '"what":"execute_resume_failed"' "$WDIR/transcript.jsonl"; then
     printf 'PASS  130  resumed execute with prior work does not re-run fresh (stays resumable)\n'; pass=$((pass + 1))
@@ -1443,7 +1436,7 @@ if (( STUB_OK )); then
   # worktree path, the worktree persists after the run, and the user's MAIN
   # checkout (including a pre-existing uncommitted file) is left untouched. ---
   WTSESS="wt-session"; WTDIR="$CEREBRO_HOME/sessions/$WTSESS"
-  mkdir -p "$WTDIR/children"; : > "$WTDIR/transcript.jsonl"
+  initialize_session "$WTDIR"
   printf 'precious local work\n' > "$REPO/MY-UNCOMMITTED.txt"
   main_head_before="$(git -C "$REPO" rev-parse HEAD)"
   main_branch_before="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
@@ -1471,7 +1464,7 @@ if (( STUB_OK )); then
   # --- 146. a follow-up addressed by the WORKTREE path reuses it: apply-review
   # with <wt> as <repo> commits on that worktree's branch, in that same
   # worktree, and creates NO new worktree. ---
-  COMMIT_STUB_DIR="$WORKDIR/opencode-commit-stub"
+  COMMIT_STUB_DIR="$WORKDIR/pi-commit-stub"
   mkdir -p "$COMMIT_STUB_DIR"
   COMMIT_HOOK="$COMMIT_STUB_DIR/commit.sh"
   cat > "$COMMIT_HOOK" <<'EOF'
@@ -1479,11 +1472,11 @@ printf 'applied by follow-up\n' >> applied.txt
 git add applied.txt
 git commit -q -m "stub follow-up commit"
 EOF
-  install_opencode_fixture "$COMMIT_STUB_DIR" \
-    "$(jq -n --arg hook "$COMMIT_HOOK" '{sid:"COMMITSTUB-1",hook:$hook}')"
+  install_pi_fixture "$COMMIT_STUB_DIR" \
+    "$(jq -n --arg hook "$COMMIT_HOOK" '{hook:$hook}')"
   COMMIT_STUB_PATH="$COMMIT_STUB_DIR:$PATH"
   FUSESS="followup-session"; FUDIR="$CEREBRO_HOME/sessions/$FUSESS"
-  mkdir -p "$FUDIR/children"; : > "$FUDIR/transcript.jsonl"
+  initialize_session "$FUDIR"
   WT_FU="$CEREBRO_HOME/worktrees/fu-reuse-test"
   git -C "$REPO" worktree add -q -b feat/fu-reuse "$WT_FU" main >/dev/null 2>&1
   fu_head_before="$(git -C "$WT_FU" rev-parse HEAD)"
@@ -1565,54 +1558,57 @@ EOF
     git -C "$REPO" branch -D "$b" >/dev/null 2>&1 || true
   done
 else
-  printf 'SKIP  125  execute child-session capture (opencode stub unavailable)\n'
-  printf 'SKIP  125b execute resume=none log (opencode stub unavailable)\n'
-  printf 'SKIP  126  same-branch execute isolation (opencode stub unavailable)\n'
-  printf 'SKIP  126b completed execute no-auto-resume (opencode stub unavailable)\n'
-  printf 'SKIP  126c distinct base/branch stacked-mode prompt (opencode stub unavailable)\n'
-  printf 'SKIP  129  execute rejected-resume propagation (opencode stub unavailable)\n'
-  printf 'SKIP  130  execute mutating-resume no-rerun (opencode stub unavailable)\n'
-  printf 'SKIP  145  execute worktree isolation (opencode stub unavailable)\n'
-  printf 'SKIP  146  follow-up worktree reuse (opencode stub unavailable)\n'
-  printf 'SKIP  147  worktrees cleanup (opencode stub unavailable)\n'
+  printf 'SKIP  125  execute child-session capture (Pi fixture unavailable)\n'
+  printf 'SKIP  125b execute resume=none log (Pi fixture unavailable)\n'
+  printf 'SKIP  126  same-branch execute isolation (Pi fixture unavailable)\n'
+  printf 'SKIP  126b completed execute no-auto-resume (Pi fixture unavailable)\n'
+  printf 'SKIP  126c distinct base/branch stacked-mode prompt (Pi fixture unavailable)\n'
+  printf 'SKIP  129  execute rejected-resume propagation (Pi fixture unavailable)\n'
+  printf 'SKIP  130  execute mutating-resume no-rerun (Pi fixture unavailable)\n'
+  printf 'SKIP  145  execute worktree isolation (Pi fixture unavailable)\n'
+  printf 'SKIP  146  follow-up worktree reuse (Pi fixture unavailable)\n'
+  printf 'SKIP  147  worktrees cleanup (Pi fixture unavailable)\n'
 fi
 
-# Native read-only reviewer fixture: record session/agent/model/prompt API
-# requests and produce deterministic findings through the real stream parser.
-REVIEW_STUB_DIR="$WORKDIR/opencode-review-stub"
+# Native read-only reviewer fixture: record CLI arguments and RPC commands,
+# then produce findings through the real stream parser.
+REVIEW_STUB_DIR="$WORKDIR/pi-review-stub"
 mkdir -p "$REVIEW_STUB_DIR"
 REVIEW_ARGV_LOG="$WORKDIR/review-argv.log"
-RSID="REVIEWSESS-1"
-install_opencode_fixture "$REVIEW_STUB_DIR" \
-  "$(jq -n --arg sid "$RSID" --arg log "$REVIEW_ARGV_LOG" '{sid:$sid,text:"## Findings: no issues found",request_log:$log}')"
+install_pi_fixture "$REVIEW_STUB_DIR" \
+  "$(jq -n --arg log "$REVIEW_ARGV_LOG" '{text:"## Findings: no issues found",request_log:$log}')"
 
 # --- 127r. the native reviewer policy denies direct writes/shell/delegation;
 # inspection uses guarded Cerebro commands and the shared reviewer note.
 run_case 127r "reviewer native permissions enforce read-only inspection" 0 -- \
   python3 "$here/backend_contract_test.py" review
 
-if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
+if [[ -x "$REVIEW_STUB_DIR/pi" ]]; then
   REVIEW_STUB_PATH="$REVIEW_STUB_DIR:$PATH"
   RSESS="review-session"; RDIR="$CEREBRO_HOME/sessions/$RSESS"
-  mkdir -p "$RDIR/children"; : > "$RDIR/transcript.jsonl"
+  initialize_session "$RDIR"
 
-  # --- 127. review records the opencode session id under a review key ---
+  # --- 127. review records the durable Pi session file under a review key ---
   : > "$REVIEW_ARGV_LOG"
   rev_out="$(env PATH="$REVIEW_STUB_PATH" CEREBRO_SESSION_ID="$RSESS" \
     "$CEREBRO_BIN" review "$REPO" 2>/dev/null)"
-  rv_id="$(jq -r '.[] | select(.provider=="opencode" and .role=="review") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
-  if [[ "$rv_id" == "$RSID" ]]; then
-    printf 'PASS  127  review records the opencode session id under a review key\n'; pass=$((pass + 1))
+  rv_id="$(jq -r '.[] | select(.provider=="pi" and .role=="review") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
+  if [[ "$rv_id" == /* && -s "$rv_id" ]] \
+     && head -1 "$rv_id" | jq -e '.type == "session" and (.id | length) > 0' >/dev/null; then
+    printf 'PASS  127  review records the Pi session file under a review key\n'; pass=$((pass + 1))
   else
     printf 'FAIL  127  review did not record the session id [got=%s]\n' "$rv_id"; fail=$((fail + 1))
     failures+=("127 review capture :: got=$rv_id")
   fi
 
-  # --- 127b. reviewers use native session creation and the built-in general
-  # agent while Cerebro records the review role separately.
-  if jq -e -s 'any(.[]; .path=="/api/session") and any(.[]; .path|endswith("/agent"))' "$REVIEW_ARGV_LOG" >/dev/null \
-      && jq -e -s 'all(.[] | select(.path|endswith("/agent")); .payload.agent=="general")' "$REVIEW_ARGV_LOG" >/dev/null; then
-    printf 'PASS  127b review uses native session/general-agent APIs\n'; pass=$((pass + 1))
+  # --- 127b. reviewers use native RPC with only the guarded command tool.
+  if jq -e -s 'any(.[] | select(.argv); .argv as $a |
+        ($a | index("--mode")) as $m | ($a | index("--tools")) as $t |
+        .role == "reviewer" and $m != null and $a[$m+1] == "rpc" and
+        $t != null and $a[$t+1] == "mcp__cerebro__command") and
+        any(.[]; .type == "get_state") and any(.[]; .type == "prompt")' \
+        "$REVIEW_ARGV_LOG" >/dev/null; then
+    printf 'PASS  127b review uses native RPC and guarded command tools\n'; pass=$((pass + 1))
   else
     printf 'FAIL  127b review native session request wrong\n'; fail=$((fail + 1))
     failures+=("127b review native requests")
@@ -1620,7 +1616,7 @@ if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
 
   # --- 127c. without a model override the reviewer retains the backend's
   # configured default, rather than injecting an unrelated provider model.
-  if jq -e -s 'all(.[]; (.path|endswith("/model"))|not)' "$REVIEW_ARGV_LOG" >/dev/null; then
+  if jq -e -s 'all(.[] | select(.argv); (.argv | index("--model")) == null)' "$REVIEW_ARGV_LOG" >/dev/null; then
     printf 'PASS  127c review retains the native default model\n'; pass=$((pass + 1))
   else
     printf 'FAIL  127c review overwrote the native default model\n'; fail=$((fail + 1))
@@ -1631,30 +1627,26 @@ if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
   : > "$REVIEW_ARGV_LOG"
   env PATH="$REVIEW_STUB_PATH" CEREBRO_SESSION_ID="$RSESS" \
     "$CEREBRO_BIN" review "$REPO" --model minimax/minimax-m3 >/dev/null 2>&1
-  if jq -e -s 'any(.[]; (.path|endswith("/model")) and .payload.model=={providerID:"minimax",id:"minimax-m3"})' "$REVIEW_ARGV_LOG" >/dev/null; then
+  if jq -e -s 'any(.[] | select(.argv); .argv as $a |
+        ($a | index("--model")) as $m | $m != null and $a[$m+1] == "minimax/minimax-m3")' "$REVIEW_ARGV_LOG" >/dev/null; then
     printf 'PASS  127m  review --model overrides the review model per call\n'; pass=$((pass + 1))
   else
     printf 'FAIL  127m  review --model not passed through [argv=%s]\n' "$(cat "$REVIEW_ARGV_LOG")"; fail=$((fail + 1))
     failures+=("127m review --model :: argv=$(cat "$REVIEW_ARGV_LOG")")
   fi
 
-  # --- 127n. a --model whose format does not match the backend is rejected up
-  # front with a clear message, instead of being silently dropped / handed
-  # to opencode (which would fail with a confusing trailing-slash "Model not
-  # found"). The opencode reviewer needs a provider/model id (with a '/'); a
-  # claude-backend "model:tag" id (no '/') is rejected and spawns no child. ---
+  # --- 127n. native model selectors retain their literal backend spelling.
   : > "$REVIEW_ARGV_LOG"
   vfn_out="$(env PATH="$REVIEW_STUB_PATH" CEREBRO_SESSION_ID="$RSESS" \
     "$CEREBRO_BIN" verify "$REPO" --prompt "verify it" --model glm-5.2:cloud 2>&1)"
   vfn_rc=$?
-  if (( vfn_rc != 0 )) \
-      && [[ "$vfn_out" == *"cerebro: error:"*"glm-5.2:cloud"* ]] \
-      && [[ "$vfn_out" == *"is not valid for the opencode backend"* ]] \
-      && [[ ! -s "$REVIEW_ARGV_LOG" ]]; then
-    printf 'PASS  127n  verify rejects a claude-backend --model for the opencode reviewer\n'; pass=$((pass + 1))
+  if (( vfn_rc == 0 )) \
+      && jq -e -s 'any(.[] | select(.argv); .argv as $a |
+          ($a | index("--model")) as $m | $m != null and $a[$m+1] == "glm-5.2:cloud")' "$REVIEW_ARGV_LOG" >/dev/null; then
+    printf 'PASS  127n  verify forwards native Pi model selectors literally\n'; pass=$((pass + 1))
   else
-    printf 'FAIL  127n  verify did not reject claude-backend --model [rc=%s out=%s argv=%s]\n' "$vfn_rc" "$vfn_out" "$(cat "$REVIEW_ARGV_LOG")"; fail=$((fail + 1))
-    failures+=("127n verify --model reject :: rc=$vfn_rc out=$vfn_out")
+    printf 'FAIL  127n  verify lost the native model selector [rc=%s out=%s argv=%s]\n' "$vfn_rc" "$vfn_out" "$(cat "$REVIEW_ARGV_LOG")"; fail=$((fail + 1))
+    failures+=("127n verify native --model :: rc=$vfn_rc out=$vfn_out")
   fi
 
   # --- 127e. the findings are the run's final message, written to out_path ---
@@ -1683,8 +1675,11 @@ if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
   : > "$REVIEW_ARGV_LOG"
   env PATH="$REVIEW_STUB_PATH" CEREBRO_SESSION_ID="$RSESS" \
     "$CEREBRO_BIN" review "$REPO" >/dev/null 2>&1
-  if jq -e -s 'any(.[]; .path=="/api/session")' "$REVIEW_ARGV_LOG" >/dev/null \
-     && ! grep -q "resume=$RSID" "$RDIR/transcript.jsonl"; then
+  rv_again_id="$(jq -r '.[] | select(.provider=="pi" and .role=="review") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
+  if [[ "$rv_again_id" == /* && -s "$rv_again_id" && "$rv_again_id" != "$rv_id" ]] \
+     && jq -e -s 'any(.[]; .type == "get_state") and
+         all(.[] | select(.argv); (.argv | index("--session")) == null)' "$REVIEW_ARGV_LOG" >/dev/null \
+     && ! grep -qF "resume=$rv_id" "$RDIR/transcript.jsonl"; then
     printf 'PASS  128  completed review session is not auto-resumed\n'; pass=$((pass + 1))
   else
     printf 'FAIL  128  completed review was resumed [argv=%s]\n' "$(cat "$REVIEW_ARGV_LOG")"; fail=$((fail + 1))
@@ -1700,12 +1695,13 @@ if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
     "$CEREBRO_BIN" audit "$REPO" "$audit_plan" --context "key paths: lib/" 2>/dev/null)"
   audit_expected="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$RDIR/audits/audit-target-audit.md")"
   audit_argv="$(cat "$REVIEW_ARGV_LOG")"
-  audit_id="$(jq -r '.[] | select(.provider=="opencode" and .role=="audit") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
+  audit_id="$(jq -r '.[] | select(.provider=="pi" and .role=="audit") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
   if [[ "$audit_out" == "$audit_expected" && -s "$audit_out" \
-        && "$audit_argv" == *'"agent": "general"'* \
         && "$audit_argv" == *"touch lib/thing.sh"* \
         && "$audit_argv" == *"key paths: lib/"* \
-        && "$audit_id" == "$RSID" ]]; then
+        && "$audit_id" == /* && -s "$audit_id" && "$audit_id" != "$rv_id" ]] \
+     && jq -e -s 'any(.[] | select(.argv); .role == "reviewer" and
+          .child_role == "audit" and (.argv | index("--cerebro-mcp-config")) != null)' "$REVIEW_ARGV_LOG" >/dev/null; then
     printf 'PASS  128c  audit runs the native reviewer with plan+context, records session\n'; pass=$((pass + 1))
   else
     printf 'FAIL  128c  audit run wrong [out=%s id=%s]\n' "$audit_out" "$audit_id"; fail=$((fail + 1))
@@ -1717,21 +1713,25 @@ if [[ -x "$REVIEW_STUB_DIR/opencode" ]]; then
   env PATH="$REVIEW_STUB_PATH" CEREBRO_SESSION_ID="$RSESS" \
     "$CEREBRO_BIN" audit "$REPO" "$audit_plan" >/dev/null 2>&1
   audit_again_rc=$?
-  if (( audit_again_rc == 0 )) && jq -e -s 'any(.[]; .path=="/api/session")' "$REVIEW_ARGV_LOG" >/dev/null; then
+  audit_again_id="$(jq -r '.[] | select(.provider=="pi" and .role=="audit") | .id' "$RDIR/child-sessions.json" 2>/dev/null)"
+  if (( audit_again_rc == 0 )) \
+     && [[ "$audit_again_id" == /* && -s "$audit_again_id" && "$audit_again_id" != "$audit_id" ]] \
+     && jq -e -s 'any(.[]; .type == "get_state") and
+         all(.[] | select(.argv); (.argv | index("--session")) == null)' "$REVIEW_ARGV_LOG" >/dev/null; then
     printf 'PASS  128d re-audit does not resume the stored session\n'; pass=$((pass + 1))
   else
     printf 'FAIL  128d re-audit resumed [argv=%s]\n' "$(cat "$REVIEW_ARGV_LOG")"; fail=$((fail + 1))
     failures+=("128d audit resume argv present")
   fi
 else
-  printf 'SKIP  127  review session capture (opencode stub unavailable)\n'
-  printf 'SKIP  127b review native session/agent (opencode stub unavailable)\n'
-  printf 'SKIP  127c review model (opencode stub unavailable)\n'
-  printf 'SKIP  127e review findings (opencode stub unavailable)\n'
-  printf 'SKIP  127d review external criteria guidance (opencode stub unavailable)\n'
-  printf 'SKIP  128  review completed no-auto-resume (opencode stub unavailable)\n'
-  printf 'SKIP  128c audit run (opencode stub unavailable)\n'
-  printf 'SKIP  128d audit completed no-auto-resume (opencode stub unavailable)\n'
+  printf 'SKIP  127  review session capture (Pi fixture unavailable)\n'
+  printf 'SKIP  127b review native session/tools (Pi fixture unavailable)\n'
+  printf 'SKIP  127c review model (Pi fixture unavailable)\n'
+  printf 'SKIP  127e review findings (Pi fixture unavailable)\n'
+  printf 'SKIP  127d review external criteria guidance (Pi fixture unavailable)\n'
+  printf 'SKIP  128  review completed no-auto-resume (Pi fixture unavailable)\n'
+  printf 'SKIP  128c audit run (Pi fixture unavailable)\n'
+  printf 'SKIP  128d audit completed no-auto-resume (Pi fixture unavailable)\n'
 fi
 
 # ========================================================================
@@ -1739,18 +1739,18 @@ fi
 # through its guarded native MCP tool surface, not a separate reviewer backend.
 # ========================================================================
 
-# --- 129a. default OpenCode child selectors are shared role labels. ---
+# --- 129a. default Pi child selectors are shared role labels. ---
 rb_default="$(bash -c '
   set -uo pipefail
   CEREBRO_LIB_DIR="$1"; shift
   . "$CEREBRO_LIB_DIR/config.sh"
   . "$CEREBRO_LIB_DIR/helpers.sh"
   . "$CEREBRO_LIB_DIR/backend.sh"
-  . "$CEREBRO_LIB_DIR/backend-opencode.sh"
+  . "$CEREBRO_LIB_DIR/backend-pi.sh"
   for r in "$@"; do printf "%s|" "$(backend_child_agent_name "$r")"; done' \
   _ "$here/../lib" review audit verify improve 2>/dev/null)"
 if [[ "$rb_default" == "review|audit|verify|improve|" ]]; then
-  printf 'PASS  129a backend_child_agent_name default opencode roles\n'; pass=$((pass + 1))
+  printf 'PASS  129a backend_child_agent_name default pi roles\n'; pass=$((pass + 1))
 else
   printf 'FAIL  129a backend_child_agent_name default [%s]\n' "$rb_default"; fail=$((fail + 1))
   failures+=("129a backend_child_agent_name default :: $rb_default")
@@ -1764,7 +1764,7 @@ rb_claude="$(CEREBRO_BACKEND=claude bash -c '
   . "$CEREBRO_LIB_DIR/config.sh"
   . "$CEREBRO_LIB_DIR/helpers.sh"
   . "$CEREBRO_LIB_DIR/backend.sh"
-  . "$CEREBRO_LIB_DIR/backend-opencode.sh"
+  . "$CEREBRO_LIB_DIR/backend-pi.sh"
   . "$CEREBRO_LIB_DIR/backend-claude.sh"
   for r in "$@"; do printf "%s|" "$(backend_child_agent_name "$r")"; done' \
   _ "$here/../lib" review audit verify improve 2>/dev/null)"
@@ -1776,7 +1776,7 @@ else
 fi
 
 # --- 129c. a resumed session's backend owns every role, including reviews.
-providers="$(CEREBRO_BACKEND=opencode CEREBRO_RESUME_BACKEND=codex bash -c '
+providers="$(CEREBRO_BACKEND=pi CEREBRO_RESUME_BACKEND=codex bash -c '
   CEREBRO_LIB_DIR="$1"
   . "$CEREBRO_LIB_DIR/config.sh"
   . "$CEREBRO_LIB_DIR/backend.sh"
@@ -1791,7 +1791,7 @@ else
 fi
 
 # --- 129d. claude reviewer system prompt carries the read-only reviewer note
-# (the same shared note the native OpenCode reviewer loads). ---
+# (the same shared note the native Pi reviewer loads). ---
 rsp="$(CEREBRO_BACKEND=claude bash -c '
   set -uo pipefail
   CEREBRO_LIB_DIR="$1"; shift
@@ -1936,7 +1936,7 @@ fi
 # upstream Claude SDK via ANTHROPIC_DEFAULT_{OPUS,SONNET,FABLE}_MODEL and
 # ANTHROPIC_CUSTOM_MODEL_OPTION (id-registration only; the editor-facing
 # picker is owned by the proxy -- see 130f). HAIKU is reserved for the
-# ANTHROPIC_DEFAULT_HAIKU_MODEL=$CEREBRO_MODEL mirror (small/fast background
+# ANTHROPIC_DEFAULT_HAIKU_MODEL=$CEREBRO_SUPERVISOR_MODEL mirror (background
 # tasks). No _NAME/_DESCRIPTION/_SUPPORTED_CAPABILITIES companions are
 # emitted (the proxy rewrites the picker from the catalog, so the SDK's own
 # picker labels are invisible to the editor). The id-registration env is gated
@@ -1983,7 +1983,7 @@ load_claude_libs() {
     . "$CEREBRO_LIB_DIR/payloads.sh"
     . "$CEREBRO_LIB_DIR/session-store.sh"
     . "$CEREBRO_LIB_DIR/backend.sh"
-    . "$CEREBRO_LIB_DIR/backend-opencode.sh"
+    . "$CEREBRO_LIB_DIR/backend-pi.sh"
     . "$CEREBRO_LIB_DIR/backend-claude.sh"
     for f in "$CEREBRO_LIB_DIR"/commands/*.sh; do . "$f"; done
     '"$cmd" _ "$lib" "$home" 2>/dev/null
@@ -1992,16 +1992,16 @@ load_claude_libs() {
 spec="$(load_claude_libs "$here/../lib" "$MDLACP" \
   'CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
    CEREBRO_CLAUDE_AUTH_TOKEN=ollama \
-   CEREBRO_MODEL=glm-5.2:cloud \
+   CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
    backend_claude_acp_child_spec')"
 spec_no_url="$(load_claude_libs "$here/../lib" "$MDLACP" \
   'CEREBRO_CLAUDE_BASE_URL="" \
-   CEREBRO_MODEL=glm-5.2:cloud \
+   CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
    backend_claude_acp_child_spec')"
 spec_no_cat="$(load_claude_libs "$here/../lib" "$WORKDIR/empty-home" \
   'CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
    CEREBRO_CLAUDE_AUTH_TOKEN=ollama \
-   CEREBRO_MODEL=glm-5.2:cloud \
+   CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
    backend_claude_acp_child_spec')"
 BADHOME="$WORKDIR/mdl-bad"
 mkdir -p "$BADHOME"
@@ -2009,13 +2009,13 @@ printf 'garbage\n' > "$BADHOME/models-config.json"
 spec_bad_cat="$(load_claude_libs "$here/../lib" "$BADHOME" \
   'CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
    CEREBRO_CLAUDE_AUTH_TOKEN=ollama \
-   CEREBRO_MODEL=glm-5.2:cloud \
+   CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
    backend_claude_acp_child_spec')"
 cp "$MDLACP/models-config-5.json" "$MDLACP/models-config.json"
 spec_5="$(load_claude_libs "$here/../lib" "$MDLACP" \
   'CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
    CEREBRO_CLAUDE_AUTH_TOKEN=ollama \
-   CEREBRO_MODEL=glm-5.2:cloud \
+   CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
    backend_claude_acp_child_spec')"
 cat > "$MDLACP/models-config.json" <<'MDLACP_EOF'
 {"models":[
@@ -2029,7 +2029,7 @@ MDLACP_EOF
 # Assert: 4-entry catalog -> 3 slot ids + 1 custom option id registered.
 # NO companions (_NAME/_DESCRIPTION/_SUPPORTED_CAPABILITIES) are emitted:
 # the proxy rewrites the editor-facing picker, so the SDK's own labels are
-# invisible. HAIKU stays = CEREBRO_MODEL (the small/fast mirror), NOT a
+# invisible. HAIKU stays = CEREBRO_SUPERVISOR_MODEL, not a
 # catalog entry. ANTHROPIC_MODEL pins the initial selection.
 spec_ok=1
 spec_msg=""
@@ -2067,8 +2067,7 @@ for v in \
   fi
 done
 
-# Subscription path (no base URL): no id-registration env, no base URL,
-# no model pin. Only CLAUDE_CONFIG_DIR should be present.
+# Subscription path: select the supervisor model without gateway or catalog env.
 no_url_ok=1
 no_url_msg=""
 for v in \
@@ -2077,13 +2076,18 @@ for v in \
     '"ANTHROPIC_DEFAULT_FABLE_MODEL"' \
     '"ANTHROPIC_CUSTOM_MODEL_OPTION"' \
     '"ANTHROPIC_BASE_URL"' \
-    '"ANTHROPIC_MODEL"'; do
+    '"ANTHROPIC_AUTH_TOKEN"' \
+    '"ANTHROPIC_API_KEY"' \
+    '"ANTHROPIC_DEFAULT_HAIKU_MODEL"'; do
   if grep -qF -- "$v" <<<"$spec_no_url"; then
     no_url_ok=0; no_url_msg="$no_url_msg unexpected=$v"
   fi
 done
 if ! grep -qF '"CLAUDE_CONFIG_DIR"' <<<"$spec_no_url"; then
   no_url_ok=0; no_url_msg="$no_url_msg missing_CLAUDE_CONFIG_DIR"
+fi
+if ! jq -e '.env.ANTHROPIC_MODEL == "glm-5.2:cloud"' <<<"$spec_no_url" >/dev/null; then
+  no_url_ok=0; no_url_msg="$no_url_msg missing_supervisor_model"
 fi
 
 # Missing catalog: no id-registration env (no-op merge), but base env still present.
@@ -2152,64 +2156,29 @@ fi
 # unchanged (the subscription path keeps its stock anthropic picker). ---
 acp_py_ok=1
 acp_py_msg=""
-if command -v /opt/homebrew/bin/python3 >/dev/null 2>&1 \
-   && /opt/homebrew/bin/python3 -c 'import acp' 2>/dev/null; then
+ACP_REWRITE_PY=""
+for _cand in /opt/homebrew/bin/python3 python3 python3.13 python3.12 python3.11 python3.10; do
+  _p="$(command -v "$_cand" 2>/dev/null)" || continue
+  if "$_p" -c 'import acp' 2>/dev/null; then ACP_REWRITE_PY="$_p"; break; fi
+done
+if [[ -n "$ACP_REWRITE_PY" ]]; then
   ACPTEST="$WORKDIR/acp-rewrite-test.py"
   cat > "$ACPTEST" <<'PYEOF'
-import json, os, sys, tempfile
+import ast, json, os, sys, tempfile
+from pathlib import Path
+from typing import Optional
 sys.path.insert(0, os.path.join(os.environ["CEREBRO_LIB_DIR"], "python"))
-# We import the module's helpers directly by exec'ing the relevant section,
-# since importing acp_server.py requires CEREBRO_ACP_CHILD_SPEC to be set.
 CEREBRO_HOME = os.environ["CEREBRO_HOME"]
-CATALOG_PATH = os.path.join(CEREBRO_HOME, "models-config.json")
-CEREBRO_MODEL = os.environ.get("CEREBRO_MODEL", "")
+_CATALOG_PATH = os.path.join(CEREBRO_HOME, "models-config.json")
+_SUPERVISOR_MODEL = os.environ["CEREBRO_SUPERVISOR_MODEL"]
 _HAS_CUSTOM_ENDPOINT = bool(os.environ.get("CEREBRO_CLAUDE_BASE_URL"))
-
-def _load_catalog():
-    if not _HAS_CUSTOM_ENDPOINT:
-        return []
-    try:
-        with open(CATALOG_PATH) as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return []
-    models = data.get("models") if isinstance(data, dict) else None
-    return [m for m in models if isinstance(m, dict) and m.get("id")] if isinstance(models, list) else []
 
 from acp.schema import SessionConfigOptionSelect, SessionConfigSelectOption
 
-def _catalog_model_option(current_value):
-    options = []
-    for m in _load_catalog():
-        options.append(SessionConfigSelectOption(
-            value=str(m["id"]),
-            name=str(m.get("name") or m["id"]),
-            description=str(m["description"]) if m.get("description") else None,
-        ))
-    return SessionConfigOptionSelect(
-        id="model", name="Model", description="AI model to use",
-        category="model", type="select", current_value=current_value,
-        options=options,
-    )
-
-def _rewrite_model_option(config_options):
-    if not config_options:
-        return config_options
-    if not _load_catalog():
-        return config_options
-    result = []
-    replaced = False
-    for opt in config_options:
-        if getattr(opt, "id", None) == "model":
-            result.append(_catalog_model_option(
-                current_value=str(getattr(opt, "current_value", CEREBRO_MODEL) or CEREBRO_MODEL)
-            ))
-            replaced = True
-        else:
-            result.append(opt)
-    if not replaced:
-        result.append(_catalog_model_option(current_value=CEREBRO_MODEL))
-    return result
+source = ast.parse((Path(os.environ["CEREBRO_LIB_DIR"]) / "python" / "acp_server.py").read_text())
+helpers = [node for node in source.body if isinstance(node, ast.FunctionDef)
+           and node.name in ("_load_catalog", "_catalog_model_option", "_rewrite_model_option")]
+exec(compile(ast.Module(body=helpers, type_ignores=[]), "acp_server.py", "exec"))
 
 # Test 1: catalog present -> model option replaced with catalog entries.
 upstream_model = SessionConfigOptionSelect(
@@ -2248,7 +2217,7 @@ for o in model.options:
 # Test 2: empty catalog -> upstream's model option passed through unchanged.
 empty_home = tempfile.mkdtemp()
 os.environ["CEREBRO_HOME"] = empty_home
-CATALOG_PATH = os.path.join(empty_home, "models-config.json")
+_CATALOG_PATH = os.path.join(empty_home, "models-config.json")
 result2 = _rewrite_model_option([mode_opt, upstream_model])
 model2 = [o for o in result2 if o.id == "model"][0]
 assert model2 is upstream_model, "empty catalog should pass through unchanged"
@@ -2258,10 +2227,11 @@ assert any(o.value == "claude-opus-4-8" for o in model2.options)
 assert _rewrite_model_option(None) is None
 
 # Test 4: upstream has no model option -> one is injected. Reset
-# CATALOG_PATH to the real catalog first (test 2 pointed it at an empty dir).
-CATALOG_PATH = os.path.join(os.environ["CEREBRO_HOME_ORIG"], "models-config.json")
+# _CATALOG_PATH to the real catalog first (test 2 pointed it at an empty dir).
+_CATALOG_PATH = os.path.join(os.environ["CEREBRO_HOME_ORIG"], "models-config.json")
 result4 = _rewrite_model_option([mode_opt])
 assert any(o.id == "model" for o in result4), "model option should be injected"
+assert result4[-1].current_value == _SUPERVISOR_MODEL, "picker must select the supervisor model"
 
 # Test 5: subscription path (no CEREBRO_CLAUDE_BASE_URL) -> upstream's
 # Anthropic picker is passed through UNCHANGED, even when a catalog exists.
@@ -2280,7 +2250,8 @@ PYEOF
   acp_out="$(CEREBRO_LIB_DIR="$here/../lib" CEREBRO_HOME="$MDLACP" \
     CEREBRO_HOME_ORIG="$MDLACP" \
     CEREBRO_CLAUDE_BASE_URL=http://localhost:11434 \
-    CEREBRO_MODEL=glm-5.2:cloud /opt/homebrew/bin/python3 "$ACPTEST" 2>&1)"
+    CEREBRO_MODEL=implementation-native CEREBRO_SUPERVISOR_MODEL=glm-5.2:cloud \
+    "$ACP_REWRITE_PY" "$ACPTEST" 2>&1)"
   if [[ "$acp_out" == "OK" ]]; then
     printf 'PASS  130f acp_server _rewrite_model_option: catalog-driven picker, no Anthropic labels, preserves currentValue\n'; pass=$((pass + 1))
   else
@@ -2312,7 +2283,7 @@ chmod +x "$CLAUDE_STUB_DIR/claude"
 if [[ -x "$CLAUDE_STUB_DIR/claude" ]]; then
   CLAUDE_STUB_PATH="$CLAUDE_STUB_DIR:$PATH"
   CSESS="claude-review-session"; CDIR="$CEREBRO_HOME/sessions/$CSESS"
-  mkdir -p "$CDIR/children"; : > "$CDIR/transcript.jsonl"
+  initialize_session "$CDIR" claude
 
   # --- 129f. CEREBRO_BACKEND=claude runs `claude -p` on the review
   # model with the read-only allowedTools and records provider=claude. ---
@@ -2339,24 +2310,17 @@ else
 fi
 
 # ========================================================================
-# 131-139. Pair-programming mode (--pair). A paired child runs under a private
-# headless `opencode serve`; cerebro POSTs the task to a session on it, streams
-# the session's events back into the child log (in run-format), and after each
-# turn waits a short window for a one-shot `cerebro steer` over a named pipe. We
-# stand up a FAKE `opencode serve` (a tiny HTTP server) so the real pair plumbing
-# -- pair_begin, pair_pump, steer, restart, stall -- runs end to end without a
-# model. The fixture implements native V2 /api session requests and an open
-# SSE stream. A FAKE_STALL_STATE file makes the FIRST server instance freeze
-# (emit nothing) so the stall-and-restart path can be exercised; the restart's
-# fresh server then completes.
+# 131-139. Pair-programming mode (--pair) uses the native Pi RPC process.
+# The fixture sends real-shaped messages and agent_settled completion while
+# production code owns the steering pipe, restart and session-file resume.
 # ========================================================================
-PAIR_STUB_DIR="$WORKDIR/opencode-pair-stub"
-install_opencode_fixture "$PAIR_STUB_DIR" '{"sid":"PAIRSESS-1","text":"child working"}'
+PAIR_STUB_DIR="$WORKDIR/pi-pair-stub"
+install_pi_fixture "$PAIR_STUB_DIR" '{"text":"child working"}'
 
-if [[ -x "$PAIR_STUB_DIR/opencode" ]]; then
+if [[ -x "$PAIR_STUB_DIR/pi" ]]; then
   PAIR_STUB_PATH="$PAIR_STUB_DIR:$PATH"
   PSESS="pair-session"; PDIR="$CEREBRO_HOME/sessions/$PSESS"
-  mkdir -p "$PDIR/children" "$PDIR/plans"; : > "$PDIR/transcript.jsonl"
+  initialize_session "$PDIR"
 
   # Background driver: wait for the child's steering pipe to appear, then inject
   # one steering message with `cerebro steer "<msg>"` (auto-discovers the single
@@ -2391,9 +2355,9 @@ if [[ -x "$PAIR_STUB_DIR/opencode" ]]; then
   wait "$STEERER_PID" 2>/dev/null
   perr="$(cat "$WORKDIR/perr")"
 
-  # --- 131. execute --pair runs under serve and produces a child log ---
+  # --- 131. execute --pair runs native RPC and produces a child log ---
   if [[ $prc -eq 0 && "$pout" == *".jsonl"* ]]; then
-    printf 'PASS  131  execute --pair runs the child under opencode serve\n'; pass=$((pass + 1))
+    printf 'PASS  131  execute --pair runs the child through native Pi RPC\n'; pass=$((pass + 1))
   else
     printf 'FAIL  131  execute --pair did not complete [rc=%d out=%s err=%s]\n' "$prc" "$pout" "$perr"; fail=$((fail + 1))
     failures+=("131 execute --pair :: rc=$prc")
@@ -2426,11 +2390,14 @@ if [[ -x "$PAIR_STUB_DIR/opencode" ]]; then
     failures+=("133b pair_steering event missing")
   fi
 
-  # --- 134. the PAIR MODE banner advertises `cerebro observe <id>` + `cerebro steer` ---
-  if [[ "$perr" == *"PAIR MODE"* && "$perr" == *"observe $PSESS"* \
-        && "$perr" == *"cerebro steer "* && "$perr" == *".steer.fifo"* \
-        && "$perr" != *"cerebro watch"* && "$perr" != *"claude.ai/code"* ]]; then
-    printf 'PASS  134  pair banner advertises observe + steer\n'; pass=$((pass + 1))
+  # --- 134. the pair banner identifies the child and both steering forms. ---
+  pair_worktree="$(printf '%s\n' "$pout" | sed -n 's/^=== TASK WORKTREE: \(.*\) (branch .*$/\1/p' | head -1)"
+  pair_session_label="cerebro:execute:$(basename "$pair_worktree")"
+  if [[ -d "$pair_worktree" && "$perr" == *"PAIR MODE -- watch this execute"* \
+        && "$perr" == *"session : $pair_session_label"* \
+        && "$perr" == *'cerebro steer "<message>"'* \
+        && "$perr" == *"cerebro steer ${clog%.jsonl}.steer.fifo"* ]]; then
+    printf 'PASS  134  pair banner identifies the child and direct steering controls\n'; pass=$((pass + 1))
   else
     printf 'FAIL  134  pair banner wrong [perr=%s]\n' "$perr"; fail=$((fail + 1))
     failures+=("134 pair banner :: perr=$perr")
@@ -2540,7 +2507,7 @@ EOF
   git -C "$REPO" branch -D "$STRAY_BR" >/dev/null 2>&1 || true
   rm -f "$REPO/RESTART-PRECIOUS.txt"
 
-  # --- 135. an unpaired served child completes without a live-steering banner. ---
+  # --- 135. an unpaired native child completes without a live-steering banner. ---
   env PATH="$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$PSESS" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "no pairing" >/dev/null 2>"$WORKDIR/nperr"
   nprc=$?
@@ -2570,153 +2537,15 @@ EOF
     "$CEREBRO_BIN" apply-review "$REPO" --prompt "tidy up" --pair 2>"$WORKDIR/aperr")"
   arc=$?
   if [[ $arc -eq 0 && "$apout" == *".jsonl"* && "$(cat "$WORKDIR/aperr")" == *"PAIR MODE"* ]]; then
-    printf 'PASS  137  apply-review --pair runs the child under opencode serve\n'; pass=$((pass + 1))
+    printf 'PASS  137  apply-review --pair runs the child through native Pi RPC\n'; pass=$((pass + 1))
   else
     printf 'FAIL  137  apply-review --pair wrong [rc=%d out=%s]\n' "$arc" "$apout"; fail=$((fail + 1))
     failures+=("137 apply-review --pair :: rc=$arc")
   fi
 
-  # --- 138. cerebro observe: from an OBSERVER session, tail a TARGET session's
-  # live paired children. Stand up a fake live paired child (a run-format log + a
-  # steer pipe held open by a reader) under a target session, then run the real
-  # `cerebro observe <target>` from a separate observer session and assert it
-  # reports the child label, its message, the edit (with content preview), and an
-  # active STATUS that names the live child. ---
-  WTGT="$CEREBRO_HOME/sessions/observe-target/children"; mkdir -p "$WTGT"
-  mkdir -p "$CEREBRO_HOME/sessions/observe-watcher"
-  wfifo="$WTGT/execute-demo.steer.fifo"; wlog="$WTGT/execute-demo.jsonl"
-  mkfifo "$wfifo"
-  python3 -c 'import os,sys,time; os.open(sys.argv[1], os.O_RDONLY|os.O_NONBLOCK); time.sleep(6)' "$wfifo" &
-  WHOLDER=$!; disown "$WHOLDER" 2>/dev/null || true
-  {
-    printf '%s\n' '{"type":"text","sessionID":"OBS-1","part":{"type":"text","text":"Introducing a Cache abstraction"}}'
-    printf '%s\n' '{"type":"tool_use","sessionID":"OBS-1","part":{"type":"tool","tool":"write","state":{"input":{"filePath":"src/cache.ts","content":"export interface Cache {}"}}}}'
-    printf '%s\n' '{"type":"step_finish","sessionID":"OBS-1","part":{"type":"step-finish","reason":"stop"}}'
-  } > "$wlog"
-  obsout="$(CEREBRO_SESSION_ID=observe-watcher CEREBRO_OBSERVE_WINDOW=3 CEREBRO_OBSERVE_QUIET=1 \
-    "$CEREBRO_BIN" observe observe-target 2>/dev/null)"
-  kill "$WHOLDER" 2>/dev/null; rm -f "$wfifo"
-  if [[ "$obsout" == *"execute-demo"* && "$obsout" == *"Introducing a Cache abstraction"* \
-        && "$obsout" == *"write src/cache.ts :: export interface Cache {}"* \
-        && "$obsout" == *"OBSERVE STATUS: active"* && "$obsout" == *"live: execute-demo"* ]]; then
-    printf 'PASS  138  cerebro observe tails a target session live paired child\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  138  observe wrong [out=%s]\n' "$obsout"; fail=$((fail + 1))
-    failures+=("138 observe :: out=$obsout")
-  fi
-
-  # --- 138b. cerebro observe reports done once the child's pipe closes. ---
-  obsdone="$(CEREBRO_SESSION_ID=observe-watcher CEREBRO_OBSERVE_WINDOW=2 CEREBRO_OBSERVE_QUIET=1 \
-    "$CEREBRO_BIN" observe observe-target 2>/dev/null)"
-  if [[ "$obsdone" == *"OBSERVE STATUS: done"* ]]; then
-    printf 'PASS  138b  cerebro observe reports done when no live children remain\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  138b  observe done wrong [out=%s]\n' "$obsdone"; fail=$((fail + 1))
-    failures+=("138b observe done :: out=$obsdone")
-  fi
-
-  # --- 138c. observe renders todowrite as a `plan:` line and carries a full
-  # function body past the old clip, so the observer can narrate the roadmap and
-  # quote the actual design. ---
-  WTGT2="$CEREBRO_HOME/sessions/observe-target2/children"; mkdir -p "$WTGT2"
-  mkdir -p "$CEREBRO_HOME/sessions/observe-watcher2"
-  wfifo2="$WTGT2/execute-deep.steer.fifo"; wlog2="$WTGT2/execute-deep.jsonl"
-  mkfifo "$wfifo2"
-  python3 -c 'import os,sys,time; os.open(sys.argv[1], os.O_RDONLY|os.O_NONBLOCK); time.sleep(6)' "$wfifo2" &
-  WHOLDER2=$!; disown "$WHOLDER2" 2>/dev/null || true
-  longbody="$(python3 -c 'print("export function step(s){" + "/*x*/"*200 + "return s;}", end="")')"
-  {
-    printf '%s\n' '{"type":"tool_use","sessionID":"OBS-2","part":{"type":"tool","tool":"todowrite","state":{"input":{"todos":[{"content":"ring rules engine","status":"completed"},{"content":"wire controller","status":"in_progress"}]}}}}'
-    printf '{"type":"tool_use","sessionID":"OBS-2","part":{"type":"tool","tool":"write","state":{"input":{"filePath":"rules.js","content":%s}}}}\n' "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$longbody")"
-    printf '%s\n' '{"type":"step_finish","sessionID":"OBS-2","part":{"type":"step-finish","reason":"stop"}}'
-  } > "$wlog2"
-  obsdeep="$(CEREBRO_SESSION_ID=observe-watcher2 CEREBRO_OBSERVE_WINDOW=3 CEREBRO_OBSERVE_QUIET=1 \
-    "$CEREBRO_BIN" observe observe-target2 2>/dev/null)"
-  kill "$WHOLDER2" 2>/dev/null; rm -f "$wfifo2"
-  if [[ "$obsdeep" == *"plan: [x] ring rules engine | [>] wire controller"* \
-        && "$obsdeep" == *"return s;}"* ]]; then
-    printf 'PASS  138c  observe renders the plan and a full function body\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  138c  observe deep wrong [out=%s]\n' "$obsdeep"; fail=$((fail + 1))
-    failures+=("138c observe deep :: out=$obsdeep")
-  fi
-
-  # --- 138d. observe launches native OpenCode with the shared observer skill
-  # and a target-session kickoff prompt.
-  OBS_STUB_DIR="$WORKDIR/observe-launch-stub"; mkdir -p "$OBS_STUB_DIR"
-  OBS_ARGV_LOG="$WORKDIR/observe-launch-argv.log"; : > "$OBS_ARGV_LOG"
-  OBS_CONTEXT_LOG="$WORKDIR/observe-launch-context.log"
-  install_opencode_fixture "$OBS_STUB_DIR" \
-    "$(jq -n --arg log "$OBS_ARGV_LOG" --arg context "$OBS_CONTEXT_LOG" \
-      '{launch_log:$log,launch_context_log:$context}')"
-  OBSD_FIFO="$CEREBRO_HOME/sessions/observe-target2/children/execute-live.steer.fifo"
-  mkfifo "$OBSD_FIFO"
-  python3 -c 'import os,sys,time; os.open(sys.argv[1], os.O_RDONLY|os.O_NONBLOCK); time.sleep(8)' "$OBSD_FIFO" &
-  OBSD_HOLDER=$!; disown "$OBSD_HOLDER" 2>/dev/null || true
-  sleep 0.3
-  ( PATH="$OBS_STUB_DIR:$PATH" CEREBRO_SESSION_ID=observe-launcher \
-      "$CEREBRO_BIN" --observe observe-target2 >/dev/null 2>&1 )
-  kill "$OBSD_HOLDER" 2>/dev/null; rm -f "$OBSD_FIFO"
-  obslaunch="$(cat "$OBS_ARGV_LOG")"
-  obs_session="$(jq -r '.session_dir' "$OBS_CONTEXT_LOG" 2>/dev/null)"
-  if [[ "$obslaunch" == *"--standalone"* \
-        && "$obslaunch" == *"--prompt"* \
-        && "$obslaunch" == *"Observe session observe-target2"* ]] \
-     && [[ "$(cat "$CEREBRO_HOME/.agents/skills/cerebro-observer/SKILL.md")" \
-          == "$(cat "$here/../lib/payloads/skills/cerebro-observer/SKILL.md")" ]] \
-     && jq -e '.role == "observer" and .observe_target == "observe-target2"' \
-          "$obs_session/metadata.json" >/dev/null 2>&1 \
-     && jq -e --arg skill "$CEREBRO_HOME/.agents/skills/cerebro-observer/SKILL.md" '
-          . as $launch | .config as $cfg | $cfg.mcp.servers.cerebro as $server |
-          $server.environment as $env |
-          $cfg.default_agent == "build" and $cfg.permissions[0].effect == "deny" and
-          ($cfg.instructions | index($skill)) != null and
-          $server.command[-1] == "observer" and $env.CEREBRO_ROLE == "observer" and
-          $env.CEREBRO_BACKEND == "opencode" and
-          $env.CEREBRO_SESSION_ID == $launch.session_id and
-          $env.CEREBRO_SESSION_DIR == $launch.session_dir' \
-          "$OBS_CONTEXT_LOG" >/dev/null 2>&1; then
-    printf 'PASS  138d  cerebro --observe launches a watch-and-steer-only session\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  138d  observe launch wrong [argv=%s]\n' "$obslaunch"; fail=$((fail + 1))
-    failures+=("138d observe launch :: argv=$obslaunch")
-  fi
-
-  # --- 138e. cerebro --observe blocks until something is observable: with no
-  # live paired children it must NOT exec opencode yet; once a target sprouts a
-  # live child it proceeds and launches. ---
-  mkdir -p "$CEREBRO_HOME/sessions/observe-wait-target/children"
-  OBSE_ARGV_LOG="$WORKDIR/observe-wait-argv.log"; : > "$OBSE_ARGV_LOG"
-  OBSE_STUB_DIR="$WORKDIR/observe-wait-stub"; mkdir -p "$OBSE_STUB_DIR"
-  install_opencode_fixture "$OBSE_STUB_DIR" \
-    "$(jq -n --arg log "$OBSE_ARGV_LOG" '{launch_log:$log}')"
-  ( PATH="$OBSE_STUB_DIR:$PATH" CEREBRO_SESSION_ID=observe-wait-launcher \
-      CEREBRO_OBSERVE_POLL=0.3 \
-      "$CEREBRO_BIN" --observe observe-wait-target >/dev/null 2>&1 ) &
-  OBSE_LAUNCH=$!
-  sleep 1
-  obse_early="$(cat "$OBSE_ARGV_LOG")"
-  OBSE_FIFO="$CEREBRO_HOME/sessions/observe-wait-target/children/execute-go.steer.fifo"
-  mkfifo "$OBSE_FIFO"
-  python3 -c 'import os,sys,time; os.open(sys.argv[1], os.O_RDONLY|os.O_NONBLOCK); time.sleep(6)' "$OBSE_FIFO" &
-  OBSE_HOLDER=$!; disown "$OBSE_HOLDER" 2>/dev/null || true
-  obse_late=""
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    sleep 0.5
-    obse_late="$(cat "$OBSE_ARGV_LOG")"
-    [[ -n "$obse_late" ]] && break
-  done
-  kill "$OBSE_HOLDER" 2>/dev/null; wait "$OBSE_LAUNCH" 2>/dev/null; rm -f "$OBSE_FIFO"
-  if [[ -z "$obse_early" && "$obse_late" == *"--standalone"* ]]; then
-    printf 'PASS  138e  cerebro --observe waits for observable, then launches\n'; pass=$((pass + 1))
-  else
-    printf 'FAIL  138e  observe wait wrong [early=%s late=%s]\n' "$obse_early" "$obse_late"; fail=$((fail + 1))
-    failures+=("138e observe wait :: early=$obse_early late=$obse_late")
-  fi
-
   # --- 139. a frozen paired child is reaped and relaunched (stall -> restart).
-  # The FIRST fake server instance freezes (emits nothing); the pump reaps it and
-  # marks the child stalled; cerebro restarts it, and the fresh server completes. ---
+  # The first native process persists its user input then freezes; the pump
+  # marks it stalled, and Cerebro resumes that same session in a new process.
   STALL_STATE="$WORKDIR/pair-stall-once.state"
   rm -f "$STALL_STATE"
   rstout="$(env PATH="$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$PSESS" \
@@ -2737,7 +2566,7 @@ EOF
   # --- 139b. a rejected native prompt must propagate failure through the
   # stream pipeline and retain its diagnostic in the child error sidecar.
   RJSESS="pair-reject-session"; RJDIR="$CEREBRO_HOME/sessions/$RJSESS"
-  mkdir -p "$RJDIR/children" "$RJDIR/plans"; : > "$RJDIR/transcript.jsonl"
+  initialize_session "$RJDIR"
   rjout="$(env PATH="$PAIR_STUB_PATH" CEREBRO_SESSION_ID="$RJSESS" \
     FAKE_REJECT_PROMPT=1 CEREBRO_PAIR_IDLE=1 \
     "$CEREBRO_BIN" execute "$REPO" --prompt "prompt that gets rejected" --pair \
@@ -2749,7 +2578,7 @@ EOF
   if [[ $rjrc -ne 0 ]] \
      && grep -q '"what":"execute_failed"' "$RJDIR/transcript.jsonl" \
      && ! grep -q '"what":"execute_finished"' "$RJDIR/transcript.jsonl" \
-     && [[ "$rjerrortxt" == *"HTTP Error 400"* && "$rjerr" == *"HTTP Error 400"* ]]; then
+     && [[ "$rjerrortxt" == *"fixture prompt rejected"* && "$rjerr" == *"fixture prompt rejected"* ]]; then
     printf 'PASS  139b  rejected initial prompt surfaces a failure (not exit 0)\n'; pass=$((pass + 1))
   else
     printf 'FAIL  139b  rejected prompt did not surface failure [rc=%d err=%s sidecar=%s]\n' \
@@ -2757,8 +2586,8 @@ EOF
     failures+=("139b rejected prompt :: rc=$rjrc")
   fi
 else
-  for t in 131 132 133 133b 134 134c 134d 134e 135 136 137 138 138b 138c 138d 138e 139 139b; do
-    printf 'SKIP  %s  pair-mode (opencode stub unavailable)\n' "$t"
+  for t in 131 132 133 133b 134 134c 134d 134e 135 136 137 139 139b; do
+    printf 'SKIP  %s  pair-mode (Pi fixture unavailable)\n' "$t"
   done
 fi
 
@@ -2772,10 +2601,11 @@ fi
 # --- 141. cerebro status surfaces a still-running (interrupted) child with a
 # resume hint. No stub needed: we seed a fresh running entry directly. ---
 SSESS="status-inflight-session"; SDIR="$CEREBRO_HOME/sessions/$SSESS"
-mkdir -p "$SDIR/children"; : > "$SDIR/transcript.jsonl"
+initialize_session "$SDIR"
+STATUS_PI_SESSION="$WORKDIR/status-native.jsonl"; seed_pi_session "$STATUS_PI_SESSION"
 jq -n --arg k deadbeefdeadbeef --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-   --arg repo "$REPO" \
-   '{($k): {id:"INFLIGHT-1", provider:"opencode", role:"execute", repo:$repo,
+   --arg repo "$REPO" --arg id "$STATUS_PI_SESSION" \
+   '{($k): {id:$id, provider:"pi", role:"execute", repo:$repo,
             branch:"feat/wip", log:"/tmp/x.jsonl", status:"running",
             started_at:$ts, updated_at:$ts}}' \
    > "$SDIR/child-sessions.json"
@@ -2790,8 +2620,8 @@ else
 fi
 
 # --- 142. a stale (over-TTL) running entry is NOT listed as in-flight. ---
-jq -n --arg k cafecafecafecafe \
-   '{($k): {id:"OLD-1", provider:"opencode", role:"execute", repo:"/r",
+jq -n --arg k cafecafecafecafe --arg id "$STATUS_PI_SESSION" \
+   '{($k): {id:$id, provider:"pi", role:"execute", repo:"/r",
             branch:"feat/old", log:"/tmp/o.jsonl", status:"running",
             started_at:"2000-01-01T00:00:00Z", updated_at:"2000-01-01T00:00:00Z"}}' \
    > "$SDIR/child-sessions.json"
@@ -2807,7 +2637,7 @@ if (( STUB_OK )); then
   # --- 140. a successful execute marks its child status=done (so it does NOT
   # show up as interrupted), and the id is recorded. ---
   DSESS="done-status-session"; DDIR="$CEREBRO_HOME/sessions/$DSESS"
-  mkdir -p "$DDIR/children"; : > "$DDIR/transcript.jsonl"
+  initialize_session "$DDIR"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$DSESS" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "do it" --branch feat/done >/dev/null 2>&1
   dstatus="$(jq -r '.[].status' "$DDIR/child-sessions.json" 2>/dev/null)"
@@ -2822,12 +2652,14 @@ if (( STUB_OK )); then
 
   # --- 143. apply-review does not auto-resume a completed same-branch child. ---
   ARSESS="apply-resume-session"; ARDIR="$CEREBRO_HOME/sessions/$ARSESS"
-  mkdir -p "$ARDIR/children"; : > "$ARDIR/transcript.jsonl"
+  initialize_session "$ARDIR"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$ARSESS" \
     "$CEREBRO_BIN" apply-review "$REPO" --prompt "first fix" >/dev/null 2>&1
+  previous_apply_id="$(jq -r '.[].id' "$ARDIR/child-sessions.json")"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$ARSESS" \
     "$CEREBRO_BIN" apply-review "$REPO" --prompt "second fix" >/dev/null 2>&1
-  if ! grep -q 'resume=STUBSESSION-1111' "$ARDIR/transcript.jsonl"; then
+  if ! grep -qF "resume=$previous_apply_id" "$ARDIR/transcript.jsonl" \
+     && [[ "$(jq -r '.[].id' "$ARDIR/child-sessions.json")" != "$previous_apply_id" ]]; then
     printf 'PASS  143  completed apply-review child is not auto-resumed\n'; pass=$((pass + 1))
   else
     printf 'FAIL  143  apply-review resumed a completed child [transcript=%s]\n' "$(cat "$ARDIR/transcript.jsonl")"; fail=$((fail + 1))
@@ -2836,12 +2668,14 @@ if (( STUB_OK )); then
 
   # --- 144. doc-write likewise starts fresh after a completed same-branch child. ---
   DWSESS="doc-resume-session"; DWDIR="$CEREBRO_HOME/sessions/$DWSESS"
-  mkdir -p "$DWDIR/children"; : > "$DWDIR/transcript.jsonl"
+  initialize_session "$DWDIR"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$DWSESS" \
     "$CEREBRO_BIN" doc-write "$REPO" --prompt "doc pass one" >/dev/null 2>&1
+  previous_doc_id="$(jq -r '.[].id' "$DWDIR/child-sessions.json")"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$DWSESS" \
     "$CEREBRO_BIN" doc-write "$REPO" --prompt "doc pass two" >/dev/null 2>&1
-  if ! grep -q 'resume=STUBSESSION-1111' "$DWDIR/transcript.jsonl"; then
+  if ! grep -qF "resume=$previous_doc_id" "$DWDIR/transcript.jsonl" \
+     && [[ "$(jq -r '.[].id' "$DWDIR/child-sessions.json")" != "$previous_doc_id" ]]; then
     printf 'PASS  144  completed doc-write child is not auto-resumed\n'; pass=$((pass + 1))
   else
     printf 'FAIL  144  doc-write resumed a completed child [transcript=%s]\n' "$(cat "$DWDIR/transcript.jsonl")"; fail=$((fail + 1))
@@ -2849,13 +2683,13 @@ if (( STUB_OK )); then
   fi
 else
   for t in 140 143 144; do
-    printf 'SKIP  %s  child resume-on-continue (opencode stub unavailable)\n' "$t"
+    printf 'SKIP  %s  child resume-on-continue (Pi fixture unavailable)\n' "$t"
   done
 fi
 
 # ========================================================================
 # 150-156. `cerebro answer` -- resume a paused child with an answer.
-# Validation/resolution paths fire before any opencode invocation; the
+# Validation/resolution paths fire before any pi invocation; the
 # stub-backed cases verify the resume actually happens.
 # ========================================================================
 
@@ -2878,21 +2712,22 @@ run_case 153 "answer unknown child session" 1 -- "$CEREBRO_BIN" answer NO-SUCH-C
 if (( STUB_OK )); then
   # Fresh and resumed answers share the native session/prompt transport.
   # On resume, the stream carries the requested stored session ID.
-  ANSWER_STUB_DIR="$WORKDIR/opencode-answer-stub"
+  ANSWER_STUB_DIR="$WORKDIR/pi-answer-stub"
   mkdir -p "$ANSWER_STUB_DIR"
-  install_opencode_fixture "$ANSWER_STUB_DIR" '{"sid":"STUBSESSION-1111"}'
+  install_pi_fixture "$ANSWER_STUB_DIR" '{}'
   ANSWER_STUB_PATH="$ANSWER_STUB_DIR:$PATH"
 
   # --- 154. answer resolves the child session id and resumes it ---
   ANSESS="answer-session"; ANDIR="$CEREBRO_HOME/sessions/$ANSESS"
-  mkdir -p "$ANDIR/children" "$ANDIR/plans"; : > "$ANDIR/transcript.jsonl"
+  initialize_session "$ANDIR"
   # Seed a stored execute session for this repo.
   env PATH="$ANSWER_STUB_PATH" CEREBRO_SESSION_ID="$ANSESS" \
     "$CEREBRO_BIN" execute "$REPO" --prompt "do the thing" --branch feat/ans >/dev/null 2>&1
+  answer_session="$(jq -r '.[].id' "$ANDIR/child-sessions.json")"
   ans_out="$(env PATH="$ANSWER_STUB_PATH" CEREBRO_SESSION_ID="$ANSESS" \
-    "$CEREBRO_BIN" answer STUBSESSION-1111 "use option B" 2>/dev/null)"
+    "$CEREBRO_BIN" answer "$answer_session" "use option B" 2>/dev/null)"
   if grep -q '"what":"answer_started"' "$ANDIR/transcript.jsonl" \
-     && grep -q 'resume=STUBSESSION-1111' "$ANDIR/transcript.jsonl"; then
+     && grep -qF "resume=$answer_session" "$ANDIR/transcript.jsonl"; then
     printf 'PASS  154  answer resumes the stored execute session\n'; pass=$((pass + 1))
   else
     printf 'FAIL  154  answer did not resume [transcript=%s]\n' "$(cat "$ANDIR/transcript.jsonl")"; fail=$((fail + 1))
@@ -2900,7 +2735,7 @@ if (( STUB_OK )); then
   fi
 
   # --- 155. answer surfaces the child's closing message and child id on stdout ---
-  if [[ "$ans_out" == *"child closing message"* && "$ans_out" == *"child session: STUBSESSION-1111"* \
+  if [[ "$ans_out" == *"child closing message"* && "$ans_out" == *"child session: $answer_session"* \
         && "$ans_out" == *"ok"* ]]; then
     printf 'PASS  155  answer surfaces the child closing message\n'; pass=$((pass + 1))
   else
@@ -2911,22 +2746,25 @@ if (( STUB_OK )); then
   # --- 155b. answer targets the exact child session id when several plans
   # share one branch. ---
   AXSESS="answer-exact-session"; AXDIR="$CEREBRO_HOME/sessions/$AXSESS"
-  mkdir -p "$AXDIR/children" "$AXDIR/plans"; : > "$AXDIR/transcript.jsonl"
+  initialize_session "$AXDIR"
   AXP1="$AXDIR/plans/one.md"; AXP2="$AXDIR/plans/two.md"
   printf 'one\n' > "$AXP1"; printf 'two\n' > "$AXP2"
   AXK1="$(printf '%s\0execute\0branch:feat/ans|plan:%s' "$REPO" "$AXP1" | shasum | cut -d' ' -f1 | cut -c1-16)"
   AXK2="$(printf '%s\0execute\0branch:feat/ans|plan:%s' "$REPO" "$AXP2" | shasum | cut -d' ' -f1 | cut -c1-16)"
+  AXID1="$ANSWER_STUB_DIR/child-one.jsonl"; seed_pi_session "$AXID1"
+  AXID2="$ANSWER_STUB_DIR/child-two.jsonl"; seed_pi_session "$AXID2"
   jq -n --arg k1 "$AXK1" --arg k2 "$AXK2" --arg repo "$REPO" \
+        --arg id1 "$AXID1" --arg id2 "$AXID2" \
         --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{($k1): {id:"CHILD-ONE", provider:"opencode", role:"execute", repo:$repo,
+        '{($k1): {id:$id1, provider:"pi", role:"execute", repo:$repo,
                   branch:"feat/ans", status:"done", updated_at:$ts},
-          ($k2): {id:"CHILD-TWO", provider:"opencode", role:"execute", repo:$repo,
+          ($k2): {id:$id2, provider:"pi", role:"execute", repo:$repo,
                   branch:"feat/ans", status:"done", updated_at:$ts}}' \
         > "$AXDIR/child-sessions.json"
   env PATH="$ID_STUB_PATH" CEREBRO_SESSION_ID="$AXSESS" \
-    "$CEREBRO_BIN" answer CHILD-TWO "use option B" >/dev/null 2>&1
-  if grep -q 'resume=CHILD-TWO' "$AXDIR/transcript.jsonl" \
-     && ! grep -q 'resume=CHILD-ONE' "$AXDIR/transcript.jsonl"; then
+    "$CEREBRO_BIN" answer "$AXID2" "use option B" >/dev/null 2>&1
+  if grep -qF "resume=$AXID2" "$AXDIR/transcript.jsonl" \
+     && ! grep -qF "resume=$AXID1" "$AXDIR/transcript.jsonl"; then
     printf 'PASS  155b answer targets exact same-branch plan child\n'; pass=$((pass + 1))
   else
     printf 'FAIL  155b answer did not target exact child [transcript=%s]\n' \
@@ -2937,31 +2775,33 @@ if (( STUB_OK )); then
   # --- 156. answer rejects non-answerable child sessions such as a review/audit
   # child (only execute / apply-review / doc-write children pause for answers). ---
   CSESS="answer-review-session"; CSDIR="$CEREBRO_HOME/sessions/$CSESS"
-  mkdir -p "$CSDIR/children"; : > "$CSDIR/transcript.jsonl"
-  jq -n --arg repo "$REPO" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        '{auditkey: {id:"REVIEW-CHILD", provider:"opencode", role:"audit", repo:$repo,
+  initialize_session "$CSDIR"
+  ANSWER_REVIEW_ID="$ANSWER_STUB_DIR/audit.jsonl"; seed_pi_session "$ANSWER_REVIEW_ID"
+  jq -n --arg repo "$REPO" --arg id "$ANSWER_REVIEW_ID" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{auditkey: {id:$id, provider:"pi", role:"audit", repo:$repo,
                     branch:"audit", status:"done", updated_at:$ts}}' \
         > "$CSDIR/child-sessions.json"
-  STDERR_CONTAINS="not an answerable opencode child" \
+  STDERR_CONTAINS="not an answerable pi child" \
   run_case 156 "answer review/audit child rejected" 1 -- \
-    env CEREBRO_SESSION_ID="$CSESS" "$CEREBRO_BIN" answer REVIEW-CHILD "go"
+    env CEREBRO_SESSION_ID="$CSESS" "$CEREBRO_BIN" answer "$ANSWER_REVIEW_ID" "go"
 else
   for t in 154 155 155b 156; do
-    printf 'SKIP  %s  answer resume (opencode stub unavailable)\n' "$t"
+    printf 'SKIP  %s  answer resume (Pi fixture unavailable)\n' "$t"
   done
 fi
 
 # --- 157. parse_stream survives a closed stderr preview pipe. ---
 PRS="$WORKDIR/parse-stream-result"
 PIS="$WORKDIR/parse-stream-id"
+PARSE_SESSION="$WORKDIR/parser-native.jsonl"; seed_pi_session "$PARSE_SESSION"
 {
-  printf '%s\n' '{"type":"step_start","sessionID":"PARSE-1","part":{"type":"step-start"}}'
-  printf '%s\n' '{"type":"tool_use","sessionID":"PARSE-1","part":{"type":"tool","tool":"bash","callID":"c1","state":{"status":"completed","input":{"command":"echo parse"},"output":"parse"}}}'
-  printf '%s\n' '{"type":"text","sessionID":"PARSE-1","part":{"type":"text","text":"ok"}}'
-  printf '%s\n' '{"type":"step_finish","sessionID":"PARSE-1","part":{"type":"step-finish","reason":"stop"}}'
-} | { python3 "$here/../lib/python/parse_stream.py" "$PRS" "$PIS" 2>&1; } | python3 -c 'pass' >/dev/null
+  jq -cn --arg id "$PARSE_SESSION" '{type:"session.started",session_id:$id}'
+  printf '%s\n' '{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"echo parse"}}'
+  printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"stopReason":"stop"}}'
+  printf '%s\n' '{"type":"agent_settled"}'
+} | { python3 "$here/../lib/python/parse_stream.py" "$PRS" "$PIS" "" "" pi 2>&1; } | python3 -c 'pass' >/dev/null
 prsrc=$?
-if [[ $prsrc -eq 0 && "$(cat "$PRS" 2>/dev/null)" == "ok" && "$(cat "$PIS" 2>/dev/null)" == "PARSE-1" ]]; then
+if [[ $prsrc -eq 0 && "$(cat "$PRS" 2>/dev/null)" == "ok" && "$(cat "$PIS" 2>/dev/null)" == "$PARSE_SESSION" ]]; then
   printf 'PASS  157  parse_stream survives closed stderr preview pipe\n'; pass=$((pass + 1))
 else
   printf 'FAIL  157  parse_stream died on closed stderr [rc=%d result=%s id=%s]\n' \
@@ -2978,9 +2818,9 @@ PIS2="$WORKDIR/parse-stall-id"
 # Pipe one event, then sleep (holding stdin open) so the inactivity timer
 # fires before EOF. Bound the whole thing so a bug that never stalls still
 # terminates.
-( printf '%s\n' '{"type":"step_start","sessionID":"STALL-1","part":{"type":"step-start"}}'
+( printf '%s\n' '{"type":"agent_start"}'
   sleep 30 ) | env CEREBRO_CHILD_IDLE_TIMEOUT=2 \
-  python3 "$here/../lib/python/parse_stream.py" "$PRS2" "$PIS2" >"$WORKDIR/stall-out" 2>"$WORKDIR/stall-err" &
+  python3 "$here/../lib/python/parse_stream.py" "$PRS2" "$PIS2" "" "" pi >"$WORKDIR/stall-out" 2>"$WORKDIR/stall-err" &
 STALL_PID=$!
 # Poll up to ~8s for the parser to exit on the stall.
 stall_rc=""
@@ -3181,7 +3021,7 @@ run_case 172 "overlay set over-cap body rejected" 1 -- \
       . "$CEREBRO_LIB_DIR/payloads.sh"
       . "$CEREBRO_LIB_DIR/session-store.sh"
       . "$CEREBRO_LIB_DIR/backend.sh"
-      . "$CEREBRO_LIB_DIR/backend-opencode.sh"
+      . "$CEREBRO_LIB_DIR/backend-pi.sh"
       . "$CEREBRO_LIB_DIR/backend-claude.sh"
       . "$CEREBRO_LIB_DIR/backend-codex.sh"
       for _f in "$CEREBRO_LIB_DIR"/commands/*.sh; do . "$_f"; done
@@ -3239,7 +3079,7 @@ fi
 bootstrap="$(cat "$MHOME/system-prompt.md")"
 shared_supervisor="$(ov_fn cerebro_skill_body "$MHOME/.agents/skills/cerebro-supervisor/SKILL.md")"
 if [[ -n "$bootstrap" && "$bootstrap" == "$shared_supervisor" \
-      && "$bootstrap" == *"delegate development"* && "$bootstrap" == *"MCP"* ]]; then
+      && "$bootstrap" == *"Delegate development"* && "$bootstrap" == *"MCP"* ]]; then
   printf 'PASS  174c supervisor bootstrap and native skill share one source\n'; pass=$((pass + 1))
 else
   printf 'FAIL  174c supervisor bootstrap contract mismatch\n'; fail=$((fail + 1))
@@ -3323,13 +3163,13 @@ fi
 IMPROVE_STUB_DIR="$WORKDIR/improve-review-stub"
 mkdir -p "$IMPROVE_STUB_DIR"
 IMPROVE_STUB_LOG="$WORKDIR/improve-review-prompts.log"
-install_opencode_fixture "$IMPROVE_STUB_DIR" '{"sid":"IMPROVE-STUB","mode":"improve"}'
+install_pi_fixture "$IMPROVE_STUB_DIR" '{"mode":"improve"}'
 
 improve_home() {
   local home="$1" session="$2"
   mkdir -p "$home/sessions/$session/children" "$home/overlays"
   : > "$home/sessions/$session/transcript.jsonl"
-  printf '{"created_at":"2026-01-01T00:00:00Z"}\n' > "$home/sessions/$session/metadata.json"
+  printf '{"created_at":"2026-01-01T00:00:00Z","backend":"pi","role":"supervisor"}\n' > "$home/sessions/$session/metadata.json"
 }
 
 # --- 176e. H=2 fires on invocation two and emits fast then meta paths. ---
@@ -3369,12 +3209,12 @@ force_out="$(env PATH="$IMPROVE_STUB_DIR:$PATH" IMPROVE_STUB_LOG="$IMPROVE_STUB_
 if [[ "$(printf '%s\n' "$h1_out" | grep -cE '/(improve|meta-improve)\.md$')" -eq 2 \
       && "$(printf '%s\n' "$force_out" | grep -cE '/(improve|meta-improve)\.md$')" -eq 2 \
       && "$(grep -c 'META OVERLAY ROUTING MARKER' "$IMPROVE_STUB_LOG")" -eq 2 \
-      && "$(jq -s '[.[] | select(.path|endswith("/model")) | select(.payload.model=={providerID:"test",id:"reviewer"})] | length' "$IMPROVE_STUB_LOG")" -eq 2 \
+      && "$(jq -s '[.[] | select(.argv | type == "array") | .argv | index("--model") as $i | select($i != null and .[$i+1] == "test/reviewer")] | length' "$IMPROVE_STUB_LOG")" -eq 2 \
       && "$(grep -c 'META-LOOP' "$IMPROVE_STUB_LOG")" -eq 1 ]]; then
   printf 'PASS  176f improve H=1/--meta + overlay/meta/model prompt routing\n'; pass=$((pass + 1))
 else
   printf 'FAIL  176f improve H=1/force routing [h1=%s force=%s log=%s]\n' \
-    "$h1_out" "$force_out" "$(cat "$IMPROVE_STUB_LOG")"; fail=$((fail + 1))
+    "$h1_out" "$force_out" "$IMPROVE_STUB_LOG"; fail=$((fail + 1))
   failures+=("176f improve H=1/force routing")
 fi
 
@@ -3449,7 +3289,7 @@ cfg_vals="$(env -i HOME="$HOME" PATH="$PATH" \
       "$CEREBRO_CHILD_SESSION_TTL" "$CEREBRO_REVIEW_MODEL" "$CEREBRO_PAIR_STALL"' 2>/dev/null)"
 cfg_env="$(env -i HOME="$HOME" PATH="$PATH" \
   CEREBRO_LIB_DIR="$here/../lib" CEREBRO_HOME="$CFGHOME" \
-  CEREBRO_BACKEND=opencode CEREBRO_TIMEOUT=0 bash -c '
+  CEREBRO_BACKEND=pi CEREBRO_TIMEOUT=0 bash -c '
     set -uo pipefail
     . "$CEREBRO_LIB_DIR/config.sh"
     printf "backend=%s model=%s timeout=%s pair_idle=%s\n" \
@@ -3462,8 +3302,8 @@ cfg_missing="$(env -i HOME="$HOME" PATH="$PATH" \
     printf "backend=%s model=%s timeout=%s pair_idle=%s\n" \
       "$CEREBRO_BACKEND" "$CEREBRO_MODEL" "$CEREBRO_TIMEOUT" "$CEREBRO_PAIR_IDLE"' 2>/dev/null)"
 if [[ "$cfg_vals" == "backend=claude model=anthropic/claude-opus-4 timeout=300 pair_idle=12 child_session_ttl=3600 review_model=anthropic/claude-opus-4 pair_stall=180" \
-   && "$cfg_env" == "backend=opencode model=anthropic/claude-opus-4 timeout=0 pair_idle=12" \
-   && "$cfg_missing" == "backend=opencode model= timeout=0 pair_idle=60" ]]; then
+   && "$cfg_env" == "backend=pi model=anthropic/claude-opus-4 timeout=0 pair_idle=12" \
+   && "$cfg_missing" == "backend=pi model= timeout=0 pair_idle=60" ]]; then
   printf 'PASS  176b config.json option defaults (env > file > default)\n'; pass=$((pass + 1))
 else
   printf 'FAIL  176b config.json [vals=%s env=%s missing=%s]\n' "$cfg_vals" "$cfg_env" "$cfg_missing"; fail=$((fail + 1))
@@ -3514,7 +3354,7 @@ fi
 # ========================================================================
 
 # --- 178. no proxy running -> "nothing to do", exit 0 ---
-restart_out="$("$CEREBRO_BIN" acp restart 2>&1)"
+restart_out="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp restart 2>&1)"
 restart_rc=$?
 if (( restart_rc == 0 )) && [[ "$restart_out" == *"no running proxy"* ]]; then
   printf 'PASS  178  acp restart with no proxy -> exit 0 + "no running proxy"\n'; pass=$((pass + 1))
@@ -3542,7 +3382,7 @@ elif ! command -v ps >/dev/null 2>&1; then
   kill "$FAKE_PROXY_PID" 2>/dev/null; wait "$FAKE_PROXY_PID" 2>/dev/null
   printf 'SKIP  179  acp restart kills proxy (ps not available)\n'
 else
-  restart_out="$("$CEREBRO_BIN" acp restart 2>&1)"
+  restart_out="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp restart 2>&1)"
   restart_rc=$?
   # Allow up to 3s for SIGTERM -> process exit.
   gone=0
@@ -3575,7 +3415,7 @@ done
 if ! kill -0 "$OTHER_PROXY_PID" 2>/dev/null; then
   printf 'SKIP  180  acp restart ignores other CEREBRO_HOME (fake proxy failed to start)\n'
 else
-  restart_out="$("$CEREBRO_BIN" acp restart 2>&1)"
+  restart_out="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp restart 2>&1)"
   restart_rc=$?
   other_alive=0
   kill -0 "$OTHER_PROXY_PID" 2>/dev/null && other_alive=1
@@ -3591,7 +3431,7 @@ else
 fi
 
 # --- 181. unknown `cerebro acp` subcommand -> die, no proxy started ---
-bogus_out="$("$CEREBRO_BIN" acp bogus 2>&1)"
+bogus_out="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp bogus 2>&1)"
 bogus_rc=$?
 if (( bogus_rc != 0 )) && [[ "$bogus_out" == *"unknown subcommand"* ]]; then
   printf 'PASS  181  acp rejects unknown subcommand (no proxy started)\n'; pass=$((pass + 1))
@@ -3647,7 +3487,7 @@ else
   # find and kill the orphan (this is the safety net for "editor killed
   # the proxy some other way" cases -- the orphan was left behind by a
   # PREVIOUS proxy lifecycle, not by the current `cerebro acp restart`).
-  restart_out="$("$CEREBRO_BIN" acp restart 2>&1)"
+  restart_out="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp restart 2>&1)"
   restart_rc=$?
   orphan_gone=0
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -3669,7 +3509,7 @@ fi
 
 # --- 184. `cerebro acp restart` is idempotent: running it again with no
 # proxy and no orphans is a no-op (no errors, exit 0).
-restart_out2="$("$CEREBRO_BIN" acp restart 2>&1)"
+restart_out2="$(env CEREBRO_BACKEND=claude "$CEREBRO_BIN" acp restart 2>&1)"
 restart_rc2=$?
 if (( restart_rc2 == 0 )) && [[ "$restart_out2" == *"no running proxy"* ]] \
    && [[ "$restart_out2" != *"reap"* ]]; then
@@ -3709,15 +3549,17 @@ python3 "$here/../lib/python/detach_process.py" \
   /bin/sh -c 'sleep 1; printf survived'
 detach_launch_rc=$?
 detach_elapsed=$(( $(date +%s) - detach_start ))
-detach_wait="$($CEREBRO_BIN wait "$DETACH_JOB_ID" 2>&1)"
+detach_wait="$($CEREBRO_BIN wait "$DETACH_JOB_ID" 2>"$WORKDIR/detach-wait.err")"
 detach_wait_rc=$?
 detach_body="$(cat "$DETACH_OUT" 2>/dev/null)"
 detach_status="$(cat "$DETACH_STATUS" 2>/dev/null)"
 detach_jobs="$($CEREBRO_BIN jobs 2>&1)"
 if (( detach_launch_rc == 0 && detach_wait_rc == 0 && detach_elapsed <= 1 )) \
    && [[ "$detach_body" == "survived" && "$detach_status" == "0" \
-          && -s "$DETACH_PID" && "$detach_wait" == *"finished (exit 0)"* \
-          && "$detach_jobs" == *"[succeeded] $DETACH_JOB_ID"* ]]; then
+          && -s "$DETACH_PID" && "$detach_jobs" == *"[succeeded] $DETACH_JOB_ID"* ]] \
+   && jq -e --arg id "$DETACH_JOB_ID" --arg output "$DETACH_OUT" \
+        '.exit_code == 0 and .state == "completed" and .job_id == $id and
+         .output == $output and .text == "survived"' <<<"$detach_wait" >/dev/null; then
   printf 'PASS  185  detached process survives launcher and persists job state\n'; pass=$((pass + 1))
 else
   printf 'FAIL  185  detached process [launch=%d wait=%d elapsed=%d body=%s status=%s wait_out=%s jobs=%s]\n' \
@@ -3757,9 +3599,12 @@ python3 "$here/../lib/python/detach_process.py" \
   "$DETACH_FAIL_OUT" "$DETACH_FAIL_OUT.status" "$DETACH_FAIL_OUT.pid" \
   "$DETACH_JOBS/$DETACH_FAIL_ID.json" "$DETACH_FAIL_ID" review \
   /bin/sh -c 'sleep 0.2; exit 7' >/dev/null
-detach_fail_wait="$($CEREBRO_BIN wait "$DETACH_FAIL_ID" 2>&1)"
+detach_fail_wait="$($CEREBRO_BIN wait "$DETACH_FAIL_ID" 2>"$WORKDIR/detach-fail-wait.err")"
 detach_fail_rc=$?
-if (( detach_fail_rc == 7 )) && [[ "$detach_fail_wait" == *"finished (exit 7)"* ]]; then
+if (( detach_fail_rc == 7 )) \
+   && jq -e --arg id "$DETACH_FAIL_ID" --arg output "$DETACH_FAIL_OUT" \
+        '.exit_code == 7 and .state == "completed" and .job_id == $id and .output == $output' \
+        <<<"$detach_fail_wait" >/dev/null; then
   printf 'PASS  187  detached waiter propagates child failure\n'; pass=$((pass + 1))
 else
   printf 'FAIL  187  detached waiter failure [rc=%d out=%s]\n' "$detach_fail_rc" "$detach_fail_wait"
@@ -3804,7 +3649,10 @@ if (( detach_cancel_rc == 0 && cancel_wait_one_rc == 130 && cancel_wait_two_rc =
    && ! kill -0 "$detach_cancel_child" 2>/dev/null \
    && [[ "$detach_cancel_status" == "130" \
          && "$detach_cancel_out" == *"cancelled detached job $DETACH_CANCEL_ID"* \
-         && "$detach_cancel_jobs" == *"[cancelled] $DETACH_CANCEL_ID"* ]]; then
+         && "$detach_cancel_jobs" == *"[cancelled] $DETACH_CANCEL_ID"* ]] \
+   && jq -e --arg id "$DETACH_CANCEL_ID" \
+        '.exit_code == 130 and .state == "completed" and .job_id == $id' \
+        "$WORKDIR/cancel-wait-one" "$WORKDIR/cancel-wait-two" >/dev/null; then
   printf 'PASS  188  cancellation terminates descendants and every waiter reports130\n'; pass=$((pass + 1))
 else
   printf 'FAIL  188  detached cancel [rc=%d monitor=%s child=%s status=%s out=%s jobs=%s]\n' \
@@ -3820,15 +3668,20 @@ DETACH_STALE_OUT="$CEREBRO_HOME/sessions/$CEREBRO_SESSION_ID/detach-test/stale.o
 DETACH_STALE_ID="00000000-0000-0000-0000-000000000189"
 printf 'running\n' > "$DETACH_STALE_OUT.status"
 printf '99999999\n' > "$DETACH_STALE_OUT.pid"
-printf '{"id":"%s","command":"verify","output":"%s","status":"%s","pid_file":"%s","pid":99999999,"created_at":"2026-07-14T00:00:00Z"}\n' \
+printf 'interrupted evidence\n' > "$DETACH_STALE_OUT"
+printf '{"id":"%s","command":"verify","output":"%s","status":"%s","pid_file":"%s","result":"%s","pid":99999999,"created_at":"2026-07-14T00:00:00Z"}\n' \
   "$DETACH_STALE_ID" "$DETACH_STALE_OUT" "$DETACH_STALE_OUT.status" \
-  "$DETACH_STALE_OUT.pid" > "$DETACH_JOBS/$DETACH_STALE_ID.json"
-detach_stale_wait="$($CEREBRO_BIN wait "$DETACH_STALE_ID" 2>&1)"
+  "$DETACH_STALE_OUT.pid" "$DETACH_STALE_OUT" > "$DETACH_JOBS/$DETACH_STALE_ID.json"
+detach_stale_wait="$($CEREBRO_BIN wait "$DETACH_STALE_ID" 2>"$WORKDIR/detach-stale-wait.err")"
 detach_stale_rc=$?
 detach_stale_status="$(cat "$DETACH_STALE_OUT.status" 2>/dev/null)"
 if (( detach_stale_rc == 125 )) \
    && [[ "$detach_stale_status" == "125" \
-         && "$detach_stale_wait" == *"monitor disappeared before completion"* ]]; then
+         && "$(cat "$WORKDIR/detach-stale-wait.err")" == *"monitor disappeared before completion"* ]] \
+   && jq -e --arg id "$DETACH_STALE_ID" --arg output "$DETACH_STALE_OUT" \
+        '.exit_code == 125 and .state == "completed" and .job_id == $id and
+         .output == $output and (.text | contains("interrupted evidence"))' \
+        <<<"$detach_stale_wait" >/dev/null; then
   printf 'PASS  189  detached waiter detects stale monitor records\n'; pass=$((pass + 1))
 else
   printf 'FAIL  189  detached stale monitor [rc=%d status=%s out=%s]\n' \
@@ -3933,22 +3786,21 @@ else
 fi
 
 # --- 196. full interactive session through a PTY: receive a prompt, continue,
-# EOF cleanly. A stub `opencode` (the real orchestrator backend execs it) reads
+# EOF cleanly. A stub `pi` (the real orchestrator backend execs it) reads
 # stdin lines and echoes them, so we can prove the PTY relays input both ways
 # across multiple turns and that Ctrl-D ends the session. ---
-PTY_STUB_DIR="$WORKDIR/pty-opencode-stub"
+PTY_STUB_DIR="$WORKDIR/pty-pi-stub"
 mkdir -p "$PTY_STUB_DIR"
-cat > "$PTY_STUB_DIR/opencode" <<'EOF'
+cat > "$PTY_STUB_DIR/pi" <<'EOF'
 #!/usr/bin/env bash
-if [[ "${1:-}" == "--version" ]]; then echo 2.0.19; exit 0; fi
-if [[ "${1:-}" == "api" ]]; then printf '{"output":true}\n'; exit 0; fi
+if [[ "${1:-}" == "--version" ]]; then echo 0.99.2; exit 0; fi
 echo "STUB-READY"
 while IFS= read -r line; do
   printf 'stub: %s\n' "$line"
 done
 exit 0
 EOF
-chmod +x "$PTY_STUB_DIR/opencode"
+chmod +x "$PTY_STUB_DIR/pi"
 rm -rf "$PTY_HOME"; mkdir -p "$PTY_HOME"
 cat > "$WORKDIR/196-script" <<'EOF'
 EXPECT STUB-READY
@@ -3958,7 +3810,7 @@ SEND one more turn
 EXPECT stub: one more turn
 SENDEOF
 EOF
-res="$(env -u CEREBRO_SESSION_ID CEREBRO_BACKEND=opencode \
+res="$(env -u CEREBRO_SESSION_ID CEREBRO_BACKEND=pi \
   CEREBRO_HOME="$PTY_HOME" PATH="$PTY_STUB_DIR:$PATH" \
   python3 "$PTY_RUN" --parent codex --timeout 8 --script "$WORKDIR/196-script" \
   -- "$CEREBRO_BIN" 2>&1)"
@@ -3981,7 +3833,7 @@ cat > "$WORKDIR/197-script" <<'EOF'
 EXPECT STUB-READY
 SENDINTR
 EOF
-res="$(env -u CEREBRO_SESSION_ID CEREBRO_BACKEND=opencode \
+res="$(env -u CEREBRO_SESSION_ID CEREBRO_BACKEND=pi \
   CEREBRO_HOME="$PTY_HOME" PATH="$PTY_STUB_DIR:$PATH" \
   python3 "$PTY_RUN" --parent codex --timeout 8 --script "$WORKDIR/197-script" \
   -- "$CEREBRO_BIN" 2>&1)"
@@ -4051,7 +3903,7 @@ CEREBRO_MCP_PY=""
 for _cand in /opt/homebrew/bin/python3 python3 python3.13 python3.12 python3.11 python3.10; do
   _p="$(command -v "$_cand" 2>/dev/null)" || continue
   [[ -x "$_p" ]] || continue
-  if "$_p" -c 'import sys,mcp; sys.exit(0 if sys.version_info[:2]>=(3,10) else 1)' 2>/dev/null; then
+  if "$_p" -c 'import sys; from mcp.server.mcpserver import MCPServer; sys.exit(0 if sys.version_info[:2]>=(3,10) else 1)' 2>/dev/null; then
     CEREBRO_MCP_PY="$_p"; break
   fi
 done
@@ -4075,22 +3927,28 @@ run_case 201 "guarded MCP command roles, literal arguments and steering provenan
 run_case 202 "Claude/Codex native session, review, resume and live steering" 0 -- \
   python3 "$here/native_backends_test.py"
 
-run_case 203 "OpenCode V2 gate, background completion and paired worktree isolation" 0 -- \
-  python3 "$here/opencode_native_test.py"
+run_case 203 "Pi version gate, native settled completion and paired worktree isolation" 0 -- \
+  python3 "$here/pi_native_test.py"
 run_case 204 "plan/audit/detach outputs stay confined to the owning session" 0 -- \
   python3 "$here/confinement_test.py"
 run_case 205 "native turn admission, completion ordering and boundary steering" 0 -- \
   python3 "$here/pair_adapters_test.py"
 run_case 206 "native MCP configuration retains delegated backend settings" 0 -- \
   python3 "$here/mcp_environment_test.py"
-run_case 207 "Codex observer narration and targetless native launch binding" 0 -- \
-  python3 "$here/observer_native_test.py"
 run_case 208 "Claude native prompt hook records input and binds its session UUID" 0 -- \
   python3 "$here/claude_hook_test.py"
-run_case 209 "native ACP launch defers configuration to independently minted sessions" 0 -- \
+run_case 209 "Claude ACP session configuration and unsupported parent guards" 0 -- \
   python3 "$here/acp_launch_test.py"
-run_case 210 "native OpenCode guarded prompts await actual MCP tool registration" 0 -- \
-  node "$here/opencode_plugin_test.mjs"
+run_case 210 "native Pi guarded tools and exact parent session binding" 0 -- \
+  node "$here/pi_extension_test.mjs"
+run_case 212 "shared workflow skills and explanatory review/verification task packets" 0 -- \
+  python3 "$here/workflow_skills_test.py"
+run_case 211 "independent role models reach native supervisor launch and resume" 0 -- \
+  python3 "$here/role_models_test.py"
+run_case 213 "typed Jev classifications and live steering handoffs" 0 -- \
+  python3 "$here/jev_watch_test.py"
+run_case 214 "recall searches space, newline and glob-bearing session paths" 0 -- \
+  python3 "$here/recall_test.py"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if (( fail > 0 )); then

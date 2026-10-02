@@ -20,7 +20,7 @@ unset _cerebro_src _cerebro_dir _cerebro_bin_dir
 . "$CEREBRO_LIB_DIR/payloads.sh"
 . "$CEREBRO_LIB_DIR/session-store.sh"
 . "$CEREBRO_LIB_DIR/backend.sh"
-. "$CEREBRO_LIB_DIR/backend-opencode.sh"
+. "$CEREBRO_LIB_DIR/backend-pi.sh"
 . "$CEREBRO_LIB_DIR/backend-claude.sh"
 . "$CEREBRO_LIB_DIR/backend-codex.sh"
 . "$CEREBRO_LIB_DIR/pair.sh"

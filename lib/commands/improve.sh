@@ -85,7 +85,6 @@ cmd_improve() {
       *) die "improve: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" improve
   [[ -n "$repo" ]] \
     || die "usage: cerebro improve <cerebro-repo-abs-path> [--context \"<focus>\"] [--meta] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "improve: repo path must be absolute: $repo"

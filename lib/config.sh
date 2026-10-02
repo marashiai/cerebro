@@ -23,10 +23,11 @@ CEREBRO_HOME="${CEREBRO_HOME:-$HOME/.cerebro}"
 # context at use, exactly as an env var would be.
 CEREBRO_CFG_BACKEND=""
 CEREBRO_CFG_MODEL=""
+CEREBRO_CFG_SUPERVISOR_MODEL=""
 CEREBRO_CFG_REVIEW_MODEL=""
 CEREBRO_CFG_TIMEOUT=""
 CEREBRO_CFG_CHILD_IDLE_TIMEOUT=""
-CEREBRO_CFG_OPENCODE_CMD=""
+CEREBRO_CFG_PI_CMD=""
 CEREBRO_CFG_CLAUDE_CMD=""
 CEREBRO_CFG_CODEX_CMD=""
 CEREBRO_CFG_DEBUG=""
@@ -40,6 +41,11 @@ CEREBRO_CFG_PAIR_STALL=""
 CEREBRO_CFG_PAIR_STALL_BUSY=""
 CEREBRO_CFG_PAIR_STALL_RETRIES=""
 CEREBRO_CFG_PAIR_STALL_BACKOFF=""
+CEREBRO_CFG_JEV_ENABLED=""
+CEREBRO_CFG_JEV_API_KEY=""
+CEREBRO_CFG_JEV_MODEL=""
+CEREBRO_CFG_JEV_ENDPOINT=""
+CEREBRO_CFG_JEV_CONFIDENCE=""
 _cerebro_options_load() {
   local cfg="$CEREBRO_HOME/config.json"
   [[ -r "$cfg" && -s "$cfg" ]] || return 0
@@ -49,10 +55,11 @@ _cerebro_options_load() {
     case "$k" in
       backend)             CEREBRO_CFG_BACKEND="$v" ;;
       model)              CEREBRO_CFG_MODEL="$v" ;;
+      supervisor_model)   CEREBRO_CFG_SUPERVISOR_MODEL="$v" ;;
       review_model)       CEREBRO_CFG_REVIEW_MODEL="$v" ;;
       timeout)            CEREBRO_CFG_TIMEOUT="$v" ;;
       child_idle_timeout) CEREBRO_CFG_CHILD_IDLE_TIMEOUT="$v" ;;
-      opencode_cmd)       CEREBRO_CFG_OPENCODE_CMD="$v" ;;
+      pi_cmd)       CEREBRO_CFG_PI_CMD="$v" ;;
       codex_cmd)          CEREBRO_CFG_CODEX_CMD="$v" ;;
       claude_cmd)         CEREBRO_CFG_CLAUDE_CMD="$v" ;;
       debug)              CEREBRO_CFG_DEBUG="$v" ;;
@@ -66,6 +73,11 @@ _cerebro_options_load() {
       pair_stall_busy)    CEREBRO_CFG_PAIR_STALL_BUSY="$v" ;;
       pair_stall_retries) CEREBRO_CFG_PAIR_STALL_RETRIES="$v" ;;
       pair_stall_backoff) CEREBRO_CFG_PAIR_STALL_BACKOFF="$v" ;;
+      jev_enabled)        CEREBRO_CFG_JEV_ENABLED="$v" ;;
+      jev_api_key)        CEREBRO_CFG_JEV_API_KEY="$v" ;;
+      jev_model)          CEREBRO_CFG_JEV_MODEL="$v" ;;
+      jev_endpoint)       CEREBRO_CFG_JEV_ENDPOINT="$v" ;;
+      jev_confidence)     CEREBRO_CFG_JEV_CONFIDENCE="$v" ;;
       # unknown keys are ignored
     esac
   done < <(jq -r 'to_entries[] | "\(.key)\t\(.value|tostring)"' "$cfg" 2>/dev/null)
@@ -74,14 +86,15 @@ _cerebro_options_load
 
 # A session and all its children use one native backend. An empty model lets
 # that backend select its configured default; --model still overrides per call.
-CEREBRO_BACKEND="${CEREBRO_BACKEND:-${CEREBRO_CFG_BACKEND:-opencode}}"
+CEREBRO_BACKEND="${CEREBRO_BACKEND:-${CEREBRO_CFG_BACKEND:-pi}}"
 CEREBRO_MODEL="${CEREBRO_MODEL:-${CEREBRO_CFG_MODEL:-}}"
+CEREBRO_SUPERVISOR_MODEL="${CEREBRO_SUPERVISOR_MODEL:-${CEREBRO_CFG_SUPERVISOR_MODEL:-}}"
 CEREBRO_REVIEW_MODEL="${CEREBRO_REVIEW_MODEL:-${CEREBRO_CFG_REVIEW_MODEL:-$CEREBRO_MODEL}}"
 CEREBRO_TIMEOUT="${CEREBRO_TIMEOUT:-${CEREBRO_CFG_TIMEOUT:-0}}"   # 0/empty/none/unlimited = no cap
 # Native transports own completion and busy-tool timeouts. This optional
 # parser inactivity cap defaults to disabled so quiet tools can finish.
 CEREBRO_CHILD_IDLE_TIMEOUT="${CEREBRO_CHILD_IDLE_TIMEOUT:-${CEREBRO_CFG_CHILD_IDLE_TIMEOUT:-0}}"
-CEREBRO_OPENCODE_CMD="${CEREBRO_OPENCODE_CMD:-${CEREBRO_CFG_OPENCODE_CMD:-opencode}}"
+CEREBRO_PI_CMD="${CEREBRO_PI_CMD:-${CEREBRO_CFG_PI_CMD:-pi}}"
 CEREBRO_CLAUDE_CMD="${CEREBRO_CLAUDE_CMD:-${CEREBRO_CFG_CLAUDE_CMD:-claude}}"
 CEREBRO_CODEX_CMD="${CEREBRO_CODEX_CMD:-${CEREBRO_CFG_CODEX_CMD:-codex}}"
 CEREBRO_DEBUG="${CEREBRO_DEBUG:-${CEREBRO_CFG_DEBUG:-0}}"
@@ -92,11 +105,10 @@ CEREBRO_DEBUG="${CEREBRO_DEBUG:-${CEREBRO_CFG_DEBUG:-0}}"
 # backend_claude_endpoint_env (lib/backend-claude.sh) exports ANTHROPIC_BASE_URL
 # and ANTHROPIC_AUTH_TOKEN into every spawned `claude` process, unsets
 # ANTHROPIC_API_KEY (so a logged-in subscription can't hijack the run), and pins
-# ANTHROPIC_MODEL/ANTHROPIC_DEFAULT_HAIKU_MODEL to CEREBRO_MODEL -- including
-# for the orchestrator, which has no --model flag of its own. CEREBRO_MODEL must
-# then name a model the endpoint actually serves. CEREBRO_CLAUDE_AUTH_TOKEN
-# defaults to a non-empty placeholder the endpoint ignores (local no-auth
-# servers); set it to the real key for an authenticated gateway.
+# ANTHROPIC_MODEL/ANTHROPIC_DEFAULT_HAIKU_MODEL to the selected role's model.
+# Each configured role model must name a model the endpoint actually serves.
+# CEREBRO_CLAUDE_AUTH_TOKEN defaults to a non-empty placeholder the endpoint
+# ignores (local no-auth servers); set it to the real key for a gateway.
 CEREBRO_CLAUDE_BASE_URL="${CEREBRO_CLAUDE_BASE_URL:-${CEREBRO_CFG_CLAUDE_BASE_URL:-}}"
 CEREBRO_CLAUDE_AUTH_TOKEN="${CEREBRO_CLAUDE_AUTH_TOKEN:-${CEREBRO_CFG_CLAUDE_AUTH_TOKEN:-}}"
 # Max chars in a single harness overlay file. Larger than learnings' cap since
@@ -121,3 +133,8 @@ CEREBRO_PAIR_STALL="${CEREBRO_PAIR_STALL:-${CEREBRO_CFG_PAIR_STALL:-180}}"
 CEREBRO_PAIR_STALL_BUSY="${CEREBRO_PAIR_STALL_BUSY:-${CEREBRO_CFG_PAIR_STALL_BUSY:-450}}"
 CEREBRO_PAIR_STALL_RETRIES="${CEREBRO_PAIR_STALL_RETRIES:-${CEREBRO_CFG_PAIR_STALL_RETRIES:-2}}"
 CEREBRO_PAIR_STALL_BACKOFF="${CEREBRO_PAIR_STALL_BACKOFF:-${CEREBRO_CFG_PAIR_STALL_BACKOFF:-5}}"
+CEREBRO_JEV_ENABLED="${CEREBRO_JEV_ENABLED:-${CEREBRO_CFG_JEV_ENABLED:-0}}"
+CEREBRO_JEV_API_KEY="${CEREBRO_JEV_API_KEY:-${CEREBRO_CFG_JEV_API_KEY:-}}"
+CEREBRO_JEV_MODEL="${CEREBRO_JEV_MODEL:-${CEREBRO_CFG_JEV_MODEL:-jev-latest}}"
+CEREBRO_JEV_ENDPOINT="${CEREBRO_JEV_ENDPOINT:-${CEREBRO_CFG_JEV_ENDPOINT:-https://api.typesafe.ai/v1/systemone}}"
+CEREBRO_JEV_CONFIDENCE="${CEREBRO_JEV_CONFIDENCE:-${CEREBRO_CFG_JEV_CONFIDENCE:-0.8}}"

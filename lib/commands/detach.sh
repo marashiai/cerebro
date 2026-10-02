@@ -38,6 +38,7 @@ cmd_detach() {
   output="$(detached_output_path "$output")" || return $?
   status="$(detached_output_path "$output.status")" || return $?
   pid_path="$(detached_output_path "$output.pid")" || return $?
+  detached_output_path "$output.status.updates.json" >/dev/null || return $?
 
   if [[ -r "$output.status" && "$(cat "$output.status" 2>/dev/null)" == "running" \
         && -r "$output.pid" ]]; then
@@ -61,30 +62,50 @@ cmd_detach() {
 
 
 # ----- subcommand: cerebro wait <detached-status-path> ----------------------
-# Block until a detached monitor records its final exit code. This command is
+# Block until a detached monitor records a scope notice or its final exit code.
+# --after acknowledges a handled notice before waiting for the next update.
+# This command is
 # safe to put in an agent harness's managed background mode: it owns no child,
 # so harness cleanup can only kill the disposable waiter.
 cmd_wait() {
   require_session
   command -v python3 >/dev/null 2>&1 || die "wait: missing required command on PATH: python3"
-  [[ $# -eq 1 ]] || die "usage: cerebro wait <job-id|absolute-output.status>"
+  [[ $# -ge 1 ]] || die "usage: cerebro wait <job-id|absolute-output.status> [--after <sequence>]"
+  local target="$1" after=0; shift
+  if [[ $# -gt 0 ]]; then
+    [[ $# -eq 2 && "$1" == --after && "$2" =~ ^[0-9]+$ ]] \
+      || die "wait: expected --after <nonnegative notice sequence>"
+    after="$2"
+  fi
 
-  local status
-  if [[ "$1" == /* ]]; then
-    status="$1"
+  local status job_file=""
+  if [[ "$target" == /* ]]; then
+    status="$target"
   else
-    [[ "$1" =~ ^[0-9a-fA-F-]+$ ]] || die "wait: invalid job id: $1"
-    local job_file="$CEREBRO_SESSION_DIR/detached-jobs/$1.json"
+    [[ "$target" =~ ^[0-9a-fA-F-]+$ ]] || die "wait: invalid job id: $target"
+    job_file="$CEREBRO_SESSION_DIR/detached-jobs/$target.json"
     job_file="$(resolve_in_repo "$CEREBRO_SESSION_DIR" "$job_file")" || return $?
-    [[ -r "$job_file" ]] || die "wait: no such detached job: $1"
+    [[ -r "$job_file" ]] || die "wait: no such detached job: $target"
     status="$(jq -r '.status // empty' "$job_file")"
-    [[ -n "$status" ]] || die "wait: malformed detached job: $1"
+    [[ -n "$status" ]] || die "wait: malformed detached job: $target"
   fi
   [[ "$status" == *.status ]] || die "wait: path must end in .status"
   status="$(detached_output_path "$status")" || return $?
+  local updates_path
+  updates_path="$(detached_output_path "$status.updates.json")" || return $?
+  detached_output_path "$updates_path.lock" >/dev/null || return $?
+  local args=("$status" --after "$after") field value
+  if [[ -n "$job_file" ]]; then
+    for field in output result; do
+      value="$(jq -r --arg field "$field" '.[$field] // empty' "$job_file")"
+      [[ -n "$value" ]] || die "wait: malformed job $field"
+      detached_output_path "$value" >/dev/null || return $?
+    done
+    args+=(--job-file "$job_file")
+  fi
 
   python3 "$CEREBRO_LIB_DIR/python/wait_detached.py" \
-    "$status"
+    "${args[@]}"
 }
 
 

@@ -1,15 +1,20 @@
 # Custom gateways receive the selected model for both task and housekeeping calls.
 backend_claude_endpoint_env() {
   [[ -n "$CEREBRO_CLAUDE_BASE_URL" ]] || return 0
-  local model="${1:-$CEREBRO_MODEL}"
+  local model="${1-$CEREBRO_MODEL}" previous_model="${ANTHROPIC_MODEL:-}"
   export ANTHROPIC_BASE_URL="$CEREBRO_CLAUDE_BASE_URL"
   export ANTHROPIC_AUTH_TOKEN="${CEREBRO_CLAUDE_AUTH_TOKEN:-ollama}"
+  unset ANTHROPIC_API_KEY
+  [[ -n "$model" ]] || return 0
   export ANTHROPIC_MODEL="$model"
   export ANTHROPIC_DEFAULT_HAIKU_MODEL="$model"
-  unset ANTHROPIC_API_KEY
   # Use the catalog context window for custom gateway models when available.
   local ctx; ctx="$(models_context_tokens "$model")"
-  [[ -n "$ctx" ]] && export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$ctx"
+  if [[ -n "$ctx" ]]; then
+    export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$ctx"
+  elif [[ -n "$previous_model" && "$previous_model" != "$model" ]]; then
+    unset CLAUDE_CODE_AUTO_COMPACT_WINDOW
+  fi
 }
 
 backend_claude_child_run_opts() {
@@ -52,6 +57,7 @@ backend_claude_child_run() {
   local err_log="${child_log%.*}.err.log"
   ( cd "$cwd" && printf '%s' "$prompt" \
       | env -u CEREBRO_SESSION_ID -u CEREBRO_SESSION_DIR -u CEREBRO_ROLE \
+        -u CEREBRO_JEV_API_KEY -u CEREBRO_CFG_JEV_API_KEY -u CEREBRO_JOB_STATUS \
         "${TIMEOUT_CMD[@]}" "$CEREBRO_CLAUDE_CMD" "${CHILD_RUN_OPTS[@]}" 2>"$err_log" \
       | tee "$child_log" \
       | python3 "$CEREBRO_LIB_DIR/python/parse_stream.py" \
@@ -65,36 +71,27 @@ backend_claude_materialise_extras() {
   chmod +x "$CEREBRO_HOME/hook.sh"
   write_if_changed "$CEREBRO_HOME/.claude/settings.local.json" \
     "$(cerebro_settings_json "$CEREBRO_HOME/hook.sh")"
-  write_if_missing "$CEREBRO_HOME/templates/CLAUDE.md" "$(cerebro_default_claude_md)"
 }
 
 backend_claude_parent_opts() {
-  local role="$1" config
-  config="$(backend_supervisor_config "$role")"
-  # --allowedTools auto-approves; --tools actually removes native mutation and
-  # delegation tools. Strict MCP configuration closes other host-side tools.
+  local config
+  config="$(backend_supervisor_config supervisor)"
+  # The owned command tool loads upfront; all other tool channels and native
+  # mutation/delegation tools are unavailable.
   PARENT_OPTS=(--tools "" --disable-slash-commands --setting-sources ""
     --settings "$CEREBRO_HOME/.claude/settings.local.json" --strict-mcp-config --mcp-config "$config"
     --permission-mode dontAsk --allowedTools mcp__cerebro__command
-    --append-system-prompt "$(cerebro_skill_body "$(cerebro_skills_dir)/cerebro-$role/SKILL.md")")
-  [[ -z "$CEREBRO_MODEL" ]] || PARENT_OPTS+=(--model "$CEREBRO_MODEL")
+    --append-system-prompt "$(cerebro_system_prompt)")
+  [[ -z "$CEREBRO_SUPERVISOR_MODEL" ]] || PARENT_OPTS+=(--model "$CEREBRO_SUPERVISOR_MODEL")
 }
 backend_claude_launch_orchestrator() {
-  backend_claude_endpoint_env
-  backend_claude_parent_opts supervisor
+  backend_claude_endpoint_env "$CEREBRO_SUPERVISOR_MODEL"
+  backend_claude_parent_opts
   exec "$CEREBRO_CLAUDE_CMD" --session-id "$(basename "$1")" "${PARENT_OPTS[@]}"
 }
-backend_claude_launch_observer() {
-  backend_claude_endpoint_env
-  backend_claude_parent_opts observer
-  local prompt_opt=()
-  [[ -z "$3" ]] || prompt_opt=("Observe session $3. Follow the cerebro-observer skill.")
-  exec "$CEREBRO_CLAUDE_CMD" --session-id "$(basename "$1")" "${PARENT_OPTS[@]}" "${prompt_opt[@]}"
-}
 backend_claude_resume_orchestrator() {
-  backend_claude_endpoint_env
-  local role; role="$(jq -r '.role // "supervisor"' "$1/metadata.json")"
-  backend_claude_parent_opts "$role"
+  backend_claude_endpoint_env "$CEREBRO_SUPERVISOR_MODEL"
+  backend_claude_parent_opts
   exec "$CEREBRO_CLAUDE_CMD" --resume "$2" "${PARENT_OPTS[@]}"
 }
 
@@ -117,7 +114,7 @@ backend_claude_pair_run() {
   backend_claude_child_run_opts "$role" "$resume" "$model"
   CHILD_RUN_OPTS+=(--input-format stream-json)
   [[ -n "$resume" ]] || CHILD_RUN_OPTS+=(--session-id "$PAIR_SID")
-  printf '%s' "$prompt" | env -u CEREBRO_SESSION_ID -u CEREBRO_SESSION_DIR -u CEREBRO_ROLE \
+  printf '%s' "$prompt" | CEREBRO_CHILD_ROLE="$role" CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE" \
     "${TIMEOUT_CMD[@]}" python3 "$CEREBRO_LIB_DIR/python/pair_process.py" claude "$cwd" "$resume" "$model" \
       "$PAIR_FIFO" "$PAIR_STEER" "$child_log" "$CEREBRO_CLAUDE_CMD" "${CHILD_RUN_OPTS[@]}" \
       2>"${child_log%.*}.err.log" | tee "$child_log" \
@@ -171,22 +168,26 @@ backend_claude_acp_child_spec() {
   else
     argv_bin='["npx","-y","@agentclientprotocol/claude-agent-acp"]'
   fi
-  local env_json='{}'
+  local acp_model="$CEREBRO_SUPERVISOR_MODEL" env_json
+  env_json="$(jq -n --arg model "$acp_model" \
+    'if $model == "" then {} else {ANTHROPIC_MODEL:$model} end')"
   if [[ -n "$CEREBRO_CLAUDE_BASE_URL" ]]; then
-    local acp_model="${CEREBRO_MODEL:-}"
-    env_json="$(jq -n --arg base "$CEREBRO_CLAUDE_BASE_URL" \
+    env_json="$(jq -n --argjson env "$env_json" --arg base "$CEREBRO_CLAUDE_BASE_URL" \
         --arg tok "${CEREBRO_CLAUDE_AUTH_TOKEN:-ollama}" \
         --arg model "$acp_model" \
-        '{ANTHROPIC_BASE_URL:$base, ANTHROPIC_AUTH_TOKEN:$tok,
-          ANTHROPIC_MODEL:$model, ANTHROPIC_DEFAULT_HAIKU_MODEL:$model,
-          ANTHROPIC_API_KEY:null}')"
+        '$env + {ANTHROPIC_BASE_URL:$base, ANTHROPIC_AUTH_TOKEN:$tok, ANTHROPIC_API_KEY:null}
+          + (if $model == "" then {} else {ANTHROPIC_DEFAULT_HAIKU_MODEL:$model} end)')"
     # Register model IDs; editor-facing labels remain owned by the proxy.
     env_json="$(jq -c --argjson cat "$(claude_acp_catalog_env)" \
         '. + $cat' <<<"$env_json")"
     # Propagate a declared custom-model context window to Claude ACP.
     local ctx; ctx="$(models_context_tokens "$acp_model")"
-    [[ -n "$ctx" ]] && env_json="$(jq -c --arg ctx "$ctx" \
+    if [[ -n "$ctx" ]]; then
+      env_json="$(jq -c --arg ctx "$ctx" \
         '. + {CLAUDE_CODE_AUTO_COMPACT_WINDOW:$ctx}' <<<"$env_json")"
+    elif [[ -n "$acp_model" && -n "${ANTHROPIC_MODEL:-}" && "$ANTHROPIC_MODEL" != "$acp_model" ]]; then
+      env_json="$(jq -c '. + {CLAUDE_CODE_AUTO_COMPACT_WINDOW:null}' <<<"$env_json")"
+    fi
   fi
   jq -n --argjson argv "$argv_bin" --arg cfg "agent" --arg val "cerebro-orchestrator" \
         --arg ccd "$CEREBRO_HOME/.claude" --argjson env "$env_json" \

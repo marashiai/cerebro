@@ -4,18 +4,12 @@ backend_codex_materialise_extras() { :; }
 backend_codex_launch_orchestrator() {
   backend_supervisor_config supervisor >/dev/null
   exec python3 "$CEREBRO_LIB_DIR/python/codex_launch.py" \
-    "$CEREBRO_CODEX_CMD" supervisor "$CEREBRO_HOME" "$1" "" "$CEREBRO_MODEL"
-}
-backend_codex_launch_observer() {
-  backend_supervisor_config observer >/dev/null
-  exec python3 "$CEREBRO_LIB_DIR/python/codex_launch.py" \
-    "$CEREBRO_CODEX_CMD" observer "$CEREBRO_HOME" "$1" "" "$CEREBRO_MODEL"
+    "$CEREBRO_CODEX_CMD" supervisor "$CEREBRO_HOME" "$1" "" "$CEREBRO_SUPERVISOR_MODEL"
 }
 backend_codex_resume_orchestrator() {
-  local role; role="$(jq -r '.role // "supervisor"' "$1/metadata.json")"
-  backend_supervisor_config "$role" >/dev/null
+  backend_supervisor_config supervisor >/dev/null
   exec python3 "$CEREBRO_LIB_DIR/python/codex_launch.py" \
-    "$CEREBRO_CODEX_CMD" "$role" "$CEREBRO_HOME" "$1" "$2" "$CEREBRO_MODEL"
+    "$CEREBRO_CODEX_CMD" supervisor "$CEREBRO_HOME" "$1" "$2" "$CEREBRO_SUPERVISOR_MODEL"
 }
 
 backend_codex_child_run() {
@@ -23,7 +17,7 @@ backend_codex_child_run() {
     child_log="$6" msg_capture="$7" id_capture="$8" store_file="$9" ckey="${10}" model="${11:-$CEREBRO_MODEL}"
   playwright_isolate_child
   if (( ! pair )); then
-    local PAIR_FIFO="" PAIR_STEER="" CEREBRO_PAIR_IDLE=0
+    local PAIR_FIFO="" PAIR_STEER="" CEREBRO_PAIR_IDLE=0 CEREBRO_JEV_ENABLED=0
   fi
   backend_codex_pair_run "$cwd" "$prompt" "$role" "$resume" \
     "$child_log" "$msg_capture" "$id_capture" "$store_file" "$ckey" "$model"

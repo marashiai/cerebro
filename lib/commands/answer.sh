@@ -25,7 +25,6 @@ cmd_answer() {
       *) die "answer: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" answer
 
   [[ -n "$child_id" ]] || die "usage: cerebro answer <child-session-id> \"<answer>\" [--model <provider/model>]"
   [[ -n "$answer" ]] || die "answer: empty answer (pass the answer text as the second argument)"

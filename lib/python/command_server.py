@@ -15,18 +15,15 @@ import threading
 import uuid
 
 from detach_process import launch
-from wait_detached import wait_for_completion
+from wait_detached import job_response, wait_for_update
 
 READ = {"guide", "read", "grep", "ls", "status", "list", "recall", "models",
-        "learnings", "jobs", "observe"}
+        "learnings", "jobs"}
 SUPERVISOR = READ | {"spec", "plan", "execute", "audit", "review", "apply-review",
                      "verify", "doc-write", "improve", "answer", "steer", "restart",
                      "wait", "cancel", "detach", "git", "gh", "learn-note",
-                     "learn-set", "overlay", "plans", "worktrees"}
-OBSERVER_READ_ACTIONS = {"spec": {(), ("show",), ("history",)},
-                         "plans": {()}, "worktrees": {(), ("list",)}}
-OBSERVER = READ | set(OBSERVER_READ_ACTIONS) | {"steer", "restart"}
-REVIEWER = {"guide", "read", "grep", "ls", "git"}
+                     "learn-set", "overlay", "plans", "worktrees", "hunk"}
+REVIEWER = {"guide", "read", "grep", "ls", "git", "hunk"}
 LONG = {"execute", "audit", "review", "apply-review", "verify", "doc-write", "improve", "answer"}
 
 
@@ -35,24 +32,10 @@ def run_command(role, executable, argv, stdin=""):
         raise ValueError("argv must be a nonempty array of literal strings")
     if not isinstance(stdin, str):
         raise ValueError("stdin must be text")
-    allowed = {"supervisor": SUPERVISOR, "observer": OBSERVER, "reviewer": REVIEWER}[role]
+    allowed = {"supervisor": SUPERVISOR, "reviewer": REVIEWER}[role]
     if argv[0] not in allowed:
         raise ValueError(f"{argv[0]} is unavailable to the {role}")
-    if role == "observer" and argv[0] in OBSERVER_READ_ACTIONS \
-            and tuple(argv[1:]) not in OBSERVER_READ_ACTIONS[argv[0]]:
-        raise ValueError(f"observers may only read {argv[0]}")
     env = {**os.environ, "CEREBRO_ROLE": role}
-    if role == "observer" and argv[0] in ("spec", "plans", "observe"):
-        metadata = json.loads((Path(env["CEREBRO_SESSION_DIR"]) / "metadata.json").read_text())
-        target = metadata.get("observe_target")
-        if target:
-            if argv[0] == "observe":
-                if argv[1:] not in ([], [target]):
-                    raise ValueError("observer is bound to session " + target)
-                argv = ["observe", target]
-            else:
-                env["CEREBRO_SESSION_ID"] = target
-                env["CEREBRO_SESSION_DIR"] = str(Path(env["CEREBRO_HOME"]) / "sessions" / target)
     if argv[0] in LONG:
         job_id = str(uuid.uuid4())
         session = Path(env["CEREBRO_SESSION_DIR"]).resolve()
@@ -68,14 +51,14 @@ def run_command(role, executable, argv, stdin=""):
         job = launch(output, output + ".status", output + ".pid", job_file,
                      job_id, argv[0], [executable, *argv], input_path,
                      output + ".result", announce=False)
-        rc = wait_for_completion(job["status"])
-        text = Path(job["result"]).read_text(errors="replace")
-        if rc:
-            text += "\n" + Path(output).read_text(errors="replace")[-4000:]
-        return {"exit_code": rc, "job_id": job_id, "output": output,
-                "text": text}
+        return job_response(job, wait_for_update(job["status"]))
     proc = subprocess.run([executable, *argv], input=stdin, text=True, env=env,
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if argv[0] == 'wait':
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            pass
     return {"exit_code": proc.returncode, "text": proc.stdout}
 
 
@@ -118,7 +101,7 @@ def main():
                 reply(message["id"], {})
             elif method == "tools/list":
                 reply(message["id"], {"tools": [{"name": "command",
-                    "description": "Run a guarded Cerebro command. Literal argv; large bodies go in stdin. Child commands block until completion and survive parent disconnects.",
+                    "description": "Run a guarded Cerebro command. Literal argv; large bodies go in stdin. Child commands wait for completion or a Jev scope notice and survive parent disconnects. After handling a notice, wait <job-id> --after <sequence>.",
                     "inputSchema": {"type": "object", "properties": {
                         "argv": {"type": "array", "items": {"type": "string"}},
                         "stdin": {"type": "string", "default": ""}},

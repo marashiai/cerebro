@@ -16,15 +16,15 @@ offline with no GitHub:
 The harness surface list (ILLUSTRATIVE, not exhaustive -- GREP the repo
 for the real definition site):
   - Supervisor: `lib/payloads/skills/cerebro-supervisor/SKILL.md`.
-  - Child roles: `lib/payloads/skills/cerebro-{execute,apply-review,doc-write}/SKILL.md`
-    plus the shared `lib/payloads/prompts/noninteractive-note.md`.
+  - Children: `lib/payloads/skills/cerebro-worker/SKILL.md`, the upstream
+    `engineering` skill, and `lib/payloads/prompts/noninteractive-note.md`.
   - Graders: the AUDIT grader at `lib/payloads/prompts/audit.md`; the REVIEW
-    grader is composed in `lib/commands/review.sh`.
+    grader is at `lib/payloads/prompts/review.md`.
   - Improvement procedure: `lib/payloads/prompts/meta/{analyzer,retriever,allocator,proposer,evolver}.md`
   - Tool surfaces: `lib/python/command_server.py`; native role restrictions in
     `lib/backend-*.sh`; read-only bridges in `lib/commands/bridge.sh`
     (read/grep/ls) and `lib/commands/git.sh` / `lib/commands/gh.sh`.
-  - Observer: `lib/payloads/skills/cerebro-observer/SKILL.md`.
+  - Drift classification: `lib/python/scope_watch.py` and `lib/payloads/jev/questions.json`.
   - Already-applied state to avoid re-proposing: `learnings.md`,
     `overlays/*.md` (Read these and skip anything already addressed).
 

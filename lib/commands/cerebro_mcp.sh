@@ -43,11 +43,11 @@ cerebro_mcp_require_python_deps() {
   done
   [[ -n "$py" ]] || die "cerebro cerebro-mcp needs Python >=3.10 (for the mcp SDK). None found on PATH. Install with: brew install python"
   export CEREBRO_MCP_PYTHON="$py"
-  if ! "$py" -c 'import mcp' >/dev/null 2>&1; then
+  if ! "$py" -c 'from mcp.server.mcpserver import MCPServer' >/dev/null 2>&1; then
     warn "cerebro cerebro-mcp: installing mcp (Python SDK) for $py ..."
-    if ! "$py" -m pip install --user --break-system-packages mcp >/dev/null 2>&1; then
+    if ! "$py" -m pip install --user --break-system-packages 'mcp>=2,<3' >/dev/null 2>&1; then
       die "cerebro cerebro-mcp: failed to install mcp. Install manually:
-    $py -m pip install --user --break-system-packages mcp"
+    $py -m pip install --user --break-system-packages 'mcp>=2,<3'"
     fi
   fi
 }
@@ -65,7 +65,7 @@ cmd_cerebro_mcp() {
   # them and cerebro_spawn'd children inherit them (os.environ.copy() in the server).
   export CEREBRO_HOME \
          CEREBRO_BACKEND \
-         CEREBRO_MODEL CEREBRO_REVIEW_MODEL \
+         CEREBRO_MODEL CEREBRO_SUPERVISOR_MODEL CEREBRO_REVIEW_MODEL \
          CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN
   exec "$CEREBRO_MCP_PYTHON" "$CEREBRO_LIB_DIR/python/cerebro_mcp_server.py"
 }

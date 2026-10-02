@@ -1,14 +1,5 @@
-# Stream parser shared by execute / apply-review / doc-write / answer (both
-# backends): `parse_stream.py <result_path> <id_path> [store] [key]`. Reads the
-# child's JSON event stream on stdin (one event per line), auto-detects whether
-# it is claude stream-json (`system`/`assistant`/`result` with `message.content`)
-# or opencode run-json (`step_start`/`text`/`tool_use`/`step_finish`/`error` with
-# `sessionID` + `part`), emits a one-line tool-call summary on stderr per tool
-# use, captures the final assistant message text to <result_path> (if
-# non-empty), captures the child's session id to <id_path> (if non-empty) AND --
-# when a store file + key are given -- persists it the instant it is first seen
-# so an interrupt stays resumable. Exits non-zero if the child produced no
-# events or reported an error.
+# Capture closing messages and resumable identities from native child streams.
+# Session identities are stored as soon as the native conversation is durable.
 import json, os, select, sys
 
 sys.dont_write_bytecode = True
@@ -27,11 +18,6 @@ session_id = None
 provider = sys.argv[5] if len(sys.argv) > 5 else None
 tool_summary_open = True
 
-# Format-specific state. claude: result_text from the `result` event's `result`
-# field, result_subtype from `subtype`, session id from the `system/init` event.
-# opencode: result_text = text parts of the last step, snapshot at each
-# step_finish, session id from the first event's `sessionID`.
-cur_step_text = []
 result_text = ""
 result_subtype = None
 
@@ -103,46 +89,26 @@ def handle_claude(ev):
             error_msg = f"result subtype={result_subtype}"
 
 
-def handle_opencode(ev):
+def handle_pi(ev):
     global session_id, result_text, saw_error, error_msg
-    sid = ev.get("sessionID")
-    if sid and session_id is None:
-        session_id = sid
-        record_session(sid)
     t = ev.get("type")
-    part = ev.get("part") or {}
-    if t == "step_start":
-        cur_step_text[:] = []
-    elif t == "text":
-        txt = part.get("text")
-        if isinstance(txt, str):
-            cur_step_text.append(txt)
-    elif t == "tool_use":
-        name = part.get("tool", "?")
-        state = part.get("state") or {}
-        inp = state.get("input") or {}
-        target = (
-            state.get("title") or inp.get("description") or
-            inp.get("filePath") or inp.get("file_path") or
-            inp.get("pattern") or inp.get("path") or inp.get("query") or
-            inp.get("command") or inp.get("url") or ""
-        )
-        if isinstance(target, list):
-            target = " ".join(map(str, target))
-        target = str(target).replace("\n", " ").strip()
-        if len(target) > 120:
-            target = target[:120] + "..."
-        clr = "\r\033[2K" if sys.stderr.isatty() else ""
-        emit_tool_summary(f"{clr}  {name}: {target}\n")
-    elif t == "step_finish":
-        snap = "".join(cur_step_text).strip()
-        if snap:
-            result_text = snap
+    if t == "session.started":
+        session_id = ev["session_id"]
+        record_session(session_id)
+    elif t == "message_end":
+        message = ev.get("message") or {}
+        if message.get("role") == "assistant":
+            result_text = "\n".join(part["text"] for part in message.get("content", [])
+                                    if part.get("type") == "text")
+            saw_error = message.get("stopReason") in ("error", "aborted")
+            error_msg = message.get("errorMessage") or message.get("stopReason")
+    elif t == "tool_execution_start":
+        inp = ev.get("args") or {}
+        target = inp.get("description") or inp.get("path") or inp.get("pattern") or inp.get("command") or inp.get("argv") or ""
+        emit_tool_summary(f"  {ev.get('toolName', '?')}: {str(target).replace(chr(10), ' ')[:120]}\n")
     elif t == "error":
         saw_error = True
-        err = ev.get("error") or {}
-        data = err.get("data") or {}
-        error_msg = err.get("message") or data.get("message") or err.get("name") or "unknown error"
+        error_msg = ev.get("message") or "Pi child failed"
 
 
 def handle_codex(ev):
@@ -233,8 +199,8 @@ for line in _read_bounded():
         # Auto-detect format from the first event.
         if provider:
             pass
-        elif ev.get("type") == "step_start" or "sessionID" in ev:
-            provider = "opencode"
+        elif ev.get("type") in ("session.started", "agent_start", "message_start", "message_update", "message_end"):
+            provider = "pi"
         elif ev.get("type") in ("system", "assistant", "result"):
             provider = "claude"
         elif ev.get("type") in ("thread.started", "turn.started", "item.started", "item.completed"):
@@ -245,15 +211,10 @@ for line in _read_bounded():
         handle_claude(ev)
     elif provider == "codex":
         handle_codex(ev)
+    elif provider == "pi":
+        handle_pi(ev)
     else:
-        handle_opencode(ev)
-
-# opencode: a final flush in case the run ended mid-step without a closing
-# step_finish.
-if provider == "opencode":
-    _tail = "".join(cur_step_text).strip()
-    if _tail:
-        result_text = _tail
+        sys.exit("cerebro: unsupported child stream backend: " + str(provider))
 
 if not saw_any_event:
     sys.stderr.write("\ncerebro: child produced no stream events\n")
@@ -263,8 +224,6 @@ if saw_error:
     sys.exit(4)
 if result_path:
     if result_text is None or result_text == "":
-        # claude: a missing result event is a failure; opencode: an empty run
-        # with no text is also a failure (the closing message is what we need).
         sys.stderr.write("\ncerebro: child did not emit a closing message\n")
         sys.exit(3)
     with open(result_path, "w") as f:

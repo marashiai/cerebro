@@ -3,6 +3,12 @@
 **The user's direct instructions always take precedence over these
 instructions.**
 
+Use the [engineering skill](lib/payloads/skills/engineering/SKILL.md) for
+development. Use [supervise](lib/payloads/skills/supervise/SKILL.md) for an
+explicit unattended handoff. Ordinary sessions keep a short adjustable plan
+of possible commits and offer [Hashimoto diff notes](lib/payloads/skills/hashimoto-review/SKILL.md)
+after each authorized commit, without requiring review acceptance to continue.
+
 ## Branches
 
 Use Angular-style Conventional Commits prefixes for branch names:
@@ -35,14 +41,14 @@ bin/cerebro            # entry point: locate lib, source modules, dispatch
 lib/config.sh          # shell options + CEREBRO_* env defaults (sourced first)
 lib/helpers.sh         # say/warn/die, exit-code helpers, path + repo resolution, usage
 lib/payloads.sh        # shared skill/prompt and configuration payload loaders
-lib/payloads/          # skills, native session-binding hooks/plugins, templates
+lib/payloads/          # skills, prompts, native session-binding hooks/plugins
 lib/session-store.sh   # session metadata (incl. backend) + child-agent session store
 lib/backend.sh         # backend dispatch (child_run/launch/resume/materialise)
-lib/backend-opencode.sh # OpenCode V2: native TUI + serve/session event API
+lib/backend-pi.sh       # Pi: native TUI + RPC child events and steering
 lib/backend-codex.sh   # Codex: native TUI + app-server thread/turn API
 lib/backend-claude.sh  # Claude: native TUI + stream-json children
 lib/python/            # guarded MCP commands, native transports, stream parsing,
-                       #   detached completion, observation and path helpers
+                       #   detached completion, Jev scope watching and path helpers
 lib/pair.sh            # pair-programming mode shared helpers (watch + steer a live child)
 lib/commands/*.sh      # one file per subcommand group (plan, execute, review, ...)
 lib/main.sh            # dispatch table mapping argv[0] to a cmd_* function

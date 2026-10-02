@@ -1,36 +1,38 @@
 ---
 name: cerebro-pair
-description: Run observable children and handle live steering or authorized restart without redefining scope.
+description: Handle Jev scope notices and steer native children within task authority.
 ---
-Pass `--pair` to `execute`, `apply-review`, or `doc-write` when live observation
-or steering is needed. All backends expose the same FIFO side channel. Native
-streams report completion; there is no supervisor log or child-state polling.
-The command tool owns a persistent detached job and waits for its completion.
-Relay the Cerebro session ID so a separate observer can watch it. Do not consume
-raw implementation logs in the supervisor.
+# Live steering
 
-An observer runs `observe <session-id>`, reads the approved spec and plan, and
-compares each batch against them. Preauthorized autosteering may correct drift,
-unsupported assumptions or skipped verification. Otherwise steering requires
-the user's instruction.
+Use `--watch` on execute/apply-review/doc-write for automatic drift detection,
+or `--no-watch` to disable the configured default for one call. Jev classifies
+small batches of native child events against the current spec, delegated task,
+adjustable plan and trusted steering. In-scope progress stays silent. A possible
+deviation or uncertainty returns to the parent through the existing command
+tool, with original evidence, confidence, worktree, native ID and steering pipe.
+Do not consume raw implementation logs or launch another observing agent.
 
-Use `steer <pipe> <message>` for a bounded correction. OpenCode and Codex deliver
-it through native session/turn APIs; Claude accepts its next stream-json turn.
-After a terminal turn, `CEREBRO_PAIR_IDLE` gives a short steering window.
-Completed work does not remain open indefinitely waiting for a person.
+Inspect the evidence and current requirements. Steer a valid correction when
+authorized, or request a material user decision. A low-confidence concern is
+uncertainty, not proof of drift. A stored notice may predate a scope revision;
+dismiss outdated concerns using the current requirements. After handling or dismissing a notice, call
+`wait <job-id> --after <sequence>` to acknowledge it and wait for the next
+notice or terminal handoff. The child remains available for steering while the
+notice is pending. Classifier failure stops the watched child and preserves
+its worktree and native conversation for recovery.
 
-Every steering record names its source. `[observer]` and `[supervisor]` are
-corrections within the approved contract, never user authority. Do not change
-the spec or broaden the plan because of them. `[user]` comes from a direct
-external user steering command; fold an unambiguous requirement change into
-the spec and affected plans, then report what changed. Ask about a real product
-ambiguity instead of guessing. Direct instructions already in the parent chat
-retain their user authority independently of these records.
+`--watch` requires recorded requirements, a configured Jev key and a durable
+command-tool or `detach` job. It adds no post-turn delay unless `--pair` is also
+selected. `--pair` alone provides manual steering with a bounded idle window.
 
-Use `restart <pipe> <diagnosis>` only when abandonment and cleanup are
-preauthorized or explicitly requested, and a nudge cannot recover the child.
-Cerebro reaps the native child and cleans that task's isolated worktree,
-branch and PR. Its terminal restart block gives the diagnosis. Correct the
-plan within the approved spec, regenerate its readable companion, and re-run
-fresh on the new announced worktree. Do not resume the abandoned native child
-or silently reinterpret the diagnosis as a new requirement.
+`steer <pipe> <message>` delivers a native follow-up/turn correction. The
+post-turn `CEREBRO_PAIR_IDLE` window is bounded. `[supervisor]`
+messages enforce the current spec and delegated task; they never grant new
+user authority. Direct `[user]` messages can change requirements, which the
+parent records in the spec and adjustable plan. Resolve real product ambiguity.
+
+`restart <pipe> <diagnosis>` applies to execute children, for unrecoverable work with preauthorized or
+explicit abandonment and cleanup. It reaps that native child and removes its
+isolated worktree, branch and PR. Revise the task from the terminal diagnosis
+within the user's requirements and execute afresh; never resume the abandoned
+conversation. Use `cancel` for authorized termination without that cleanup.

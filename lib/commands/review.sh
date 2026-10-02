@@ -8,17 +8,17 @@ cmd_review() {
   local base=""
   local explicit_base="false"
   local criteria_file=""
-  local model=""
+  local model="" explain=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --base) shift; base="${1:-}"; explicit_base="true"; shift || true ;;
       --criteria-file) shift; criteria_file="${1:-}"; shift || true ;;
+      --explain) explain=1; shift ;;
       --model) shift; model="${1:-}"; shift || true ;;
       *) die "review: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" review
-  [[ -n "$repo" ]] || die "usage: cerebro review <repo-abs-path> [--base <ref>] [--criteria-file <plan-path>] [--model <provider/model>]"
+  [[ -n "$repo" ]] || die "usage: cerebro review <repo-abs-path> [--base <ref>] [--criteria-file <plan-path>] [--explain] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "review: repo path must be absolute: $repo"
   [[ -d "$repo" ]] || die "review: repo not a directory: $repo"
 
@@ -131,28 +131,17 @@ cmd_review() {
   say "cerebro: reviewing $repo against $base_description (merge-base $merge_base)"
   log_event "review_started" "repo=$repo base=$base_ref merge_base=$merge_base resume=${prior:-none}"
 
-  # Supply the merge base instead of duplicating the full diff in the prompt.
-  # The native adapter enforces read-only access.
   local review_prompt
-  review_prompt="Review the code changes against the $base_description. The merge base commit for this comparison is $merge_base. Run \`git diff $merge_base\` to inspect the changes included since that merge base. Provide prioritized, actionable findings: bugs, regressions, security issues, missing tests, and correctness problems. Skip style nits, speculative concerns, and over-engineering suggestions (gold-plating, defensive code for cases that cannot occur, premature abstraction, or broad rewrites where a small fix would do); prefer the smallest change that resolves a real problem. For each finding, give a one-line title, the file or area affected, and a sentence explaining the concern and a suggested fix. Output Markdown only; no preamble."
-
-  # Shipped review-focus guidance: gate on the deliverable and real
-  # contract violations, not contrived edge cases or style nits. Kept as a
-  # shipped paragraph (not an overlay) so every user gets it.
-  review_prompt+="
-
-# Review/audit focus -- do NOT be nitpicky
-Gate strictly on whether the DELIVERABLE does what the spec/plan asks, on REAL contract violations, and on the agent's own build/test results. A finding must reflect input that can plausibly occur in real data/usage. Do NOT raise (these are NOISE, not findings): contrived or low-probability input-string permutations (e.g. exotic multi-country location strings, a stray word matching a token) -- if it won't occur in the real data source, it is not a finding; precedence/ordering micro-cases between heuristic signals on hand-crafted inputs; style nits, naming, defensive code for cases that cannot occur, or speculative hardening; the same area whittled round after round -- once the core capability works and prior real findings are addressed, return VIABLE / MET, do not manufacture a fresh edge case each pass to avoid passing. Prefer FEWER, higher-confidence findings. When unsure whether something is real and important, omit it. Converge; do not ping-pong."
-
-  # When the orchestrator supplies the plan via --criteria-file, make the
-  # reviewer also act as the checkpoint gate: verify the change against EACH
-  # acceptance criterion and end with a single machine-readable verdict line the
-  # orchestrator keys its advance/retry decision on.
+  review_prompt="$(cat "$(cerebro_payloads_dir)/prompts/review.md")"
+  review_prompt="${review_prompt//__CEREBRO_BASE__/$base_description}"
+  review_prompt="${review_prompt//__CEREBRO_MERGE_BASE__/$merge_base}"
+  if (( explain )); then
+    review_prompt+=$'\n\n'"$(cerebro_skill_body "$(cerebro_skills_dir)/hashimoto-review/SKILL.md")"
+    review_prompt+=$'\n\n'"$(cat "$(cerebro_payloads_dir)/prompts/explain-review.md")"
+  fi
   if [[ -n "$criteria_block" ]]; then
-    review_prompt+=" This change is meant to implement the plan below, which ends with an acceptance-criteria checkpoint. After your findings, add a section headed '## Acceptance criteria' that checks the actual implemented diff against EACH criterion in the plan. For code-reviewable criteria, list a verdict of MET, PARTIAL, or NOT MET with a one-line justification grounded in the diff. For criteria that require unavailable external capabilities such as browser operation, screenshots, visual/manual inspection, network access, PR/CI access, or other tools this read-only reviewer does not have, use verdict EXTERNAL and state the exact verification the orchestrator/user must perform; EXTERNAL criteria do not make the final verdict NOT MET. Do not claim you ran a browser/manual check here. Then output, as the VERY LAST line, exactly 'ACCEPTANCE CRITERIA: MET' if every code-reviewable criterion is fully and correctly met and only EXTERNAL criteria remain, otherwise exactly 'ACCEPTANCE CRITERIA: NOT MET'. Do not soften a PARTIAL or unmet code-reviewable criterion into MET. The plan follows between the markers.
-<plan>
-$criteria_block
-</plan>"
+    review_prompt+=$'\n\n'"$(cat "$(cerebro_payloads_dir)/prompts/review-criteria.md")"
+    review_prompt+=$'\n\n<requirements>\n'"$criteria_block"$'\n</requirements>'
   fi
 
   # Run a fresh read-only child on this backend with the selected review model.
@@ -218,6 +207,8 @@ cmd_apply_review() {
   local notes=""
   local saw_prompt=0
   local pair=0
+  local CEREBRO_JEV_ENABLED="$CEREBRO_JEV_ENABLED" CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE"
+  local CEREBRO_WATCH_PLAN=""
   local model=""
   if [[ $# -gt 0 && "${1:-}" != --* ]]; then
     findings="$1"; shift
@@ -228,10 +219,11 @@ cmd_apply_review() {
       --notes)  shift; notes="${1:-}";                     shift || true ;;
       --model)  shift; model="${1:-}";                     shift || true ;;
       --pair)   pair=1; shift ;;
+      --watch)  CEREBRO_JEV_ENABLED=1; shift ;;
+      --no-watch) CEREBRO_JEV_ENABLED=0; shift ;;
       *) die "apply-review: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" apply-review
   # An explicitly-passed --prompt must carry a non-empty operand. Without
   # this guard, `--prompt` with no value (or `--prompt ""`) leaves
   # prompt_text empty and would slip into the default-findings fallback
@@ -306,6 +298,7 @@ cmd_apply_review() {
     fi
   fi
 
+  watch_prepare || return $?
   local child_log; child_log="$(child_log_path apply-review)"
 
   local provider; provider="$(backend_child_provider apply-review)"
@@ -339,11 +332,11 @@ cmd_apply_review() {
   local child_prompt
   child_prompt="$(
     if [[ -n "$findings" ]]; then
-      printf 'Apply the following review findings on the current branch. Commit and push so the existing PR updates.\n\n<orchestrator-notes>\n%s\n</orchestrator-notes>\n\n<findings>\n' "$notes"
+      printf 'Apply the delegated review findings on the current task branch within the supplied delivery permissions.\n\n<orchestrator-notes>\n%s\n</orchestrator-notes>\n\n<findings>\n' "$notes"
       cat "$findings"
       printf '\n</findings>\n'
     else
-      printf 'Apply the following fix on the current branch. Commit and push so the existing PR updates.\n\n<task>\n%s\n</task>\n' "$prompt_text"
+      printf 'Perform the following delegated task on the current branch within the supplied delivery permissions.\n\n<task>\n%s\n</task>\n' "$prompt_text"
     fi
   )"
 

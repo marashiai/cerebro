@@ -5,20 +5,19 @@
 # ----- pair-programming mode -----------------------------------------------
 # `--pair` on a child (execute / apply-review / doc-write) lets the developer
 # WATCH the live session and STEER it. The transport is backend-specific:
-#   opencode -- the child runs under a private headless `opencode serve`; the
-#               pump POSTs prompts + reads SSE
+#   pi        -- the child runs in native RPC mode over JSONL stdin/stdout
+#   codex     -- the child runs under the native app-server JSON-RPC transport
 #   claude    -- the child runs with `--input-format stream-json` stdin; the
 #               pump writes JSON user messages to stdin
-# Either way, after each turn cerebro waits a short window for steering injected
+# After each turn cerebro waits a short window for steering injected
 # over a named pipe; each steering message is forwarded as the child's next
-# turn and recorded. Another cerebro session watches this one's paired children
-# with `cerebro observe <this-session-id>`; `cerebro steer "<message>"` is a
-# one-shot inject. The child runs to completion; a quiet window finishes it.
+# turn and recorded. `cerebro steer "<message>"` injects one instruction.
+# The child runs to completion; a quiet window finishes it.
 # Steering is recorded as it is injected and folded back so the orchestrator can
 # reconcile it against the spec.
 #
 # pair_begin / pair_run / pair_cleanup are dispatched to the active backend
-# (lib/backend.sh -> lib/backend-{opencode,claude}.sh). This file holds only
+# (lib/backend.sh -> lib/backend-{pi,codex,claude}.sh). This file holds only
 # the shared pair helpers + the per-task worktree management.
 
 # pair_label <role> <repo> [branch] -- a stable, human-readable session name
@@ -36,8 +35,6 @@ pair_banner() {
   {
     printf 'cerebro: PAIR MODE -- watch this %s session live and steer it.\n' "$role"
     printf '  session : %s (id %s)\n' "$label" "$sid"
-    printf '  observe : from ANOTHER cerebro, ask it to: observe %s\n' "${CEREBRO_SESSION_ID:-<this-session-id>}"
-    printf '            (it narrates every live paired child of this session)\n'
     printf '  steer   : cerebro steer "<message>"   (inject one instruction; returns at once)\n'
     printf '            if several paired sessions run at once: cerebro steer %s "<message>"\n' "$fifo"
     printf '  the child runs to completion; it waits a short window after each turn for\n'
@@ -51,6 +48,17 @@ pair_stall_marker() { printf '%s' "${1%.jsonl}.stalled"; }
 
 # pair_stalled <child_log> -- true iff the pump flagged this child as stalled.
 pair_stalled() { [[ -e "$(pair_stall_marker "$1")" ]]; }
+
+# Watched jobs use the native steering transport without a post-turn delay.
+watch_prepare() {
+  case "$CEREBRO_JEV_ENABLED" in 0|1) ;; *) die "jev_enabled must be 0 or 1" ;; esac
+  export CEREBRO_JEV_ENABLED
+  (( CEREBRO_JEV_ENABLED )) || return 0
+  export CEREBRO_JEV_ENABLED CEREBRO_JEV_API_KEY CEREBRO_JEV_MODEL \
+         CEREBRO_JEV_ENDPOINT CEREBRO_JEV_CONFIDENCE CEREBRO_WATCH_PLAN
+  python3 "$CEREBRO_LIB_DIR/python/scope_watch.py" || return $?
+  (( pair )) || { pair=1; CEREBRO_PAIR_IDLE=0; }
+}
 
 # pair_stall_clear <child_log> -- consume (remove) the stall marker.
 pair_stall_clear() { rm -f "$(pair_stall_marker "$1")"; }
@@ -79,30 +87,17 @@ pair_restart_clear() { rm -f "$(pair_restart_marker "$1")"; }
 # command-substitution capture would trap it in a subshell instead).
 PAIR_RESOLVED_FIFO=""
 pair_resolve_live_fifo() {
-  local fifo="${1:-}" verb="${2:-steer}" scope=""
+  local fifo="${1:-}" verb="${2:-steer}"
   PAIR_RESOLVED_FIFO=""
-  if [[ "${CEREBRO_ROLE:-}" == "observer" ]]; then
-    require_session
-    local target
-    target="$(jq -r '.observe_target // empty' "$CEREBRO_SESSION_DIR/metadata.json")"
-    [[ "$target" =~ ^[a-zA-Z0-9_-]+$ ]] || die "$verb: observer has no assigned target"
-    scope="$CEREBRO_HOME/sessions/$target"
-    scope="$(resolve_in_repo "$scope" "$scope/children")" || return $?
-    [[ -z "$fifo" ]] || fifo="$(resolve_in_repo "$scope" "$fifo")" || return $?
-  fi
   if [[ -n "$fifo" ]]; then
     [[ -p "$fifo" ]] || die "$verb: no live paired session at $fifo (the child may have finished)"
     PAIR_RESOLVED_FIFO="$fifo"
     return 0
   fi
-  local candidates=() dirs=() f dir
+  local candidates=() f
   shopt -s nullglob
-  if [[ -n "$scope" ]]; then dirs=("$scope"); else dirs=("$CEREBRO_HOME"/sessions/*/children); fi
-  for dir in "${dirs[@]}"; do
-    for f in "$dir"/*.steer.fifo; do
-      [[ -z "$scope" ]] || f="$(resolve_in_repo "$scope" "$f" 2>/dev/null)" || continue
-      steer_fifo_live "$f" && candidates+=("$f")
-    done
+  for f in "$CEREBRO_HOME"/sessions/*/children/*.steer.fifo; do
+    steer_fifo_live "$f" && candidates+=("$f")
   done
   shopt -u nullglob
   if (( ${#candidates[@]} == 0 )); then
@@ -159,6 +154,25 @@ execute_worktree_create() {
     || git -C "$repo" worktree add --detach "$wt" "$baseref" >/dev/null 2>&1 \
     || git -C "$repo" worktree add --detach "$wt" >/dev/null 2>&1 \
     || die "execute: cannot create worktree at $wt"
+  local initial_branches inventory
+  initial_branches="$(git -C "$wt" rev-parse --git-path cerebro-initial-branches)" \
+    || die "execute: cannot locate task branch metadata"
+  inventory="$(mktemp "$initial_branches.XXXXXX")" \
+    || die "execute: cannot prepare task branch metadata"
+  git -C "$repo" for-each-ref --format='%(refname)' refs/heads refs/remotes/origin > "$inventory" \
+    || { rm -f "$inventory"; die "execute: cannot record initial branches"; }
+  if git -C "$repo" remote get-url origin >/dev/null 2>&1; then
+    local remote_heads
+    if remote_heads="$(git -C "$repo" ls-remote --heads origin 2>/dev/null)"; then
+      printf '%s\n' "$remote_heads" | awk '{sub("refs/heads/", "refs/remotes/origin/", $2); print $2}' \
+        >> "$inventory" || { rm -f "$inventory"; die "execute: cannot record initial remote branches"; }
+    else
+      printf '%s\n' remote-unknown >> "$inventory" \
+        || { rm -f "$inventory"; die "execute: cannot record unavailable remote branches"; }
+    fi
+  fi
+  mv "$inventory" "$initial_branches" \
+    || { rm -f "$inventory"; die "execute: cannot publish task branch metadata"; }
 }
 
 # execute_worktree_branch <wt> -- the branch the child produced in the worktree

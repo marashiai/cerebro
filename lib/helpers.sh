@@ -132,26 +132,31 @@ usage() {
 usage:
   cerebro                       # start a native supervisor session
   cerebro --resume [<id>]        # resume an ID, or the most recent session
-  cerebro --observe [<id>]       # observe another session's live paired children
   cerebro list                   # list sessions
   cerebro jobs                   # rediscover durable child jobs
   cerebro wait <job-id>          # block on a job completion notification
   cerebro cancel <job-id>        # stop an authorized job and its descendants
   cerebro detach --output <path> -- <child-subcommand> [...]
-  cerebro acp [restart]          # editor frontend for OpenCode or Claude
+  cerebro acp [restart]          # editor frontend for Claude
   cerebro --help
 
-CEREBRO_BACKEND selects opencode (default), codex or claude. OpenCode requires
-V2, minimum 2.0.19; V1 is unsupported. A session and all its children, including
+CEREBRO_BACKEND selects pi (default), codex or claude. Pi requires version
+0.99.2 or newer and Node 22.19.0 or newer. A session and all its children, including
 reviews, use one backend. Resume restores the recorded backend.
 
 The parent supervises requirements, plans, delegation and delivery gates.
+Ordinary sessions keep a short adjustable plan of possible commits and offer
+Hashimoto diff notes after each authorized commit, without an acceptance wait.
+Select the supervise skill for unattended work within the requested scope.
+Shared engineering, supervise and hashimoto-review skills come from marashiai/skills.
 Repository development happens in native children, with execute work isolated
 in a task worktree. Guarded Cerebro MCP commands accept literal argv and stdin;
 the parent has no unrestricted mutation tools. Review uses fresh read-only
-context on the same backend, optionally with another CEREBRO_REVIEW_MODEL.
-Empty model settings use the backend's native default; --model overrides one
-child call. The optional models-config.json catalog helps select models.
+context on the same backend. CEREBRO_SUPERVISOR_MODEL selects the supervisor;
+CEREBRO_MODEL selects implementation; CEREBRO_REVIEW_MODEL selects
+review (defaulting to CEREBRO_MODEL). Empty selections use the native default;
+--model overrides one child call. The optional models-config.json catalog helps
+select models.
 
 Long child commands detach automatically through the command tool and survive
 parent disconnects. Their monitors notify waiters on completion; no child-state
@@ -159,11 +164,10 @@ or log polling is required to wait. A blocked child ends with a question;
 answer <child-id> <answer> resumes that same conversation. A failed resume is
 reported instead of silently creating a fresh child.
 
-Pair execute/apply-review/doc-write for live observation and steering. A separate
-observer reads log batches and compares them with the approved spec and plan.
+Pair execute/apply-review/doc-write for live output and steering.
 Preauthorized autosteering may correct drift. Restart additionally needs
 permission to abandon and remove the task's isolated branch, PR and worktree.
-Observer/supervisor steering cannot add user requirements. Paired children have
+Supervisor steering cannot add user requirements. Paired children have
 a short post-turn steering window and bounded native inactivity handling.
 
 Interactive chats require a real TTY on stdin/stdout; controllers using a real
@@ -172,12 +176,13 @@ competing mutations against the same repository; sequence them.
 
 Requirements: jq, python3 and the selected native CLI on PATH. Development/PR
 work additionally needs git and gh; browser verification needs native browser
-capability. ACP is unavailable for Codex; its terminal frontend is supported.
+capability. ACP is unavailable for Pi and Codex; their terminal frontends are supported.
 
 Options use env > $CEREBRO_HOME/config.json > default. CEREBRO_HOME is env-only.
-Supported options include CEREBRO_BACKEND, CEREBRO_MODEL, CEREBRO_REVIEW_MODEL,
-CEREBRO_TIMEOUT, CEREBRO_CHILD_IDLE_TIMEOUT (default 0), CEREBRO_CHILD_SESSION_TTL,
-CEREBRO_OPENCODE_CMD, CEREBRO_CODEX_CMD, CEREBRO_CLAUDE_CMD,
+Supported options include CEREBRO_BACKEND, CEREBRO_SUPERVISOR_MODEL, CEREBRO_MODEL,
+CEREBRO_REVIEW_MODEL, CEREBRO_TIMEOUT, CEREBRO_CHILD_IDLE_TIMEOUT (default 0),
+CEREBRO_CHILD_SESSION_TTL,
+CEREBRO_PI_CMD, CEREBRO_CODEX_CMD, CEREBRO_CLAUDE_CMD,
 CEREBRO_CLAUDE_BASE_URL, CEREBRO_CLAUDE_AUTH_TOKEN, CEREBRO_OVERLAY_CAP,
 CEREBRO_META_HORIZON, CEREBRO_PAIR_IDLE, CEREBRO_PAIR_STALL,
 CEREBRO_PAIR_STALL_BUSY, CEREBRO_PAIR_STALL_RETRIES, CEREBRO_PAIR_STALL_BACKOFF,
@@ -196,16 +201,16 @@ require_interactive() {
 require_deps() {
   local cmd backend; backend="$(current_backend)"
   case "$backend" in
-    opencode) cmd="$CEREBRO_OPENCODE_CMD" ;;
+    pi) cmd="$CEREBRO_PI_CMD" ;;
     claude) cmd="$CEREBRO_CLAUDE_CMD" ;;
     codex) cmd="$CEREBRO_CODEX_CMD" ;;
-    *) die "unsupported backend: $backend (choose opencode, claude or codex)" ;;
+    *) die "unsupported backend: $backend (choose pi, claude or codex)" ;;
   esac
   local dep
   for dep in jq python3 "$cmd"; do
     command -v "$dep" >/dev/null 2>&1 || die "missing required command on PATH: $dep"
   done
-  [[ "$backend" != opencode ]] || backend_opencode_detect_version
+  [[ "$backend" != pi ]] || backend_pi_detect_version
 }
 
 # Bind commands to the session environment and restore its recorded backend.
@@ -224,7 +229,7 @@ require_session() {
   [[ -d "$CEREBRO_SESSION_DIR" ]] || die "session dir missing: $CEREBRO_SESSION_DIR"
   export CEREBRO_SESSION_DIR
   # The recorded session backend governs every delegated child.
-  CEREBRO_RESUME_BACKEND="$(session_backend "$CEREBRO_SESSION_DIR")"
+  CEREBRO_RESUME_BACKEND="$(session_backend "$CEREBRO_SESSION_DIR")" || return $?
   export CEREBRO_RESUME_BACKEND
 }
 
@@ -309,26 +314,25 @@ build_timeout_cmd() {
 # Materialize shared skills and native backend extras without overwriting user overlays.
 materialise_home() {
   mkdir -p "$CEREBRO_HOME/.agents/skills" "$CEREBRO_HOME/.claude/skills" \
-    "$CEREBRO_HOME/sessions" "$CEREBRO_HOME/templates" "$CEREBRO_HOME/overlays" \
+    "$CEREBRO_HOME/sessions" "$CEREBRO_HOME/overlays" \
     || die "cannot create $CEREBRO_HOME"
   write_if_changed "$CEREBRO_HOME/system-prompt.md" "$(cerebro_system_prompt)"
   local src topic
+  # Retire generated policies so native discovery cannot reload their old gates.
+  for topic in cerebro-execute cerebro-apply-review cerebro-doc-write cerebro-verify \
+      cerebro-audit-gate cerebro-suites cerebro-observer; do
+    rm -rf "$CEREBRO_HOME/.agents/skills/$topic" "$CEREBRO_HOME/.claude/skills/$topic"
+  done
   for src in "$(cerebro_skills_dir)"/*/SKILL.md; do
     topic="$(basename "$(dirname "$src")")"
     mkdir -p "$CEREBRO_HOME/.agents/skills/$topic"
     write_if_changed "$CEREBRO_HOME/.agents/skills/$topic/SKILL.md" "$(cat "$src")"
-    # Claude and Codex/OpenCode discover the same source through their native roots.
+    # Claude and Codex discover the same source through their native roots.
     if [[ -d "$CEREBRO_HOME/.claude/skills/$topic" && ! -L "$CEREBRO_HOME/.claude/skills/$topic" ]]; then
       rm -rf "$CEREBRO_HOME/.claude/skills/$topic"
     fi
     ln -sfn "../../.agents/skills/$topic" "$CEREBRO_HOME/.claude/skills/$topic"
   done
-  local role
-  for role in orchestrator observer execute apply-review doc-write verify reviewer; do
-    rm -f "$CEREBRO_HOME/.opencode/agent/cerebro-$role.md"
-  done
-  rm -f "$CEREBRO_HOME/.opencode/plugin/cerebro.js" "$CEREBRO_HOME/.opencode/opencode.json"
-  write_if_missing "$CEREBRO_HOME/templates/AGENTS.md" "$(cerebro_default_agents_md)"
   backend_materialise_extras
 }
 

@@ -10,6 +10,8 @@ cmd_execute() {
   local base_branch=""
   local new_branch=""
   local pair=0
+  local CEREBRO_JEV_ENABLED="$CEREBRO_JEV_ENABLED" CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE"
+  local CEREBRO_WATCH_PLAN=""
   local model=""
   # Second positional, if present and not a flag, is the plan path.
   if [[ $# -gt 0 && "${1:-}" != --* ]]; then
@@ -22,10 +24,11 @@ cmd_execute() {
       --branch) shift; new_branch="${1:-}";  shift || true ;;
       --model)  shift; model="${1:-}";       shift || true ;;
       --pair)   pair=1; shift ;;
+      --watch)  CEREBRO_JEV_ENABLED=1; shift ;;
+      --no-watch) CEREBRO_JEV_ENABLED=0; shift ;;
       *) die "execute: unknown arg: $1" ;;
     esac
   done
-  [[ -n "$model" ]] && require_model_for_backend "$model" "$(current_backend)" execute
   [[ -n "$repo" ]] \
     || die "usage: cerebro execute <repo-abs-path> (<plan-path> | --prompt \"<text>\") [--base <branch>] [--branch <name>] [--model <provider/model>]"
   [[ "$repo" = /* ]] || die "execute: repo path must be absolute: $repo"
@@ -55,6 +58,9 @@ cmd_execute() {
     source_desc="prompt=inline"
   fi
 
+  CEREBRO_WATCH_PLAN="$plan_path"
+  watch_prepare || return $?
+
   local child_log; child_log="$(child_log_path execute)"
 
   local provider; provider="$(backend_child_provider execute)"
@@ -70,7 +76,7 @@ cmd_execute() {
   # branch -- there is no "commit onto an existing branch" mode.
   local branch_instr=""
   if [[ -n "$base_branch" || -n "$new_branch" ]]; then
-    branch_instr='STACKED-BRANCH MODE -- this overrides the default fetch/branch/PR-base behaviour:'
+    branch_instr='Task branch constraints:'
     if [[ -n "$base_branch" ]]; then
       branch_instr+=$'\n'"  * Fetch '$base_branch' from origin (git fetch origin $base_branch) and create your new branch from origin/$base_branch -- NOT from origin/main or any other default base."
     fi
@@ -78,7 +84,7 @@ cmd_execute() {
       branch_instr+=$'\n'"  * Name the new branch EXACTLY '$new_branch' (it already follows the repo's conventions; do not invent a different name)."
     fi
     if [[ -n "$base_branch" ]]; then
-      branch_instr+=$'\n'"  * Open the pull request with its base set to '$base_branch' (gh pr create --base $base_branch) so this PR stacks on top of it."
+      branch_instr+=$'\n'"  * If a pull request is authorized, set its base to '$base_branch' (gh pr create --base $base_branch) so this PR stacks on top of it."
     fi
   fi
 
@@ -119,34 +125,12 @@ cmd_execute() {
   [[ -n "$base_ref" ]] || base_ref="main"
   execute_worktree_create "$repo" "$wt" "$base_ref"
 
-  # Bootstrap files: cerebro ships a default AGENTS.md at
-  # $CEREBRO_HOME/templates/AGENTS.md. The claude backend additionally ships a
-  # CLAUDE.md template. We hand them to the child along with an instruction to
-  # create them in the repo only when missing; existing files are left alone.
-  local agents_template="" claude_template=""
-  if [[ -r "$CEREBRO_HOME/templates/AGENTS.md" ]]; then
-    agents_template="$(cat "$CEREBRO_HOME/templates/AGENTS.md")"
-  fi
-  if [[ -r "$CEREBRO_HOME/templates/CLAUDE.md" ]]; then
-    claude_template="$(cat "$CEREBRO_HOME/templates/CLAUDE.md")"
-  fi
-
   local child_prompt
   child_prompt="$(
-    printf 'Execute the following plan in this repository. Fetch the base branch first, branch from the freshly-fetched base, implement, commit, push, and open a PR via gh.\n\n'
-    printf 'Before implementing the plan, ensure the repo has AGENTS.md at the root:\n'
-    printf '  * If AGENTS.md is missing, create it from <bootstrap-agents-md> below as a SEPARATE first commit (e.g. "chore: add AGENTS.md") before doing the plan work.\n'
-    if [[ -n "$claude_template" ]]; then
-      printf '  * If CLAUDE.md is missing, create it from <bootstrap-claude-md> in the same first commit.\n'
-    fi
-    printf '  * If either file already exists, do NOT modify it.\n'
-    printf 'Then read AGENTS.md (existing or just-written) and follow its branch/commit rules for the rest of this run.\n\n'
-    printf '<bootstrap-agents-md>\n%s\n</bootstrap-agents-md>\n\n' "$agents_template"
-    if [[ -n "$claude_template" ]]; then
-      printf '<bootstrap-claude-md>\n%s\n</bootstrap-claude-md>\n\n' "$claude_template"
-    fi
+    cat "$(cerebro_payloads_dir)/prompts/execute.md"
+    printf '\n\n'
     [[ -n "$branch_instr" ]] && printf '%s\n\n' "$branch_instr"
-    printf '<plan>\n%s\n</plan>\n' "$plan_body"
+    printf '<task>\n%s\n</task>\n' "$plan_body"
   )"
 
   local rc id_capture msg_capture
@@ -190,6 +174,19 @@ cmd_execute() {
     local branch; branch="$(execute_worktree_branch "$wt")"
     local real_branch=0
     [[ -n "$branch" && "$branch" != "HEAD" && "$branch" != "$base_ref" ]] && real_branch=1
+    if (( real_branch )); then
+      [[ -z "$new_branch" || "$branch" == "$new_branch" ]] \
+        || die "restart: child switched to '$branch' instead of '$new_branch'; branch and worktree retained"
+      local initial_branches branch_check
+      initial_branches="$(git -C "$wt" rev-parse --git-path cerebro-initial-branches)" \
+        || die "restart: cannot locate task branch metadata; branch and worktree retained"
+      [[ -r "$initial_branches" ]] \
+        || die "restart: initial branch metadata is missing; branch and worktree retained"
+      grep -Fxq -e "refs/heads/$branch" -e "refs/remotes/origin/$branch" \
+        -e remote-unknown "$initial_branches"; branch_check=$?
+      [[ "$branch_check" == 1 ]] \
+        || die "restart: cannot prove '$branch' was created for this task; branch and worktree retained"
+    fi
     # Tear down the PR + remote branch FIRST (while the worktree still exists, so
     # `gh` runs inside it), then remove the worktree (un-checking-out the branch),
     # then delete the now-unused local branch.

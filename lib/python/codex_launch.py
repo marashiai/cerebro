@@ -8,8 +8,9 @@ import sys
 
 # These are native out-of-sandbox capabilities; a read-only filesystem sandbox
 # alone does not restrict them. Never enable native delegation around the gate.
+# Astra needs the native code-mode host to call guarded tools.
 DISABLED = ['apps', 'plugins', 'hooks', 'browser_use', 'browser_use_external',
-            'computer_use', 'in_app_browser', 'code_mode', 'code_mode_host',
+            'computer_use', 'in_app_browser', 'code_mode',
             'image_generation', 'skill_mcp_dependency_install', 'multi_agent',
             'multi_agent_v2']
 
@@ -21,6 +22,8 @@ def toml(value):
 
 
 def guarded_options(executable, role, cwd, session_dir):
+    if role not in ('supervisor', 'reviewer'):
+        raise ValueError('unsupported command role: ' + role)
     options = ['-c', 'project_root_markers=[]']
     for feature in DISABLED:
         options += ['--disable', feature]
@@ -59,10 +62,6 @@ def main():
     argv = [executable, *options, '-s', 'read-only']
     if native_id:
         argv += ['resume', native_id]
-    elif role == 'observer':
-        target = json.loads((Path(session_dir) / 'metadata.json').read_text()).get('observe_target')
-        if target:
-            argv += ['Observe session ' + target + '. Follow the cerebro-observer skill.']
     os.chdir(cwd)
     os.execvp(executable, argv)
 

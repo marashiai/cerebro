@@ -1,4 +1,4 @@
-"""Observe and steer native Claude stream-json or Codex app-server children.
+"""Steer native Pi RPC, Claude stream-json or Codex app-server children.
 
 The native stdout stream drives completion. No child-log/session-file polling
 or transcript reconciliation is involved; Cerebro owns only the FIFO side
@@ -16,10 +16,16 @@ import sys
 import time
 
 from codex_launch import guarded_options
+from scope_watch import watch_child
+
+
+watcher = None
 
 
 def emit(event):
     print(json.dumps(event), flush=True)
+    if watcher:
+        watcher.event(event)
 
 
 class Claude:
@@ -153,10 +159,17 @@ class Codex:
 
 
 def run():
+    global watcher
     backend, cwd, resume, model, fifo, steer_path, child_log, executable = sys.argv[1:9]
     prompt = sys.stdin.read()
     readonly = os.environ.get('CEREBRO_CHILD_ROLE') in ('review', 'audit', 'improve')
-    if backend == 'claude':
+    watcher = watch_child(backend, cwd, prompt, fifo, child_log)
+    if backend == 'pi':
+        from pi_launch import run_argv
+        argv = [*run_argv(executable, 'reviewer' if readonly else os.environ['CEREBRO_CHILD_ROLE'], cwd,
+                        os.environ['CEREBRO_SESSION_DIR'], resume, model,
+                        os.environ['CEREBRO_CHILD_INSTRUCTIONS']), '--mode', 'rpc']
+    elif backend == 'claude':
         argv = [executable, *sys.argv[9:]]
     else:
         options = guarded_options(executable, 'reviewer', cwd, os.environ['CEREBRO_SESSION_DIR']) if readonly else [
@@ -164,7 +177,8 @@ def run():
             '--disable', 'multi_agent', '--disable', 'multi_agent_v2']
         argv = [executable, '--no-daemon', '--strict-config', *options, 'app-server']
     env = dict(os.environ)
-    for key in ('CEREBRO_SESSION_ID', 'CEREBRO_SESSION_DIR', 'CEREBRO_ROLE'):
+    for key in ('CEREBRO_SESSION_ID', 'CEREBRO_SESSION_DIR', 'CEREBRO_ROLE',
+                'CEREBRO_JEV_API_KEY', 'CEREBRO_CFG_JEV_API_KEY', 'CEREBRO_JOB_STATUS'):
         env.pop(key, None)
     proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=sys.stderr, start_new_session=True, env=env)
@@ -173,8 +187,13 @@ def run():
         proc.stdin.write((json.dumps(event) + '\n').encode())
         proc.stdin.flush()
 
-    adapter = Claude(send, resume) if backend == 'claude' else Codex(
-        send, resume, cwd, model, os.environ['CEREBRO_CHILD_INSTRUCTIONS'], readonly)
+    if backend == 'pi':
+        from pair_pi import Pi
+        adapter = Pi(send, emit, resume)
+    elif backend == 'claude':
+        adapter = Claude(send, resume)
+    else:
+        adapter = Codex(send, resume, cwd, model, os.environ['CEREBRO_CHILD_INSTRUCTIONS'], readonly)
     fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK) if fifo else None
     idle_grace = float(os.environ.get('CEREBRO_PAIR_IDLE', '60'))
     stall = float(os.environ.get('CEREBRO_PAIR_STALL', '180'))
@@ -191,10 +210,18 @@ def run():
     try:
         adapter.start(prompt)
         while True:
+            if watcher:
+                watcher.check()
             now = time.monotonic()
             deadline = idle_deadline if idle_deadline is not None else last_activity + (stall_busy if adapter.busy else stall)
             watched = [proc.stdout.fileno()] + ([fd] if fd is not None else [])
-            ready, _, _ = select.select(watched, [], [], max(0, deadline - now))
+            if watcher:
+                watched.append(watcher.wake_fd)
+            timeout = None if watcher and watcher.busy() and idle_deadline is not None else max(0, deadline - now)
+            ready, _, _ = select.select(watched, [], [], timeout)
+            if watcher and watcher.wake_fd in ready:
+                os.read(watcher.wake_fd, 65536)
+                watcher.check()
             if not ready:
                 if idle_deadline is not None:
                     return 0
@@ -212,6 +239,8 @@ def run():
                     if prefix != 'S':
                         raise ValueError('invalid steering prefix')
                     adapter.steer(message)
+                    if watcher:
+                        watcher.steered(message)
                     with open(steer_path, 'a') as record:
                         record.write('- ' + message.replace('\n', '\n  ') + '\n')
                     idle_deadline = None
@@ -219,6 +248,8 @@ def run():
             if proc.stdout.fileno() in ready:
                 chunk = os.read(proc.stdout.fileno(), 65536)
                 if not chunk:
+                    if watcher and watcher.busy():
+                        raise RuntimeError('native child exited before scope classification was acknowledged')
                     return proc.wait() or (0 if idle_deadline is not None else 2)
                 output_buffer += chunk
                 while b'\n' in output_buffer:
@@ -228,10 +259,14 @@ def run():
                     event = json.loads(line)
                     last_activity = time.monotonic()
                     if adapter.event(event):
+                        if watcher:
+                            watcher.turn_done()
                         idle_deadline = last_activity + idle_grace
-                    elif adapter.busy or (backend == 'codex' and adapter.active_turns):
+                    elif adapter.busy or (backend in ('codex', 'pi') and adapter.active_turns):
                         idle_deadline = None
     finally:
+        if watcher:
+            watcher.close()
         if fd is not None:
             os.close(fd)
         proc.stdin.close()

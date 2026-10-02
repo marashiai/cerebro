@@ -48,12 +48,6 @@ def execute_pair(environment, repo, log, role):
             time.sleep(0.02)
         assert fifo, 'paired native child never started'
         steering_environment = {**environment, 'CEREBRO_ROLE': role}
-        if role == 'observer':
-            observer = Path(environment['CEREBRO_HOME']) / 'sessions' / 'native-observer'
-            observer.mkdir(exist_ok=True)
-            (observer / 'metadata.json').write_text(json.dumps({'role': 'observer',
-                                                               'observe_target': environment['CEREBRO_SESSION_ID']}))
-            steering_environment.update(CEREBRO_SESSION_ID=observer.name, CEREBRO_SESSION_DIR=str(observer))
         check(command(steering_environment, 'steer', str(fifo), 'enforce the approved contract'))
         stdout, stderr = proc.communicate(timeout=10)
         assert proc.returncode == 0, stderr
@@ -70,7 +64,7 @@ with tempfile.TemporaryDirectory(prefix='cerebro-native-backend-tests-') as temp
     directory = Path(temporary)
     guards = directory / 'guards'
     guards.mkdir()
-    for backend in ('opencode', 'codex', 'claude'):
+    for backend in ('pi', 'codex', 'claude'):
         guard = guards / backend
         guard.write_text('#!/usr/bin/env bash\nprintf "unexpected native backend fixture\\n" >&2\nexit 97\n')
         guard.chmod(0o755)
@@ -80,6 +74,7 @@ with tempfile.TemporaryDirectory(prefix='cerebro-native-backend-tests-') as temp
         (session / 'children').mkdir(parents=True)
         (session / 'plans').mkdir()
         (session / 'transcript.jsonl').touch()
+        (session / 'metadata.json').write_text(json.dumps({'backend': backend, 'role': 'supervisor'}))
         repo = home / 'repo'
         repo.mkdir()
         subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
@@ -94,8 +89,10 @@ with tempfile.TemporaryDirectory(prefix='cerebro-native-backend-tests-') as temp
         executable.chmod(0o755)
         environment = {**os.environ, 'CEREBRO_HOME': str(home), 'CEREBRO_SESSION_ID': 'native-session',
                        'CEREBRO_BACKEND': backend, 'CEREBRO_MODEL': '', 'CEREBRO_REVIEW_MODEL': '',
+                       'CEREBRO_SUPERVISOR_MODEL': '',
+                       'CEREBRO_JEV_ENABLED': '0', 'CEREBRO_JEV_API_KEY': '',
                        'CEREBRO_CODEX_CMD': str(guards / 'codex'), 'CEREBRO_CLAUDE_CMD': str(guards / 'claude'),
-                       'CEREBRO_OPENCODE_CMD': str(guards / 'opencode'), 'NATIVE_FIXTURE_LOG': str(log),
+                       'CEREBRO_PI_CMD': str(guards / 'pi'), 'NATIVE_FIXTURE_LOG': str(log),
                        'CEREBRO_PAIR_IDLE': '0.2', 'CEREBRO_PAIR_STALL': '5', 'CEREBRO_PAIR_STALL_BUSY': '5',
                        'CEREBRO_PLAYWRIGHT_ISOLATED': '1',
                        'CEREBRO_CHILD_IDLE_TIMEOUT': '0', 'PATH': str(guards) + ':' + os.environ['PATH']}
@@ -146,15 +143,17 @@ with tempfile.TemporaryDirectory(prefix='cerebro-native-backend-tests-') as temp
             argv = next(entry['argv'] for entry in native if 'argv' in entry)
             assert argv[argv.index('--resume') + 1] == 'NATIVE-CHILD-1'
 
-        native = execute_pair(environment, repo, log, 'observer')
+        native = execute_pair(environment, repo, log, 'supervisor')
         assert all(entry.get('isolated') == '1' for entry in native if 'argv' in entry), 'paired child browser profiles were not isolated'
         if backend == 'codex':
             steering = [entry['params'] for entry in native if entry.get('method') == 'turn/start'][1]
             assert steering['threadId'] == 'NATIVE-CHILD-1'
-            assert steering['input'][0]['text'].startswith('[observer]')
+            assert steering['input'][0]['text'].startswith('[supervisor]')
+            assert 'not a new user requirement' in steering['input'][0]['text']
         else:
             steering = [entry for entry in native if entry.get('type') == 'user'][-1]
-            assert steering['message']['content'].startswith('[observer]')
+            assert steering['message']['content'].startswith('[supervisor]')
+            assert 'not a new user requirement' in steering['message']['content']
 
         log.write_text('')
         result = command({**environment, 'NATIVE_FIXTURE_MODE': 'failure'}, 'execute', str(repo), '--prompt', 'failing native task')

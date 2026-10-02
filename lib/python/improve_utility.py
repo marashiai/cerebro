@@ -44,34 +44,36 @@ def _scan_transcript(path):
 def _child_failures(session_dir):
     """Count explicit failed and completed child results.
 
-    Claude logs finish with a ``result`` event. OpenCode logs finish with a
-    ``step_finish`` event or an explicit ``error`` event. Incomplete logs have
-    no truthful outcome and are excluded rather than guessed from assistant
-    text near the end of the file.
+    Native terminal events and explicit transport stalls determine completion.
+    Incomplete logs have no truthful outcome and are excluded rather than
+    guessed from assistant text near the end of the file.
     """
     n_fail = 0
     n_total = 0
     children_dir = os.path.join(session_dir, "children")
     for f in glob.glob(os.path.join(children_dir, "*.jsonl")):
+        if os.path.isfile(os.path.splitext(f)[0] + ".stalled"):
+            n_fail += 1
+            n_total += 1
+            continue
         try:
             with open(f, encoding="utf-8") as fh:
                 events = [json.loads(line) for line in fh if line.strip()]
         except (OSError, ValueError):
             continue
-        failed = any(event.get("type") == "error" for event in events)
-        step_finishes = [event for event in events
-                         if event.get("type") == "step_finish"]
-        failed = failed or any(
-            (event.get("part") or {}).get("is_error") is True
-            for event in step_finishes
-        )
+        failed = any(event.get("type") in ("error", "turn.failed") for event in events)
         claude_results = [event for event in events if event.get("type") == "result"]
         if claude_results:
             failed = failed or claude_results[-1].get("subtype") != "success"
             n_total += 1
+        elif any(event.get("type") == "agent_settled" for event in events):
+            assistants = [event["message"] for event in events
+                          if event.get("type") == "message_end" and event.get("message", {}).get("role") == "assistant"]
+            failed = failed or not assistants or assistants[-1].get("stopReason") in ("error", "aborted")
+            n_total += 1
         elif failed:
             n_total += 1
-        elif step_finishes:
+        elif any(event.get("type") == "turn.completed" for event in events):
             n_total += 1
         else:
             continue

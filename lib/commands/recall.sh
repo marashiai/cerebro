@@ -9,9 +9,11 @@ cmd_recall() {
   local query="${*:-}"
   [[ -n "$query" ]] || die "usage: cerebro recall <query>"
 
-  local files
-  files=$(find "$CEREBRO_HOME/sessions" -type f \( -name 'transcript.jsonl' -o -name '*.jsonl' \) 2>/dev/null)
-  if [[ -z "$files" ]]; then
+  local -a files=()
+  local file
+  while IFS= read -r -d '' file; do files+=("$file"); done \
+    < <(find "$CEREBRO_HOME/sessions" -type f -name '*.jsonl' -print0 2>/dev/null)
+  if (( ${#files[@]} == 0 )); then
     echo "cerebro: nothing to recall (no session logs yet)"
     return 0
   fi
@@ -22,11 +24,9 @@ cmd_recall() {
   # Pass 1: literal match of the whole query (the precise hit).
   local out
   if (( have_rg )); then
-    # shellcheck disable=SC2086
-    out=$(rg --no-heading --line-number --color never --fixed-strings -- "$query" $files 2>/dev/null || true)
+    out=$(rg --no-heading --line-number --color never --fixed-strings -- "$query" "${files[@]}" 2>/dev/null || true)
   else
-    # shellcheck disable=SC2086
-    out=$(grep -RnF --color=never -- "$query" $files 2>/dev/null || true)
+    out=$(grep -RnF --color=never -- "$query" "${files[@]}" 2>/dev/null || true)
   fi
   if [[ -n "$out" ]]; then
     printf '%s\n' "$out"
@@ -51,8 +51,7 @@ cmd_recall() {
   local t
   for t in "${terms[@]}"; do args+=(-e "$t"); done
 
-  # shellcheck disable=SC2086
-  out=$("${args[@]}" -- $files 2>/dev/null | head -n 100 || true)
+  out=$("${args[@]}" -- "${files[@]}" 2>/dev/null | head -n 100 || true)
   [[ -z "$out" ]] && return 0
 
   echo "cerebro recall: no verbatim match for \"$query\";" \
@@ -60,4 +59,3 @@ cmd_recall() {
   echo "---"
   printf '%s\n' "$out"
 }
-

@@ -31,12 +31,13 @@ set_metadata_foreign() {
     > "$tmp" 2>/dev/null && mv "$tmp" "$sess_dir/metadata.json" || rm -f "$tmp"
 }
 
-# Read the recorded backend, using the configured backend when metadata is absent.
+# Every child uses the recorded backend; incomplete metadata cannot select another.
 session_backend() {
   local sess_dir="$1"
-  [[ -f "$sess_dir/metadata.json" ]] || { printf '%s' "${CEREBRO_BACKEND:-opencode}"; return 0; }
-  local b; b="$(jq -r '.backend // empty' "$sess_dir/metadata.json" 2>/dev/null)"
-  printf '%s' "${b:-${CEREBRO_BACKEND:-opencode}}"
+  local backend
+  backend="$(jq -er '.backend | select(. == "pi" or . == "codex" or . == "claude")' \
+    "$sess_dir/metadata.json" 2>/dev/null)" || die "session metadata has no supported backend: $sess_dir"
+  printf '%s' "$backend"
 }
 
 session_foreign_id() {

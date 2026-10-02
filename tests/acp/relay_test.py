@@ -110,6 +110,8 @@ def main() -> int:
     }
     env = os.environ.copy()
     env["CEREBRO_HOME"] = home
+    env["CEREBRO_BACKEND"] = "claude"
+    env["CEREBRO_JEV_ENABLED"] = "0"
     env["CEREBRO_ACP_CHILD_SPEC"] = json.dumps(spec)
     env["STUB_RECORD"] = rec_path
     env["PATH"] = CEREBRO_BIN_DIR + os.pathsep + env.get("PATH", "")
@@ -126,8 +128,8 @@ def main() -> int:
                   f"new_session returned a cerebro sid (got {cerebro_sid!r})")
 
             project_dir = os.path.join(home, "acp", cerebro_sid)
-            check(os.path.isfile(os.path.join(project_dir, ".opencode", "agent", "cerebro-orchestrator.md")),
-                  "acp-mint wrote the opencode orchestrator agent into the project dir")
+            check(os.path.isfile(os.path.join(project_dir, ".mcp.json")),
+                  "acp-mint wrote the private supervisor MCP configuration")
             check(os.path.isfile(os.path.join(project_dir, ".claude", "agents", "cerebro-orchestrator.md")),
                   "acp-mint wrote the claude orchestrator agent into the project dir")
             check(os.path.isdir(os.path.join(home, "sessions", cerebro_sid)),
@@ -171,7 +173,7 @@ def main() -> int:
             md = json.load(f)
         check(md.get("foreign_session_id") == "foreign-1",
               f"foreign id recorded in cerebro metadata (got {md.get('foreign_session_id')!r})")
-        check(md.get("backend") in ("opencode", "claude"),
+        check(md.get("backend") == "claude",
               f"metadata backend recorded (got {md.get('backend')!r})")
 
     asyncio.run(run())

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 
-from wait_detached import completion_socket, final_status
+from wait_detached import completion_socket, final_status, terminal_update, updates_lock, write_updates
 
 
 def write_atomic(path, value):
@@ -27,14 +27,53 @@ def monitor(fd, output, output_status, job_status, input_path, result_path, comm
     statuses = (output_status, job_status)
     listener = socket.socket(fileno=fd)
     completed = threading.Event()
+    changed = threading.Condition()
     clients = []
+    updates_path = job_status + '.updates.json'
+    updates = {'sequence': 0, 'acknowledged': 0, 'notices': []}
+    write_updates(updates_path, updates)
     rc = 127
 
     def notify(client):
         with client:
-            completed.wait()
             try:
-                client.sendall(f'{rc}\n'.encode())
+                client.settimeout(5)
+                with client.makefile('r') as source:
+                    raw = source.readline(65537)
+                if len(raw) > 65536:
+                    raise ValueError('job notification exceeded 64 KiB')
+                request = json.loads(raw)
+                client.settimeout(None)
+                with changed:
+                    if set(request) == {'notify'} and isinstance(request['notify'], dict):
+                        if completed.is_set():
+                            raise ValueError('cannot publish a notice after job completion')
+                        updates['sequence'] += 1
+                        sequence = updates['sequence']
+                        updates['notices'].append({'sequence': sequence, 'notice': request['notify']})
+                        write_updates(updates_path, updates)
+                        changed.notify_all()
+                        changed.wait_for(lambda: completed.is_set() or updates['acknowledged'] >= sequence)
+                        response = {'acknowledged': sequence}
+                    elif set(request) == {'wait'} and isinstance(request['wait'], int) \
+                            and not isinstance(request['wait'], bool) and 0 <= request['wait'] <= updates['sequence']:
+                        after = request['wait']
+                        if not completed.is_set() and after > updates['acknowledged']:
+                            updates['acknowledged'] = after
+                            updates['notices'] = [item for item in updates['notices'] if item['sequence'] > after]
+                            write_updates(updates_path, updates)
+                            changed.notify_all()
+                        changed.wait_for(lambda: completed.is_set() or bool(updates['notices']))
+                        response = (terminal_update(job_status, after) if completed.is_set() else
+                                    {'kind': 'notice', **updates['notices'][0], 'job_exit_code': None})
+                    else:
+                        raise ValueError('invalid job notification or notice sequence')
+                client.sendall((json.dumps(response) + '\n').encode())
+            except (ValueError, TypeError) as error:
+                try:
+                    client.sendall((json.dumps({'error': str(error)}) + '\n').encode())
+                except OSError:
+                    pass
             except OSError:
                 pass
 
@@ -55,17 +94,23 @@ def monitor(fd, output, output_status, job_status, input_path, result_path, comm
         with open(output, 'ab', buffering=0) as log, open(input_path or os.devnull, 'rb') as source:
             with open(result_path or output, 'ab', buffering=0) as result:
                 rc = subprocess.call(command, stdin=source, stdout=result,
-                                     stderr=log, close_fds=True)
+                                     stderr=log, close_fds=True,
+                                     env={**os.environ, 'CEREBRO_JOB_STATUS': job_status})
     except Exception as exc:
         with open(output, 'ab', buffering=0) as log:
             log.write(f'cerebro detach: launch failed: {exc}\n'.encode())
     if final_status(job_status) == 130:
         rc = 130
-    write_status(statuses, f'{rc}\n')
-    completed.set()
+    with changed:
+        # Terminal waiters use this same lock. Once numeric status is visible,
+        # no live waiter can overwrite a newer persisted acknowledgment.
+        with updates_lock(updates_path):
+            write_status(statuses, f'{rc}\n')
+            completed.set()
+        changed.notify_all()
     listener.close()
     for worker in clients:
-        worker.join()
+        worker.join(timeout=5)
     for status in statuses:
         try:
             os.unlink(completion_socket(status))
@@ -93,6 +138,10 @@ def launch(output, status, pid_path, job_file, job_id, label, command,
     if os.path.lexists(alias):
         os.unlink(alias)
     os.symlink(socket_path, alias)
+    updates_alias = status + '.updates.json'
+    if os.path.lexists(updates_alias):
+        os.unlink(updates_alias)
+    os.symlink(job_status + '.updates.json', updates_alias)
     try:
         proc = subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), '--monitor',

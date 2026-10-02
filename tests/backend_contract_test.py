@@ -1,48 +1,58 @@
-"""Assert the native OpenCode role policy from its executable configuration."""
+"""Native Pi launch resources keep parent/reviewer authority explicit."""
 
-import fnmatch
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'lib' / 'python'))
-from opencode_config import config
-
-
-def allowed(configuration, action, resource='*'):
-    decision = None
-    for rule in configuration['permissions']:
-        if fnmatch.fnmatchcase(action, rule['action']) and fnmatch.fnmatchcase(resource, rule['resource']):
-            decision = rule['effect']
-    return decision == 'allow'
+from pi_launch import PAYLOADS, run_argv
 
 
 def check(role):
-    if role in ('supervisor', 'observer', 'review', 'audit', 'improve'):
-        session = Path(os.environ['CEREBRO_HOME']) / 'sessions' / os.environ['CEREBRO_SESSION_ID']
-        session.mkdir(parents=True, exist_ok=True)
-        os.environ['CEREBRO_SESSION_DIR'] = str(session)
-        command_role = role if role in ('supervisor', 'observer') else 'reviewer'
+    home = Path(os.environ['CEREBRO_HOME'])
+    session = home / 'sessions' / os.environ['CEREBRO_SESSION_ID']
+    session.mkdir(parents=True, exist_ok=True)
+    os.environ['CEREBRO_SESSION_DIR'] = str(session)
+    native_role = 'reviewer' if role in ('review', 'audit', 'improve') else role
+    restricted = native_role in ('supervisor', 'reviewer')
+    if restricted:
         libraries = Path(__file__).resolve().parent.parent / 'lib'
         script = 'CEREBRO_LIB_DIR="$1"; . "$1/config.sh"; . "$1/backend.sh"; backend_supervisor_config "$2"'
-        prepared = subprocess.run(['bash', '-c', script, '_', str(libraries), command_role],
+        prepared = subprocess.run(['bash', '-c', script, '_', str(libraries), native_role],
                                   text=True, capture_output=True, timeout=5)
         assert prepared.returncode == 0, prepared.stderr
-    configuration = config(os.environ['CEREBRO_HOME'], role)
-    assert allowed(configuration, 'skill'), 'shared skills must be available'
-    assert configuration['skills'] == [str(Path(os.environ['CEREBRO_HOME']) / '.agents' / 'skills')]
-    if role in ('supervisor', 'observer', 'review', 'audit', 'improve'):
-        for action in ('edit', 'shell', 'subagent', 'unrelated_tool'):
-            assert not allowed(configuration, action), role + ' must deny ' + action
-        assert allowed(configuration, 'cerebro_command'), 'guarded Cerebro commands must be available'
-        assert configuration['mcp']['servers']['cerebro']['command'][-1] in ('supervisor', 'observer', 'reviewer')
+    instructions = 'literal managed instructions `code` $(never execute)'
+    argv = run_argv('fixture-pi', native_role, str(home), str(session), '', 'native/model', instructions)
+    assert argv[0] == 'fixture-pi'
+    assert all(flag in argv for flag in ('--no-extensions', '--no-skills', '--no-prompt-templates', '--no-approve'))
+    assert argv[argv.index('--skill') + 1] == str(PAYLOADS / 'skills')
+    assert argv[argv.index('--append-system-prompt') + 1] == instructions
+    assert argv[argv.index('--model') + 1] == 'native/model'
+    if restricted:
+        tools = argv[argv.index('--tools') + 1].split(',')
+        assert tools == ['mcp__cerebro__command']
+        assert '--no-context-files' in argv
+        assert argv[argv.index('-e') + 1] == str(PAYLOADS / 'pi' / 'cerebro.ts')
+        assert argv[argv.index('--cerebro-role') + 1] == native_role
+        configuration = Path(argv[argv.index('--cerebro-mcp-config') + 1])
+        assert configuration == session / ('tools-' + native_role + '.json')
+        server = json.loads(configuration.read_text())['mcpServers']['cerebro']
+        assert server['args'] == ['tools', native_role]
+        assert server['env']['CEREBRO_ROLE'] == native_role
     else:
-        for action in ('edit', 'shell'):
-            assert allowed(configuration, action), role + ' must support ' + action
-        assert not allowed(configuration, 'question'), 'headless children cannot ask an interactive question'
-        assert not allowed(configuration, 'subagent'), 'development stays in the delegated child'
-    assert configuration['default_agent'] == ('build' if role in ('supervisor', 'observer') else 'general')
+        assert '--tools' not in argv, 'writer must preserve native tool selection and MCP activation'
+        assert [argv[i + 1] for i, arg in enumerate(argv) if arg == '-e'] == [
+            'builtin:mcp', 'builtin:codemode', 'builtin:tool-search']
+        assert '--cerebro-mcp-config' not in argv, 'writer acquired a privileged command channel'
+    for invalid in ('observer', 'unknown-role'):
+        try:
+            run_argv('fixture-pi', invalid, str(home), str(session), '', '', instructions)
+        except ValueError as error:
+            assert 'unsupported Pi role' in str(error)
+        else:
+            raise AssertionError('unsupported role gained native Pi tools: ' + invalid)
 
 
 if __name__ == '__main__':

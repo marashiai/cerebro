@@ -17,17 +17,18 @@ with tempfile.TemporaryDirectory(prefix='cerebro-confinement-tests-') as tempora
     home = directory / 'home'
     session = home / 'sessions' / session_id
     session.mkdir(parents=True)
+    (session / 'metadata.json').write_text(json.dumps({'backend': 'pi', 'role': 'supervisor'}))
     outside = directory / 'outside'
     outside.mkdir()
     guards = directory / 'guards'
     guards.mkdir()
-    for backend in ('opencode', 'claude', 'codex'):
+    for backend in ('pi', 'claude', 'codex'):
         executable = guards / backend
         executable.write_text('#!/usr/bin/env bash\nprintf "unexpected backend fixture\\n" >&2\nexit 97\n')
         executable.chmod(0o755)
     environment = {**os.environ, 'CEREBRO_HOME': str(home), 'CEREBRO_SESSION_ID': session_id,
-                   'CEREBRO_OPENCODE_CMD': str(guards / 'opencode'), 'CEREBRO_CLAUDE_CMD': str(guards / 'claude'),
-                   'CEREBRO_CODEX_CMD': str(guards / 'codex'), 'CEREBRO_BACKEND': 'opencode'}
+                   'CEREBRO_PI_CMD': str(guards / 'pi'), 'CEREBRO_CLAUDE_CMD': str(guards / 'claude'),
+                   'CEREBRO_CODEX_CMD': str(guards / 'codex'), 'CEREBRO_BACKEND': 'pi'}
 
     def command(*arguments):
         return subprocess.run([str(root / 'bin' / 'cerebro'), *arguments], env=environment,
@@ -86,13 +87,17 @@ with tempfile.TemporaryDirectory(prefix='cerebro-confinement-tests-') as tempora
     completed = session / 'completed.status'
     completed.write_text('0\n')
     result = command('wait', str(completed.resolve()))
-    assert result.returncode == 0 and 'finished (exit 0)' in result.stdout, result.stderr
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {'exit_code': 0, 'state': 'completed',
+                                       'job_id': '', 'output': '', 'text': ''}
     assert completed.read_text() == '0\n'
     scratch_status = scratch / 'completed.status'
     scratch_status.write_text('0\n')
     for path in (scratch_status, scratch_status.resolve()):
         result = command('wait', str(path))
         assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)['state'] == 'completed'
+        assert json.loads(result.stdout)['exit_code'] == 0
 
     # Lost-monitor recovery publishes exit 125. Reject an escaped status
     # before that write, including a status loaded from a stored job record.

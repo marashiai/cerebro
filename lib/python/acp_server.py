@@ -3,7 +3,7 @@
 #
 # `cerebro acp` execs this module on the official `agent-client-protocol` Python
 # SDK. cerebro is a THIN PROXY between an ACP editor (Zed, ...) and a per-session
-# UPSTREAM ACP child (`opencode acp` or `claude-agent-acp`). The upstream child
+# UPSTREAM claude-agent-acp child. The upstream child
 # owns the entire ACP capability surface -- images, @-mentions / embedded
 # context, thinking, structured user questions (elicitation), terminals, MCP,
 # permissions, edit review, model / mode / effort / agent pickers, session
@@ -17,8 +17,8 @@
 #      plus the backend's child env (CLAUDE_CONFIG_DIR / Anthropic gateway env
 #      for claude) are exported into the upstream child;
 #   3. agent pinning -- the restricted cerebro-orchestrator agent is forced via
-#      session/set_config_option after new_session (`mode` for opencode, `agent`
-#      for claude); the agent file lives in a cerebro-owned per-session project
+#      session/set_config_option after new_session (`agent`); the agent file
+#      lives in a cerebro-owned per-session project
 #      dir that is the session cwd (the user's repo is an additional_directory,
 #      never written to);
 #   4. sessionId remap -- the editor sees cerebro session ids; the upstream sees
@@ -119,7 +119,7 @@ def _build_child_env(cerebro_sid: str) -> dict[str, str]:
 # missing/unparseable/empty catalog also leaves the upstream's model option
 # untouched.
 _CATALOG_PATH = os.path.join(CEREBRO_HOME, "models-config.json")
-_CEREBRO_MODEL = os.environ.get("CEREBRO_MODEL") or ""
+_SUPERVISOR_MODEL = os.environ.get("CEREBRO_SUPERVISOR_MODEL") or ""
 _HAS_CUSTOM_ENDPOINT = bool(os.environ.get("CEREBRO_CLAUDE_BASE_URL"))
 
 
@@ -176,7 +176,7 @@ def _rewrite_model_option(config_options: Optional[list]) -> Optional[list]:
     for opt in config_options:
         if getattr(opt, "id", None) == "model":
             result.append(_catalog_model_option(
-                current_value=str(getattr(opt, "current_value", _CEREBRO_MODEL) or _CEREBRO_MODEL)
+                current_value=str(getattr(opt, "current_value", _SUPERVISOR_MODEL) or _SUPERVISOR_MODEL)
             ))
             replaced = True
         else:
@@ -184,7 +184,7 @@ def _rewrite_model_option(config_options: Optional[list]) -> Optional[list]:
     if not replaced:
         # Upstream had no `model` option (e.g. a backend that doesn't expose
         # one). Inject ours at the end so the editor still gets a picker.
-        result.append(_catalog_model_option(current_value=_CEREBRO_MODEL))
+        result.append(_catalog_model_option(current_value=_SUPERVISOR_MODEL))
     return result
 
 
@@ -379,9 +379,15 @@ class CerebroAgent:
             return None
         try:
             with open(md) as f:
-                return json.load(f).get("foreign_session_id") or None
+                metadata = json.load(f)
         except Exception:
             return None
+        role = metadata.get("role", "supervisor")
+        if role != "supervisor":
+            raise RuntimeError(f"unsupported parent role for cerebro session {cerebro_sid}: {role}")
+        if metadata.get("backend") != "claude":
+            raise RuntimeError(f"ACP is unavailable for recorded backend: {metadata.get('backend')}")
+        return metadata.get("foreign_session_id") or None
 
     async def _pin(self, child: Any, foreign_sid: str) -> None:
         """Force the restricted cerebro-orchestrator via set_config_option."""
@@ -581,6 +587,8 @@ class CerebroAgent:
                     with open(md) as f:
                         m = json.load(f)
                 except Exception:
+                    continue
+                if m.get("role", "supervisor") != "supervisor" or m.get("backend") != "claude":
                     continue
                 sessions.append(SessionInfo(
                     session_id=m.get("cerebro_session_id", name),

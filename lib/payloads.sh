@@ -8,12 +8,6 @@ cerebro_skill_body() {
   awk 'BEGIN{f=0} /^---$/{if(!f){f=1;next};if(f==1){f=2;next}} f==2||f==0{print}' "$1"
 }
 
-# OpenCode V2 plugin: enforce role permissions and bind native parent sessions.
-cerebro_plugin_js() {
-  cat "$(cerebro_payloads_dir)/plugin/cerebro.js"
-}
-
-
 # Bind Claude prompts to the Cerebro transcript and active-session link.
 cerebro_hook_script() { cat "$(cerebro_payloads_dir)/hook.sh"; }
 
@@ -25,9 +19,6 @@ cerebro_settings_json() {
 }
 
 cerebro_system_prompt() { cerebro_skill_body "$(cerebro_skills_dir)/cerebro-supervisor/SKILL.md"; }
-
-# The shared observer skill adds scope comparison and authorized steering.
-cerebro_observe_mode_prompt() { cerebro_skill_body "$(cerebro_skills_dir)/cerebro-observer/SKILL.md"; }
 
 # Read-only constraints shared by audit, review and improvement analysis.
 cerebro_reviewer_note() {
@@ -88,20 +79,16 @@ child_sys_prompt() {
   local role="$1"
   case "$role" in
     execute|apply-review|doc-write|verify)
-      local f="$(cerebro_skills_dir)/cerebro-$role/SKILL.md"
-      printf '%s\n\n%s' "$(cerebro_skill_body "$f")" "$(child_noninteractive_note)" ;;
+      printf '%s\n\n%s\n\n%s' \
+        "$(cerebro_skill_body "$(cerebro_skills_dir)/cerebro-worker/SKILL.md")" \
+        "$(cerebro_skill_body "$(cerebro_skills_dir)/engineering/SKILL.md")" \
+        "$(child_noninteractive_note)" ;;
     review|audit|improve)
-      printf '%s\n' "$(cerebro_reviewer_note)" ;;
+      printf '%s\n\n%s' "$(cerebro_reviewer_note)" \
+        "$(cerebro_skill_body "$(cerebro_skills_dir)/engineering/SKILL.md")" ;;
     *) die "child_sys_prompt: unknown role: $role" ;;
   esac
 }
-
-# ----- default templates ----------------------------------------------------
-
-# Bootstrap defaults are user-editable and never overwrite existing repo instructions.
-cerebro_default_agents_md() { cat "$(cerebro_payloads_dir)/templates/AGENTS.md"; }
-
-cerebro_default_claude_md() { cat "$(cerebro_payloads_dir)/templates/CLAUDE.md"; }
 
 # Claude's ACP frontend pins its native tool surface through an agent selector.
 # The behavior remains the same shared supervisor skill used by terminal mode.

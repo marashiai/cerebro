@@ -12,7 +12,7 @@
 #                    "capabilities": ["vision","tools","thinking","audio"],
 #                    "contextTokens": <integer>,
 #                    "description": "<free text>" }, ... ] }
-# `id` is the exact provider/model string the opencode/claude `--model` flag
+# `id` is the exact selector the native backend's `--model` flag
 # expects (same shape as CEREBRO_MODEL). `capabilities` is an open set of
 # present tags; "vision" (multimodal image input) is the one that matters for
 # screenshot/browser verification -- a model without it cannot interpret
@@ -31,19 +31,6 @@
 # to choose from and the subcommands fall back to their env-var defaults
 # (CEREBRO_MODEL / CEREBRO_REVIEW_MODEL). This command does not require a
 # session -- it is a plain catalog lookup usable from a shell too.
-
-# require_model_for_backend <id> <backend> [subcmd] -- reject a --model whose
-# format does not match the backend the child runs under, up front with a
-# clear message instead of a confusing downstream failure. opencode requires
-# a 'provider/model' id (with a '/'); a claude-backend id (no '/', e.g. an
-# Ollama "model:tag") can't be resolved by opencode and is silently dropped
-# by the opencode serve pump on resume -- so reject it here. claude passes
-# the id verbatim and tolerates either shape, so it is left unchecked.
-require_model_for_backend() {
-  local id="$1" backend="$2" subcmd="${3:-}"
-  [[ "$backend" == "opencode" && "$id" != */* ]] || return 0
-  die "${subcmd:+$subcmd: }--model '$id' is not valid for the opencode backend, which needs a 'provider/model' id (with a '/'). List models with: cerebro models"
-}
 
 cmd_models() {
   local json=0

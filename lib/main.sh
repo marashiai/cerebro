@@ -12,7 +12,6 @@ main() {
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --resume) shift; cmd_resume "${1:-}" ;;
-    --observe) shift; cmd_launch_observer "${1:-}" ;;
     list) shift; cmd_list "$@" ;;
     plan) shift; cmd_plan "$@" ;;
     plans) shift; cmd_plans "$@" ;;
@@ -36,13 +35,13 @@ main() {
     # drive an interactive TTY program (cerebro or any other) event-driven.
     tools) shift; cmd_tools "$@" ;;
     guide) shift; cmd_guide "$@" ;;
+    hunk) shift; cmd_hunk "$@" ;;
     cerebro-mcp) shift; cmd_cerebro_mcp "$@" ;;
     answer) shift; cmd_answer "$@" ;;
     models)  shift; cmd_models "$@" ;;
     model-env) shift; cmd_model_env "$@" ;;
     steer) shift; cmd_steer "$@" ;;
     restart) shift; cmd_restart "$@" ;;
-    observe) shift; cmd_observe "$@" ;;
     worktrees) shift; cmd_worktrees "$@" ;;
     recall) shift; cmd_recall "$@" ;;
     status) shift; cmd_status "$@" ;;
