@@ -34,6 +34,7 @@ def notification(method, **params):
 
 def complete_codex(text, completed_turn):
     global turn_active
+    time.sleep(float(os.environ.get('NATIVE_FIXTURE_DELAY', '0')))
     if mode == 'steer':
         time.sleep(0.8)
     if mode == 'background':

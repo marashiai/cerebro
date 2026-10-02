@@ -17,6 +17,21 @@ from wait_detached import completion_socket
 ROLES = {'execute', 'apply-review', 'doc-write'}
 
 
+def scope_questions(state):
+    questions = json.loads((Path(__file__).resolve().parent.parent /
+                            'payloads' / 'jev' / 'questions.json').read_text())
+    questions['evidence'] = {
+        'type': 'choice',
+        'instructions': 'Select the event ID containing the strongest concrete evidence '
+                        'for a possible scope deviation. Select none for in-scope work '
+                        'or when no supplied event supports a concern.',
+        'criteria': {'none': 'No event provides concrete evidence of a scope deviation',
+                     **{event['id']: 'The event in `events` with ID ' + event['id']
+                        for event in state['events']}},
+    }
+    return questions
+
+
 def settings():
     confidence = float(os.environ.get('CEREBRO_JEV_CONFIDENCE', '0.8'))
     if not number(confidence) or not 0 <= confidence <= 1:
@@ -40,6 +55,7 @@ class ScopeWatch:
         self.role = os.environ['CEREBRO_CHILD_ROLE']
         self.native_id = ''
         self.log = Path(child_log).with_suffix('.scope.jsonl')
+        self.trace = Path(child_log).with_suffix('.jev.jsonl')
         self.steering = []
         self.pending = deque()
         self.condition = threading.Condition()
@@ -163,7 +179,12 @@ class ScopeWatch:
                     self.active, self.flush = True, False
                 while True:
                     state, fingerprint = self.context()
-                    result = self.client.classify({**state, 'events': events})
+                    state['events'] = events
+                    response = self.client.evaluate(state, scope_questions(state), self.trace)
+                    answers = response['answers']
+                    result = {'model': response['model'], 'scope': answers['scope']['choice'],
+                              'confidence': answers['scope']['confidence'],
+                              'reason': answers['reason']['choice'], 'evidence_id': answers['evidence']['choice']}
                     if self.context()[1] == fingerprint:
                         break
                     if self.stopped:
@@ -171,7 +192,7 @@ class ScopeWatch:
                 evidence = next((event for event in events if event['id'] == result['evidence_id']), None)
                 if result['scope'] == 'possible_deviation' and (result['confidence'] < self.confidence or evidence is None):
                     result['scope'] = 'uncertain'
-                record = {'classification': result, 'evidence': evidence,
+                record = {'classification': result, 'evidence': evidence, 'request_id': response['request_id'],
                           'context_sha': fingerprint, 'native_id': self.native_id,
                           'backend': self.backend, 'role': self.role, 'worktree': self.cwd,
                           'steering_pipe': self.fifo}

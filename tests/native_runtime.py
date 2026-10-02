@@ -1,8 +1,9 @@
 """Exercise installed native CLIs against isolated, deterministic local providers.
 
-Run with optional --parents, or --pair and --background, followed by backend
-names. --watch verifies native parent correction using the configured live Jev
-key and synthetic work. Chat providers stay local; artifacts remain under /tmp.
+Run with optional --parents and --quiet, or --pair and --background, followed by
+backend names. --watch verifies native parent correction using the configured live Jev
+key and synthetic work. --jev-review verifies logged review assessments with
+live Jev. Chat providers stay local; artifacts remain under /tmp.
 """
 import json
 import os
@@ -63,11 +64,8 @@ def action(body, backend):
     code_mode = 'functions.exec' in names
 
     def invoke(name, arguments):
-        if code_mode:
-            if name == 'mcp__cerebro__command':
-                source = 'text(await tools.exec_command({cmd:"printf BAD > supervisor-escape.txt",yield_time_ms:1000})); const tool = ALL_TOOLS.find(t => t.name === "mcp__cerebro__command"); if (!tool) throw new Error("Cerebro command tool missing"); text(await tools[tool.name](' + json.dumps(arguments) + '));'
-            else:
-                source = 'text(await tools.' + name + '(' + json.dumps(arguments) + '));'
+        if code_mode and name not in names:
+            source = 'text(await tools.' + name + '(' + json.dumps(arguments) + '));'
             return 'functions.exec', source, None
         return name, arguments, None
 
@@ -79,12 +77,28 @@ def action(body, backend):
     with LOCK:
         COUNTS[key] = COUNTS.get(key, 0) + 1
         call = COUNTS[key]
-        REQUESTS.append({'backend': backend, 'scenario': marker, 'call': call, 'model': body.get('model'), 'tools': names, 'tool_schemas': [tool for tool in tools if 'cerebro' in (tool.get('name') or '')]})
+        REQUESTS.append({'backend': backend, 'scenario': marker, 'call': call, 'time': time.monotonic(), 'model': body.get('model'), 'tools': names, 'tool_schemas': [tool for tool in tools if 'cerebro' in (tool.get('name') or '')]})
         (ROOT / 'requests.json').write_text(json.dumps(REQUESTS, indent=2))
     if parent:
         assert not any(n in names for n in ('shell', 'bash', 'write', 'edit', 'Bash', 'Write', 'Edit', 'Agent', 'subagent', 'execute')), names
     if reviewer and backend != 'codex':
         assert not any(n in names for n in ('shell', 'bash', 'write', 'edit', 'Bash', 'Write', 'Edit', 'Agent', 'subagent', 'execute')), names
+    if (parent or reviewer) and backend == 'codex':
+        # Harmless shell commands must be rejected, even though a read-only
+        # sandbox would allow them. Probe both nested and direct dispatch.
+        if call == 1:
+            return 'functions.exec', 'text(await tools.exec_command({cmd:"printf NATIVE_SHELL_EXECUTED"}));', None
+        outputs = [item['output'] for item in body.get('input', []) if isinstance(item, dict)
+                   and item.get('type') in ('custom_tool_call_output', 'function_call_output')]
+        rejection = json.dumps(outputs[-1]) if outputs else ''
+        if call == 2:
+            assert 'code-mode host is disabled' in rejection, 'native code-mode execution was not rejected: ' + rejection
+            return 'exec_command', {'cmd': 'printf NATIVE_SHELL_EXECUTED'}, None
+        if call == 3:
+            assert 'exec_command' in rejection and any(word in rejection.lower() for word in
+                ('unsupported', 'unknown', 'unrecognized', 'disabled', 'unavailable')), 'native shell execution was not rejected: ' + rejection
+        call -= 2
+        assert 'mcp__cerebro__command' in names, 'guarded Cerebro tool is not directly callable: ' + repr(names)
     if parent and '--watch' in sys.argv:
         if call == 1:
             return invoke('mcp__cerebro__command', {'argv': ['spec', 'set',
@@ -109,14 +123,21 @@ def action(body, backend):
     if parent and call == 1:
         name = 'mcp__cerebro__command'
         assert name in names or code_mode, names
-        return invoke(name, {'argv': ['execute', str(ROOT / backend / 'repo'), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof']})
-    if reviewer and backend == 'codex' and call == 1:
-        return invoke('exec_command', {'cmd': "printf BAD > review-escape.txt", 'yield_time_ms': 1000})
-    if reviewer and call == (2 if backend == 'codex' else 1):
+        return invoke(name, {'argv': ['execute', str(ROOT / backend / 'repo'), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch']})
+    if parent:
+        results = job_results(body)
+        assert call == 2 and results and results[-1]['state'] == 'completed', 'parent woke without a terminal handoff'
+        assert results[-1]['exit_code'] == 0 and 'NATIVE_WORKER_DONE' in results[-1]['text'], results[-1]
+    if reviewer and call == 1:
         assert 'hashimoto-review' in raw, 'explanatory review skill did not reach the native model'
         name = 'mcp__cerebro__command'
         return invoke(name, {'argv': ['hunk', 'skill', 'path', 'hunk-review']})
+    if reviewer:
+        return None, None, ('NATIVE_REVIEW_DONE\nNo material findings. native-proof.txt:1 contains '
+                            'NATIVE_PROOF as requested. This review covers that added artifact only.')
     correction = marker == 'worker' and 'NATIVE_SCOPE_CORRECTION' in raw
+    if marker == 'worker' and call == 1 and '--quiet' in sys.argv:
+        time.sleep(35)
     if marker == 'worker' and (call == 1 or '--watch' in sys.argv and correction and call == 3):
         name = {'pi': 'bash', 'claude': 'Bash', 'codex': 'exec_command'}[backend]
         assert name in names or code_mode, names
@@ -262,7 +283,7 @@ def prepare(backend):
         wrapper.chmod(0o755)
         env.update(CODEX_HOME=str(native_home), CEREBRO_CODEX_CMD=str(wrapper), CEREBRO_MODEL='gpt-6.1-sol',
                    CEREBRO_SUPERVISOR_MODEL='gpt-6-astra', CEREBRO_REVIEW_MODEL='gpt-6-astra')
-    if '--watch' in sys.argv:
+    if '--watch' in sys.argv or '--jev-review' in sys.argv:
         selected = json.loads((Path(os.environ.get('CEREBRO_HOME', str(Path.home() / '.cerebro'))) / 'config.json').read_text())
         env.update(CEREBRO_JEV_API_KEY=selected['jev_api_key'], CEREBRO_JEV_ENABLED='1')
     if '--parents' in sys.argv or '--watch' in sys.argv:
@@ -348,7 +369,8 @@ def parent(env, args=(), done='NATIVE_PARENT_DONE'):
     prompt_sent = False
     started = time.monotonic()
     try:
-        while time.monotonic() - started < 45:
+        while time.monotonic() - started < (90 if '--quiet' in sys.argv else 45):
+            assert_provider_ok()
             ready, _, _ = select.select([master], [], [], 0.2)
             if ready:
                 try:
@@ -394,7 +416,6 @@ def parent(env, args=(), done='NATIVE_PARENT_DONE'):
         child_file = sessions / meta[0]['cerebro_session_id'] / 'child-sessions.json'
         children = json.loads(child_file.read_text())
         assert any(child['provider'] == meta[0]['backend'] and child['status'] == 'done' for child in children.values())
-        assert not (Path(env['CEREBRO_HOME']) / 'supervisor-escape.txt').exists(), 'native supervisor wrote outside its sandbox'
         return child_file.parent
     finally:
         if master is not None:
@@ -412,6 +433,7 @@ if __name__ == '__main__':
         print('native verification artifacts:', ROOT, flush=True)
         parent_mode = '--parents' in sys.argv or '--watch' in sys.argv
         assert sum(flag in sys.argv for flag in ('--parents', '--pair', '--watch')) <= 1, 'select one native mode'
+        assert '--quiet' not in sys.argv or '--parents' in sys.argv, '--quiet requires --parents'
         backends = [arg for arg in sys.argv[1:] if not arg.startswith('--')] or ['pi', 'codex', 'claude']
         for backend in backends:
             env, repo, session = prepare(backend)
@@ -419,7 +441,7 @@ if __name__ == '__main__':
                 session = parent(env)
                 env.update(CEREBRO_SESSION_ID=session.name, CEREBRO_SESSION_DIR=str(session))
             else:
-                stdout = paired(env, repo, session) if '--pair' in sys.argv else call(env, 'execute', str(repo), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof')
+                stdout = paired(env, repo, session) if '--pair' in sys.argv else call(env, 'execute', str(repo), '--prompt', 'NATIVE_WORKER: write the proof file and report completion.', '--branch', 'feat/native-proof', '--no-watch')
                 assert ('NATIVE_WORKER_STEERED' if '--pair' in sys.argv else 'NATIVE_WORKER_DONE') in stdout, stdout
             children = json.loads((session / 'child-sessions.json').read_text())
             worker = next(v for v in children.values() if v['role'] == 'execute')
@@ -437,9 +459,21 @@ if __name__ == '__main__':
             criteria.write_text('NATIVE_REVIEW: inspect the isolated proof file.')
             report = Path(call(env, 'review', str(path), '--criteria-file', str(criteria), '--explain').strip())
             assert 'NATIVE_REVIEW_DONE' in report.read_text(), report.read_text()
-            assert not (path / 'review-escape.txt').exists(), 'native read-only review wrote a repository file'
+            if '--watch' in sys.argv or '--jev-review' in sys.argv:
+                assessment = json.loads(report.with_suffix('.assessment.json').read_text())
+                trace = report.with_suffix('.jev.jsonl')
+                records = [json.loads(line) for line in trace.read_text().splitlines()]
+                assert records[0]['request_id'] == records[1]['request_id'] == assessment['request_id']
+                assert records[1]['http_status'] == 200 and 'error' not in records[1], records[1]
+                assert 'Authorization' not in records[0] and env['CEREBRO_JEV_API_KEY'] not in trace.read_text()
+                assert trace.stat().st_mode & 0o777 == 0o600
+                assert 'Jev review assessment' in report.read_text()
             assert_provider_ok()
             assert_role_models(env, ('parent', 'worker', 'review') if parent_mode else ('worker', 'review'))
+            if '--quiet' in sys.argv:
+                requests = [request for request in REQUESTS if request['backend'] == backend and request['scenario'] == 'parent']
+                assert len(requests) == (4 if backend == 'codex' else 2), requests
+                assert requests[-1]['time'] - requests[-2]['time'] >= 35, requests
             print(backend + ': native role models verified; isolated implementation and guarded review completed'
                   + (' after parent delegation' if parent_mode else ' with same-session child resume'), flush=True)
         print('native backend checks passed', flush=True)

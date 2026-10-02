@@ -6,11 +6,11 @@ from pathlib import Path
 import subprocess
 import sys
 
-# These are native out-of-sandbox capabilities; a read-only filesystem sandbox
-# alone does not restrict them. Never enable native delegation around the gate.
-# Astra needs the native code-mode host to call guarded tools.
+# A read-only sandbox still permits shell commands. Guarded roles must also
+# disable native executors and unrelated capabilities.
 DISABLED = ['apps', 'plugins', 'hooks', 'browser_use', 'browser_use_external',
-            'computer_use', 'in_app_browser', 'code_mode',
+            'computer_use', 'in_app_browser', 'code_mode_host',
+            'shell_tool', 'unified_exec',
             'image_generation', 'skill_mcp_dependency_install', 'multi_agent',
             'multi_agent_v2']
 
@@ -27,6 +27,10 @@ def guarded_options(executable, role, cwd, session_dir):
     options = ['-c', 'project_root_markers=[]']
     for feature in DISABLED:
         options += ['--disable', feature]
+    # Code-mode models still need the guarded tool, without a yielding executor
+    # between the native parent and Cerebro's blocking completion response.
+    options += ['-c', 'features.code_mode=' + toml({
+        'enabled': False, 'direct_only_tool_namespaces': ['mcp__cerebro']})]
     # Empty tables merge with existing configuration. Explicitly close each
     # effective server, including IDs containing dots, in one TOML value.
     inventory = subprocess.run([executable, *options, 'mcp', 'list', '--json'], cwd=cwd,

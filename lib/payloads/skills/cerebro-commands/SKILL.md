@@ -66,6 +66,13 @@ continuation does not require acceptance. Uncommitted authorized work can also
 be reviewed. `--criteria-file` adds per-criterion static verdicts ending in
 `ACCEPTANCE CRITERIA: MET` or `NOT MET`; unavailable runtime checks are EXTERNAL.
 
+With `jev_enabled=1`, the report also includes Jev's validity/usefulness labels
+against the requirements, criteria, diff and cited source excerpts. Inspect its
+linked assessment for uncertainty and concrete evidence; reconcile disagreements
+with the original findings. The labels never grant authority or waive checks.
+The full Jev interaction is retained in the adjacent `.jev.jsonl` trace. An
+assessment failure retains the original report and returns an explicit error.
+
 `apply-review` without findings or a prompt uses the last findings for this
 repo/branch. Use `--prompt` for a scoped subsequent commit or correction. A
 findings path returned by `review` must be used verbatim. `verify` retains

@@ -67,13 +67,19 @@ authentication remains Pi's responsibility.
 | Codex | Native TUI and native resume | Stdio `codex app-server`, native threads/turns and atomic start-or-steer through `turn/start` | Native read-only sandbox; unrelated host tools and MCP servers disabled for guarded roles |
 | Claude Code | Native TUI and native resume | Native `claude -p` stream-json, additional input turns when paired | Native tool removal and strict Cerebro-only MCP configuration for guarded roles |
 
+Restricted Codex roles disable the code-mode host and shell executors. The
+`mcp__cerebro` namespace is configured for direct calls so code-mode models can
+still use the guarded tool. Catalog-advertised executor calls are rejected at
+dispatch; the read-only sandbox alone would still permit native shell commands.
+
 Claude's owned MCP server uses `alwaysLoad: true` to exempt its command tool from
 deferred discovery. Guarded roles expose only that command tool; native mutation
 and delegation tools stay unavailable.
 See Claude's [MCP startup behavior](https://code.claude.com/docs/en/mcp#exempt-a-server-from-deferral).
 
-Writable children retain the native backend's development tools and configured
-model access. `verify` needs runtime/browser capability; audit, review and
+Writable children retain the native backend's development tools, unrestricted
+shell command execution and configured model access. `verify` needs
+runtime/browser capability; audit, review and
 improvement analysis are read-only roles. A review model may differ, but always
 belongs to the session's backend. Empty model settings leave model selection to
 the native backend. Authentication remains native to each CLI.
@@ -109,6 +115,11 @@ polling the child's PID, status file or logs to schedule the supervisor. Missing
 completion transport while a job still claims to be running is reported as a
 failure.
 
+Parents call this tool directly and remain blocked until an event arrives.
+They do not use yielding execution wrappers, timed wakeups or progress-file
+checks to monitor a pending child. User input can interrupt the wait; the
+durable job remains available for an explicit correction or a resumed wait.
+
 Backend adapters consume native events or stdout directly. Pi's RPC adapter
 tracks tool/message events and pending steering, then waits for `agent_settled`
 after automatic continuation is finished. Its `prompt` command uses native
@@ -135,6 +146,22 @@ execute task with preauthorized abandonment of its isolated branch, PR and
 worktree. Follow-up tasks use steering or cancellation, which terminates the
 monitor and its descendants. Jev does not authorize these actions or change
 requirements.
+
+With `jev_enabled=1`, the shared `review` command assesses the native review
+before returning its report, on every backend. Jev receives the session spec,
+acceptance criteria, review text, diff and cited source excerpts. Evidence is
+bounded and truncation is explicit. Typed validity/usefulness labels include
+confidence and a cited excerpt; the original review remains intact. Uncertainty
+and disagreement go to the supervisor. No label suppresses findings, changes
+delivery authority or replaces required runtime verification. Changed inputs or
+classification errors fail the assessment without advancing review state.
+
+Every Jev call writes a private `.jev.jsonl` trace beside its child log or review
+report. Request records contain the exact submitted state and questions;
+response records contain the bounded HTTP body, status, elapsed time and any
+transport/validation error. Request IDs link these records to `.scope.jsonl`
+decisions or `.assessment.json` review assessments. Authorization headers are
+never logged. A request without a response identifies an interrupted call.
 
 ## Durable state and identity
 

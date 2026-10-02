@@ -213,11 +213,15 @@ def run():
             if watcher:
                 watcher.check()
             now = time.monotonic()
-            deadline = idle_deadline if idle_deadline is not None else last_activity + (stall_busy if adapter.busy else stall)
+            deadline = idle_deadline
+            if deadline is None and fd is not None:
+                deadline = last_activity + (stall_busy if adapter.busy else stall)
             watched = [proc.stdout.fileno()] + ([fd] if fd is not None else [])
             if watcher:
                 watched.append(watcher.wake_fd)
-            timeout = None if watcher and watcher.busy() and idle_deadline is not None else max(0, deadline - now)
+            timeout = None
+            if deadline is not None and not (watcher and watcher.busy() and idle_deadline is not None):
+                timeout = max(0, deadline - now)
             ready, _, _ = select.select(watched, [], [], timeout)
             if watcher and watcher.wake_fd in ready:
                 os.read(watcher.wake_fd, 65536)
@@ -225,6 +229,8 @@ def run():
             if not ready:
                 if idle_deadline is not None:
                     return 0
+                limit = stall_busy if adapter.busy else stall
+                print(f'cerebro pair: child stalled -- no native events for {limit:g}s', file=sys.stderr)
                 Path((child_log[:-6] if child_log.endswith('.jsonl') else child_log) + '.stalled').touch()
                 return 5
             if fd in ready:

@@ -176,6 +176,17 @@ cmd_review() {
   child_store_done "$ckey"
   rm -f "$out_capture"
 
+  case "$CEREBRO_JEV_ENABLED" in 0|1) ;; *) die "jev_enabled must be 0 or 1" ;; esac
+  if (( CEREBRO_JEV_ENABLED )); then
+    if ! CEREBRO_JEV_API_KEY="$CEREBRO_JEV_API_KEY" CEREBRO_JEV_MODEL="$CEREBRO_JEV_MODEL" \
+         CEREBRO_JEV_ENDPOINT="$CEREBRO_JEV_ENDPOINT" CEREBRO_JEV_CONFIDENCE="$CEREBRO_JEV_CONFIDENCE" \
+         python3 "$CEREBRO_LIB_DIR/python/review_check.py" "$canonical_repo" "$merge_base" "$out_path" "$criteria_file"; then
+      log_event "review_assessment_failed" "$out_path"
+      die "review: Jev assessment failed; original findings retained at $out_path"
+    fi
+    log_event "review_assessed" "${out_path%.md}.assessment.json"
+  fi
+
   # Record the HEAD we just reviewed. The next `cerebro review` (without --base)
   # will diff against this SHA so the reviewer only sees what apply-review
   # changed, not the full PR diff again.

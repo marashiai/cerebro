@@ -68,6 +68,15 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-native-tests-') as temporary
     assert any(event['type'] == 'agent_settled' for event in events)
     assert all(json.loads(line)['isolated'] == '1' for line in request_log.read_text().splitlines())
 
+    configuration.write_text(json.dumps({'delay': 0.4, 'request_log': str(request_log)}))
+    quiet = {**environment, 'CEREBRO_PAIR_STALL': '0.1', 'CEREBRO_PAIR_STALL_BUSY': '0.1'}
+    result = subprocess.run([str(root / 'bin' / 'cerebro'), 'apply-review', str(repo),
+                             '--prompt', 'quiet native task', '--no-watch'],
+                            env=quiet, text=True, capture_output=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    events = [json.loads(line) for line in Path(result.stdout.splitlines()[-1]).read_text().splitlines()]
+    assert any(event['type'] == 'agent_settled' for event in events)
+
     original_head = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True)
     local_work = repo / 'user-local.txt'
     local_work.write_text('precious local work')

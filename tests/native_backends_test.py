@@ -133,6 +133,18 @@ with tempfile.TemporaryDirectory(prefix='cerebro-native-backend-tests-') as temp
             assert argv[argv.index('--allowedTools') + 1] == 'mcp__cerebro__command'
             assert '--strict-mcp-config' in argv
 
+        if backend == 'codex':
+            quiet = {**environment, 'NATIVE_FIXTURE_DELAY': '0.4', 'NATIVE_FIXTURE_SID': 'NATIVE-QUIET-FIXER',
+                     'CEREBRO_PAIR_STALL': '0.1', 'CEREBRO_PAIR_STALL_BUSY': '0.1'}
+            stdout = check(command(quiet, 'apply-review', str(repo), '--prompt', 'quiet native task', '--no-watch'))
+            assert 'NATIVE_DONE' in stdout
+            report = check(command({**quiet, 'NATIVE_FIXTURE_SID': 'NATIVE-QUIET-REVIEW'},
+                                   'review', str(repo))).strip()
+            assert Path(report).read_text().strip() == 'NATIVE_DONE'
+            stalled = command({**quiet, 'CEREBRO_PAIR_STALL_RETRIES': '0'},
+                              'apply-review', str(repo), '--prompt', 'quiet paired task', '--pair', '--no-watch')
+            assert stalled.returncode != 0 and 'paired child stalled' in stalled.stderr
+
         log.write_text('')
         check(command(environment, 'answer', 'NATIVE-CHILD-1', 'continue within the contract'))
         native = records(log)

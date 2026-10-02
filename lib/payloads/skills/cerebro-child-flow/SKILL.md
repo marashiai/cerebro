@@ -11,8 +11,9 @@ ID; incomplete work is not delivery. Answer from the current spec, task or
 `answer <child-id> <answer>` to resume the same conversation and assess its
 next terminal handoff.
 
-On resume read `status` and `jobs`. A running detached job survives its parent;
-use `wait <job-id>` to block on completion, without polling its logs or state.
+On resume read `status` and `jobs` once. A running detached job survives its parent;
+call `wait <job-id>` directly and keep it pending until completion or a scope
+notice. Do not poll its logs, progress files or state, or repeat timed waits.
 Do not duplicate live work. Read completed final results before continuing.
 
 For an interrupted child with no live job, repeat the same command, repo,

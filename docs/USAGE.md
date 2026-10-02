@@ -139,8 +139,9 @@ notice acknowledgment is pending, then completes promptly.
 Provide a private `CEREBRO_JEV_API_KEY` or `jev_api_key` in
 `$CEREBRO_HOME/config.json`. The defaults are model `jev-latest`, endpoint
 `https://api.typesafe.ai/v1/systemone` and confidence threshold `0.8`. Jev is a
-scope classifier; it does not change your supervisor, implementation or review
-model settings. See [Configuration](#configuration) for all Jev options.
+classifier for scope and review assessment; it does not change your supervisor,
+implementation or review model settings. See [Configuration](#configuration)
+for all Jev options.
 
 The child adapter batches direct native events for a cheap typed `Choice`
 classification against the current session spec, delegated task and adjustable
@@ -152,6 +153,22 @@ job continues. A confident deviation notice requires a supporting native event.
 Updating the spec or plan changes the scope context. If it changes while a
 classification request is in flight, the watcher reclassifies that batch against
 the new context before publication.
+
+Every call writes a private `children/<child>.jev.jsonl` trace containing the
+submitted state and questions, response body, HTTP status, elapsed time and any
+error. Authorization headers are excluded. Request IDs link these records to
+the existing `.scope.jsonl` decisions. This includes failed classifications;
+an unfinished request remains visible after an interrupted process.
+
+With `jev_enabled=1`, `review` also checks the native review's validity and
+usefulness against the spec, acceptance criteria, diff and cited source excerpts.
+The returned report includes advisory labels and links to `.assessment.json`
+and `.jev.jsonl` files beside it. Its original findings remain intact. Large
+inputs are bounded with explicit truncation, and low-confidence judgments are
+reported as uncertain. The supervisor assesses conflicts and missing evidence;
+the labels do not authorize fixes or waive verification. A classification error
+or changed input returns an explicit failure while retaining the original
+report. A development task's `--no-watch` does not disable later review checks.
 
 Execute restart removes a fresh task's worktree and branch. It refuses teardown
 when the child switched away from a pinned branch, when that local or origin
@@ -520,17 +537,17 @@ Options and their defaults (all optional):
 | `review_model` | `CEREBRO_REVIEW_MODEL` | native model ID for review/audit/verify/improve on the same backend | `model`, or backend default |
 | `claude_base_url` | `CEREBRO_CLAUDE_BASE_URL` | optional Anthropic-compatible endpoint for the claude backend (e.g. a local Ollama `/v1/messages` server, or any proxy). empty = the claude.ai subscription `claude` is logged into. when set, every configured role model must name a model the endpoint serves | empty (subscription) |
 | `claude_auth_token` | `CEREBRO_CLAUDE_AUTH_TOKEN` | bearer token for the optional Claude gateway | empty (`ollama` placeholder for a local gateway) |
-| `jev_enabled` | `CEREBRO_JEV_ENABLED` | enable watching for development children by default (`0`/`1`); per-task flags override | `0` |
-| `jev_api_key` | `CEREBRO_JEV_API_KEY` | private Jev credential; required for watched tasks | empty |
-| `jev_model` | `CEREBRO_JEV_MODEL` | scope-classification model | `jev-latest` |
+| `jev_enabled` | `CEREBRO_JEV_ENABLED` | enable review assessments and default development watching (`0`/`1`); development `--watch`/`--no-watch` flags apply to that task | `0` |
+| `jev_api_key` | `CEREBRO_JEV_API_KEY` | private Jev credential; required for watched tasks and review assessments | empty |
+| `jev_model` | `CEREBRO_JEV_MODEL` | scope/review-classification model | `jev-latest` |
 | `jev_endpoint` | `CEREBRO_JEV_ENDPOINT` | typed classification endpoint | `https://api.typesafe.ai/v1/systemone` |
-| `jev_confidence` | `CEREBRO_JEV_CONFIDENCE` | threshold for significant deviation; lower-confidence deviations become uncertain notices | `0.8` |
+| `jev_confidence` | `CEREBRO_JEV_CONFIDENCE` | minimum confidence for deviation/review labels; lower-confidence judgments become uncertain | `0.8` |
 | `timeout` | `CEREBRO_TIMEOUT` | wall-clock cap (s) per child call | `0` (no cap, so e2e runs and CI waits are never killed) |
 | `child_idle_timeout` | `CEREBRO_CHILD_IDLE_TIMEOUT` | optional parser inactivity bound (s); native transports own completion/stall handling | `0` (disabled) |
 | `child_session_ttl` | `CEREBRO_CHILD_SESSION_TTL` | how long (s) a stored child id stays resumable | `86400` (24h) |
 | `pair_idle` | `CEREBRO_PAIR_IDLE` | steering window (s) after each turn when `--pair` is explicit; watching alone adds no idle window | `60` |
-| `pair_stall` | `CEREBRO_PAIR_STALL` | native stream inactivity bound (s) when no tool is running | `180` |
-| `pair_stall_busy` | `CEREBRO_PAIR_STALL_BUSY` | native stream inactivity bound (s) while a tool runs | `450` |
+| `pair_stall` | `CEREBRO_PAIR_STALL` | paired/watched native stream inactivity bound (s) when no tool is running; unpaired calls await native completion | `180` |
+| `pair_stall_busy` | `CEREBRO_PAIR_STALL_BUSY` | paired/watched native stream inactivity bound (s) while a tool runs | `450` |
 | `pair_stall_retries` | `CEREBRO_PAIR_STALL_RETRIES` | max restart attempts for a stalled paired child | `2` |
 | `pair_stall_backoff` | `CEREBRO_PAIR_STALL_BACKOFF` | base (s) for the exponential restart backoff | `5` |
 | `pi_cmd` | `CEREBRO_PI_CMD` | Pi executable | `pi` |

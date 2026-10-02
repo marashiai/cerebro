@@ -12,13 +12,15 @@ Each test prints `PASS` / `FAIL` (or `SKIP` when `rg` is missing). The
 runner exits non-zero if any assertion fails. The sandbox lives in
 `$(mktemp -d)` and is cleaned up on exit.
 
-Native Pi checks use the installed CLI and SDK against a scripted local model
+Native backend checks use the installed CLIs and SDKs against a scripted local model
 provider. They create isolated Cerebro/native homes, repositories and Git remotes;
 user settings and credentials remain untouched. Artifacts are retained under the
 printed `/tmp/cerebro-real-backends-*` directory:
 
 ```bash
 python3 tests/native_runtime.py --pair --background pi
+python3 tests/native_runtime.py --parents --quiet codex pi claude
+python3 tests/native_runtime.py --parents --jev-review codex pi claude
 CEREBRO_TEST_PYTHON=/path/to/python-with-mcp2 python3 tests/pi_runtime_test.py
 python3 tests/native_runtime.py --watch pi
 ```
@@ -31,6 +33,19 @@ resume and the PTY MCP frontend. `CEREBRO_TEST_PYTHON` supplies the optional MCP
 exposure. The watch run additionally uses the configured live Jev key against
 synthetic scope drift. These tests verify native integration and controls;
 scripted replies do not establish a real model's judgment or provider login.
+
+The quiet-parent run leaves each child silent for 35 seconds and requires the
+next parent model request to contain its completed handoff, with no intermediate
+wakeups. Codex parent and reviewer runs also attempt harmless native shell
+commands through both code-mode and direct dispatch and require rejection.
+Implementation children must still execute native shell commands and write the
+proof file on each backend.
+The `--jev-review` run uses the configured live Jev key to assess completed
+native reviews and verifies the report, assessment and private HTTP trace.
+
+`tests/jev_watch_test.py` also exercises private Jev request/response traces,
+invalid responses and HTTP failures, plus review assessments with repository
+evidence, retained findings, low confidence and input changes during evaluation.
 
 For the official Playwright MCP journey, also set `CEREBRO_TEST_PLAYWRIGHT_MCP`
 to its executable and `CEREBRO_TEST_CHROMIUM` to an installed Chromium binary.
