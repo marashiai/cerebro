@@ -66,6 +66,24 @@ static reviews cover supported, false, incomplete, clean and injected claims;
 protocol cases cover completion, answer/resume, failure, interruption, steering,
 cancellation/disconnect ownership and restart.
 
+The separate `comparison-lease-queue-concurrency` case tests whether a repair
+keeps a JSON-backed lease queue correct across long-lived instances and
+simultaneous POSIX processes. Its hypothesis is that concurrency and ownership
+failures require coordination across the full read-modify-write path, including
+exact lease expiry and stale owners. The initial exploratory group uses three
+conditions, Luna (low) for implementation and Terra (medium) for review and
+supervision, with a 300-second task timeout:
+
+```sh
+evals/.venv/bin/python evals/run.py --config evals/model-config.example.json \
+  --case comparison-lease-queue-concurrency \
+  --conditions bare_supervisor supervisor supervisor_jev \
+  --implementation-model gpt-6-luna --implementation-effort low \
+  --review-model gpt-5.6-terra --review-effort medium \
+  --supervisor-model gpt-5.6-terra --supervisor-effort medium \
+  --timeout 300 --jobs 1 --seed 42 --out /tmp/cerebro-lease-queue-2026-10-03
+```
+
 `--case ID` is repeatable and replaces the smoke selection within the chosen
 suite. `--suite comparison` selects only task comparisons. `--repeat N` repeats
 cases, `--seed N` counterbalances arm order, and `--timeout N` bounds each native

@@ -19,6 +19,7 @@ from fixtures import git, seed_episode, seed_repo
 from usage import collect as collect_usage
 import comparison
 import job_fixture
+import lease_fixture
 import probes
 from jev import ENDPOINT
 from review_check import assess, context
@@ -159,6 +160,8 @@ def run_group(group, emit):
     elif entry['mode'] != 'protocol':
         if entry['id'] == 'comparison-persisted-job-restart':
             job_fixture.seed(seed)
+        elif entry['id'] == 'comparison-lease-queue-concurrency':
+            lease_fixture.seed(seed)
         else:
             seed_episode(seed)
     for arm in group['arms']:
