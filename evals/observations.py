@@ -52,7 +52,10 @@ def job_outcomes(session):
     return outcomes
 
 
-def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, max_implementations=2):
+def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, max_implementations=2,
+                    watch=None, assess_reviews=None):
+    watch = arm == 'with_jev' if watch is None else watch
+    assess_reviews = arm == 'with_jev' if assess_reviews is None else assess_reviews
     calls = parent_calls(directory)
     commands = [call['argv'] for call in calls]
     classifications = []
@@ -65,24 +68,30 @@ def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, 
              and item.get('source') == final_source]
     test_runs = sum(item['type'] == 'tests' for item in bound)
     violations = []
+    configuration_violations = []
     resolved = [item for item in observations if item['type'] == 'model_resolved']
     if len(resolved) != sum(item['type'] == 'model' for item in observations):
         violations.append('missing effective native model or effort evidence')
+        configuration_violations.append('missing_model_evidence')
     for item in observations:
         if item['type'] in ('model', 'model_resolved'):
             expected = role_model(item['role'], settings['models'])
             if item['model'] != expected:
                 violations.append('native child used an unexpected model')
+                configuration_violations.append('unexpected_model')
             if item['type'] == 'model_resolved' and item['effort'] != settings['efforts'][ROLE_GROUPS[item['role']]]:
                 violations.append('native child used an unexpected reasoning effort')
+                configuration_violations.append('unexpected_effort')
     for argv in commands:
         if argv[0] in ('execute', 'apply-review', 'doc-write'):
-            if ('--no-watch' if arm == 'with_jev' else '--watch') in argv:
+            if ('--no-watch' if watch else '--watch') in argv:
                 violations.append('changed assigned monitoring condition')
+                configuration_violations.append('watch_override')
         if '--model' in argv:
             expected = role_model(argv[0], settings['models'])
             if argv[argv.index('--model') + 1] != expected:
                 violations.append('changed assigned role model')
+                configuration_violations.append('model_override')
     reviews = []
     bound_reviews = {item['thread_id'] for item in bound if item['type'] == 'review'}
     for call in calls:
@@ -107,11 +116,16 @@ def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, 
         violations.append('no completed independent review')
     watched = any(item['type'] == 'model' and item['role'] in ('execute', 'apply-review', 'doc-write')
                   for item in observations)
-    if arm == 'with_jev' and ((watched and not classifications) or
-                              any(not path.with_suffix('.assessment.json').is_file() for path in reviews)):
-        violations.append('missing scope or review assessment coverage')
-    if arm == 'without_jev' and (classifications or assessments):
-        violations.append('baseline unexpectedly used Jev')
+    if watch and watched and not classifications:
+        violations.append('missing scope assessment coverage')
+    if assess_reviews and any(not path.with_suffix('.assessment.json').is_file() for path in reviews):
+        violations.append('missing review assessment coverage')
+    if not watch and classifications:
+        violations.append('disabled scope watcher unexpectedly used Jev')
+        configuration_violations.append('unexpected_scope_assessment')
+    if not assess_reviews and assessments:
+        violations.append('disabled review assessment unexpectedly used Jev')
+        configuration_violations.append('unexpected_review_assessment')
     corrections = {call['response'].get('job_id') for call in calls
                    if call['argv'][0] in ('apply-review', 'execute') and call['success']}
     corrections.discard(None)
@@ -139,6 +153,7 @@ def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, 
             'correction_children': len(corrections),
             'reviews': len(reviews), 'review_assessments': len(assessments),
             'recorded_passing_test_runs': test_runs, 'protocol_violations': violations,
+            'configuration_violations': sorted(set(configuration_violations)),
             'effective_child_settings': [{'role': item['role'], 'model': item['model'], 'effort': item['effort']}
                                          for item in resolved],
             'parent_calls': calls, 'final_source_sha256': final_source}

@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,7 +11,7 @@ import time
 import unittest
 import uuid
 
-from fixtures import seed_episode
+from fixtures import INTEGRATION_CHECK, seed_episode
 from native import TestJournal
 from runtime import file_hashes
 
@@ -117,7 +118,78 @@ class ReceiptTests(unittest.TestCase):
                 journal.path.write_text(''.join(json.dumps(record) + '\n' for record in records))
                 self.assertEqual(journal.take(self.repo, 'native-thread'), [])
 
+    def test_captured_runtime_failure_has_trusted_receipt_when_wrapper_exits_zero(self):
+        (self.repo / 'integration_check.py').write_text(INTEGRATION_CHECK)
+        journal = self.journal()
+        report = self.root / 'captured-runtime.json'
+        result = self.execute(journal, ['-c', 'import json,subprocess,sys\nfrom pathlib import Path\n'
+            'result=subprocess.run([sys.executable,"integration_check.py"],capture_output=True,text=True)\n'
+            'Path(' + repr(str(report)) + ').write_text(json.dumps({"exit_code":result.returncode,"stderr":result.stderr}))\n'
+            'print("Runtime attempt recorded privately.")'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('STAGING_UNAVAILABLE', result.stdout + result.stderr)
+        self.assertEqual(json.loads(report.read_text())['exit_code'], 3)
+        records = journal.take(self.repo, 'native-thread')
+        self.assertEqual(len(records), 1)
+        receipt = records[0]
+        self.assertEqual(receipt['type'], 'runtime_check')
+        self.assertEqual(receipt['check'], 'staging')
+        self.assertEqual(receipt['outcome'], 'unavailable')
+        self.assertEqual(receipt['expected_exit_code'], 3)
+        self.assertFalse(receipt['passed'])
+        self.assertEqual(receipt['source_root'], str(self.repo))
+        self.assertEqual(receipt['source'], file_hashes(self.repo))
+        original = journal.path.read_bytes()
+        with journal.path.open('ab') as target:
+            target.write(original)
+        self.assertEqual(journal.take(self.repo, 'native-thread'), [])
+
+    def test_runtime_receipt_rejects_stale_source_and_modified_fixture(self):
+        fixture = self.repo / 'integration_check.py'
+        fixture.write_text(INTEGRATION_CHECK)
+        journal = self.journal()
+        self.assertEqual(self.execute(journal, ['integration_check.py']).returncode, 3)
+        (self.repo / 'parser.py').write_text(FIXED + '# changed after runtime check\n')
+        self.assertEqual(journal.take(self.repo, 'native-thread'), [])
+        journal = self.journal()
+        self.execute(journal, ['integration_check.py'])
+        journal.started_at = time.time() + 1
+        self.assertEqual(journal.take(self.repo, 'native-thread'), [])
+        fixture.write_text(INTEGRATION_CHECK.replace('sys.exit(3)', 'sys.exit(0)'))
+        journal = self.journal()
+        self.assertEqual(self.execute(journal, ['integration_check.py']).returncode, 0)
+        self.assertEqual(journal.take(self.repo, 'native-thread'), [])
+
+    def test_runtime_receipt_uses_only_registered_roots_and_matching_cwd(self):
+        (self.repo / 'integration_check.py').write_text(INTEGRATION_CHECK)
+        selected = self.root / 'selected'
+        shutil.copytree(self.repo, selected)
+        journal = self.journal()
+        self.execute(journal, ['integration_check.py'], cwd=selected)
+        self.assertEqual(journal.take([self.repo], 'native-thread'), [])
+        journal = self.journal()
+        self.execute(journal, ['integration_check.py'], cwd=selected)
+        receipt = journal.take([self.repo, selected], 'native-thread')
+        self.assertEqual(len(receipt), 1)
+        self.assertEqual(receipt[0]['source_root'], str(selected))
+        journal = self.journal()
+        self.execute(journal, [str(self.repo / 'integration_check.py')], cwd=self.root)
+        self.assertEqual(journal.take([self.repo, selected], 'native-thread'), [])
+
+    def test_runtime_receipt_rejects_wrong_worker_role_and_outcome(self):
+        (self.repo / 'integration_check.py').write_text(INTEGRATION_CHECK)
+        for field, value in [('worker_id', 'foreign-worker'), ('role', 'execute'),
+                             ('outcome', 'available'), ('expected_exit_code', 0), ('check', 'unrelated')]:
+            with self.subTest(field=field):
+                journal = self.journal()
+                self.execute(journal, ['integration_check.py'])
+                record = json.loads(journal.path.read_text())
+                record[field] = value
+                journal.path.write_text(json.dumps(record) + '\n')
+                self.assertEqual(journal.take(self.repo, 'native-thread'), [])
+
     def test_native_recorder_collects_captured_subprocess_tests_without_stdout_markers(self):
+        (self.repo / 'integration_check.py').write_text(INTEGRATION_CHECK)
         native = self.root / 'native-fixture.py'
         native.write_text('''import json,os,subprocess,sys
 from pathlib import Path
@@ -133,6 +205,8 @@ for raw in sys.stdin:
         emit({'method':'item/started','params':{'item':item}})
         result=subprocess.run([sys.executable,'-m','unittest','-v'],cwd=repo,text=True,capture_output=True)
         Path('private-report.txt').write_text(result.stdout+result.stderr)
+        runtime=subprocess.run([sys.executable,'integration_check.py'],cwd=repo,text=True,capture_output=True)
+        Path('private-runtime.json').write_text(json.dumps({'exit_code':runtime.returncode,'stderr':runtime.stderr}))
         emit({'method':'item/completed','params':{'item':{**item,'exitCode':result.returncode,'aggregatedOutput':'Report written.'}}})
         emit({'method':'turn/completed','params':{'turn':{'status':'completed'}}})
 ''')
@@ -147,7 +221,9 @@ for raw in sys.stdin:
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('test_empty', result.stdout)
         self.assertNotIn('CEREBRO_EVAL_TEST_RECEIPT', result.stdout)
+        self.assertNotIn('STAGING_UNAVAILABLE', result.stdout)
         self.assertIn('Ran 3 tests', (self.root / 'private-report.txt').read_text())
+        self.assertEqual(json.loads((self.root / 'private-runtime.json').read_text())['exit_code'], 3)
         seen = [json.loads(line) for path in self.root.glob('observations-*.jsonl') for line in path.read_text().splitlines()]
         receipts = [value for value in seen if value['type'] == 'tests']
         self.assertEqual(len(receipts), 1)
@@ -158,6 +234,12 @@ for raw in sys.stdin:
         activity = next(value for value in seen if value['type'] == 'activity')
         self.assertEqual(activity['cwd'], str(self.root))
         self.assertEqual(activity['source_root'], str(self.repo))
+        self.assertEqual(activity['exit_code'], 0)
+        runtime = [value for value in seen if value['type'] == 'runtime_check']
+        self.assertEqual(len(runtime), 1)
+        self.assertEqual(runtime[0]['expected_exit_code'], 3)
+        self.assertEqual(runtime[0]['source_root'], str(self.repo))
+        self.assertEqual(runtime[0]['role'], 'verify')
 
 
 if __name__ == '__main__':

@@ -54,6 +54,7 @@ def file_hashes(repo):
 
 def process(argv, env, cwd, prefix, stdin='', timeout=600):
     started = time.monotonic()
+    failure = None
     with prefix.with_suffix('.stdout.jsonl').open('w') as out, prefix.with_suffix('.stderr').open('w') as err:
         proc = subprocess.Popen(argv, cwd=cwd, env=env, text=True, stdin=subprocess.PIPE,
                                 stdout=out, stderr=err, start_new_session=True)
@@ -67,11 +68,14 @@ def process(argv, env, cwd, prefix, stdin='', timeout=600):
                 except subprocess.TimeoutExpired:
                     os.killpg(proc.pid, signal.SIGKILL)
                     proc.wait()
-            if isinstance(error, subprocess.TimeoutExpired):
-                raise RuntimeError('native stage exceeded %ss; see %s' % (timeout, prefix)) from None
-            raise
-    outcome = {'exit_code': proc.returncode, 'elapsed_seconds': round(time.monotonic() - started, 3)}
+            failure = error
+    outcome = {'exit_code': proc.returncode, 'elapsed_seconds': round(time.monotonic() - started, 3),
+               'timed_out': isinstance(failure, subprocess.TimeoutExpired)}
     write_json(prefix.with_suffix('.process.json'), outcome)
+    if isinstance(failure, subprocess.TimeoutExpired):
+        raise RuntimeError('native stage exceeded %ss; see %s' % (timeout, prefix)) from None
+    if failure:
+        raise failure
     if proc.returncode:
         raise RuntimeError('process exited %s; see %s' % (proc.returncode, prefix.with_suffix('.stderr')))
     return outcome

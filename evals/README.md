@@ -1,12 +1,18 @@
 # Cerebro evals
 
+<!-- evals:overview:start -->
+
+Measured comparison results will be linked here after publication.
+
+<!-- evals:overview:end -->
+
 Run every case with one command from the repository root:
 
 ```sh
 python3 evals/run.py
 ```
 
-The runner covers 30 named cases and 44 trials per repetition. Live trials use
+The runner covers 38 named cases and 68 trials per repetition. Live trials use
 real providers and consume tokens; the complete run can take an hour or more.
 Protocol probes deliberately script provider responses through the installed
 native CLI to force reproducible failures. They measure Cerebro's transport and
@@ -20,6 +26,88 @@ precedence. Single-condition live cases do not require Jev credentials;
 protocol-only selections need neither provider authentication nor a real Jev
 key. Missing prerequisites are errors, never silently replaced with simulation.
 
+Chart publication and the complete offline test suite also require Matplotlib:
+
+```sh
+python3 -m venv evals/.venv
+evals/.venv/bin/python -m pip install -r evals/requirements.txt
+```
+
+## Measure Cerebro against a native agent
+
+```sh
+evals/.venv/bin/python evals/run.py --suite comparison --repeat 3 \
+  --publish evals/results/my-comparison --update-readme
+```
+
+This runs eight tasks in three conditions: a native single agent, Cerebro
+without Jev, and Cerebro with Jev. The native baseline uses the configured
+baseline model with normal shell and file tools, no Cerebro tools, and no
+delegated agents. Cerebro uses its configured supervisor, implementation and
+review roles. This compares complete workflows; it does not hold the number
+of model calls or total compute fixed. The parent time budget is the same in
+every condition, and resource overhead is reported alongside task outcomes.
+
+All conditions receive the same requirements, starting files, source review
+reports and workspace context. The shared grader checks behavior, scope,
+executed checks, truthful claims and workspace preservation. It does not
+require a Cerebro plan, spec, review command or session artifact to pass.
+Cerebro's mechanism receipts are separate diagnostics. Model or monitoring
+overrides invalidate the assigned comparison condition.
+
+The eight tasks cover code with executable documentation, an unavailable
+acceptance runtime, mixed and stale reviews, tempting unrelated work, required
+domain investigation, related branch reuse and dirty-checkout isolation.
+They remain small CSV fixtures, not a broad coding benchmark. A native agent
+may already succeed: a tie with added latency and cost is a useful result.
+Recovery metrics are conditional on observed drift; absence of drift does not
+demonstrate successful recovery. Deterministic transport and role-enforcement
+probes stay separate from model effectiveness statistics.
+
+Conditions are counterbalanced across cases and repetitions. Only matching
+case/repetition/configuration pairs or triplets enter comparisons. Failed and
+timed-out trials retain their denominators, time and reported usage. Missing
+arms are listed separately. Reports show descriptive Wilson pass-rate intervals;
+repeated runs of the same task are not new task diversity. Paired bootstrap
+intervals require at least ten distinct cases and are unavailable for the current
+eight-task comparison corpus. One repetition is a pilot, not evidence of a
+general product advantage.
+
+## Tokens, price and publication
+
+Every live trial collects parent, child and Jev input/output tokens, including
+cache-read and cache-write input subsets where reported. Reasoning is included
+in output tokens, not billed again. Child counters are cumulative per native
+thread: resumed sessions are counted once. Failed or interrupted requests keep
+their reported usage and are marked incomplete when the final count is unknown.
+
+The dated [reference rate sheet](prices-2026-10-03.json) supplies API token prices
+for the default models. Rates were checked against official
+[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra),
+[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna),
+[Sol 6.1](https://developers.openai.com/api/docs/models/gpt-6.1-sol) and
+[Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) documentation.
+Use `--prices path/to/rates.json` for different models or rate assumptions. Prices
+are Standard short-context API reference estimates, not a subscription bill;
+tool fees, discounts, taxes, regional, fast-mode and long-context premiums are
+excluded. Missing usage or rates produce unknown total cost. Known partial
+tokens remain visible and are not represented as complete or free usage.
+
+Publish a completed private run without making new provider calls:
+
+```sh
+evals/.venv/bin/python evals/publish.py evals/runs/RUN_ID \
+  --out evals/results/REPORT_NAME --prices evals/prices-2026-10-03.json \
+  --readme evals/README.md
+```
+
+Publication writes Markdown, sanitized trial and aggregate JSON, and SVG/PNG
+charts for quality, time, tokens, estimated price and their tradeoffs. It updates
+only the bounded overview above when requested. The destination must be new.
+Raw transcripts, prompts, errors, private paths, endpoint URLs and credentials
+remain in ignored run directories. Public artifacts retain models, efforts,
+Jev settings, budgets, sample counts and source hashes for reproducibility.
+
 ## Models and conditions
 
 | Live role | Model | Default effort |
@@ -27,6 +115,7 @@ key. Missing prerequisites are errors, never silently replaced with simulation.
 | Implementation and correction | `gpt-6-luna` | `low` |
 | Independent review and runtime verification | `gpt-5.6-terra` | `medium` |
 | Supervision and review adjudication | `gpt-5.6-terra` | `medium` |
+| Native single-agent baseline | resolved supervisor model | resolved supervisor effort |
 
 Configure each role independently with `--implementation-model`,
 `--review-model`, `--supervisor-model` and the corresponding `--*-effort`
@@ -37,8 +126,8 @@ evals. Future model releases do not require changing eval code.
 Use `--config evals/model-config.example.json` for shared defaults and per-case
 overrides. Precedence is built-in defaults, JSON `defaults`, JSON `cases[case-id]`,
 then explicit command-line arguments. An omitted baseline model or effort
-inherits the fully resolved supervisor setting. The baseline options prepare
-the native-agent comparison; the existing contract suites do not use that role.
+inherits the fully resolved supervisor setting. The existing contract suites
+do not use that role.
 Every trial and run manifest records the resolved settings, including case
 overrides. For example:
 
@@ -50,9 +139,12 @@ python3 evals/run.py --config evals/model-config.example.json --review-effort hi
 Luna's lower effort is intended to expose mistakes; it does not guarantee them.
 The native recorder checks requested and resolved child model/effort. The parent
 cannot change assigned models or monitoring without invalidating its trial.
-Jev A/B is used for review decisions, deliberate child recovery, natural drift
-and false-alarm controls. Delivery, workspace, intervention and protocol cases
-run once per repetition. They are not reported as incomplete Jev pairs.
+Jev A/B isolates review assessment in calibration and review-recovery cases;
+scope watching stays disabled there. Deliberate child recovery, natural drift
+and false-alarm controls instead isolate scope watching; review assessment stays
+disabled. Product comparisons enable both features in their Jev condition.
+The original delivery, workspace, intervention and protocol contract cases run
+once per repetition and are not reported as incomplete Jev pairs.
 
 Live cases disable automatic stall retries and use zero post-turn idle grace to
 bound execution. Pending Jev notices still require the parent's acknowledgement.
@@ -134,7 +226,7 @@ python3 evals/run.py --case user-amends-task --case quiet-reconnect
 python3 evals/run.py --repeat 3
 python3 evals/run.py --implementation-effort medium
 python3 evals/run.py --review-effort high --supervisor-effort high --timeout 900
-python3 -m unittest discover -s evals -p 'test_*.py'
+evals/.venv/bin/python -m unittest discover -s evals -p 'test_*.py'
 ```
 
 `--seed` counterbalances paired arm order, not provider sampling. Role effort is
@@ -144,7 +236,7 @@ have their own short deadlines and a deliberate 35-second quiet interval.
 
 The command prints an ignored, private `evals/runs/<UTC>/report.md` with separate
 paired and single-condition summaries. `results.json` preserves scores, failed
-checks, timings, parent tokens, source hashes, model receipts and evidence links.
+checks, timings, parent/child/Jev tokens, source hashes, model receipts and evidence links.
 Manifests record the source commit, diff hash, eval source hashes and conditions.
 Native logs and Jev request/response traces remain next to each trial.
 Credential-bearing generated configuration is redacted after each trial. Only
@@ -154,8 +246,9 @@ Exit status is `0` when all task/protocol outcomes and standalone calibration
 labels pass, `1` for measured failures (including a Jev abstention on a graded
 supported finding even if the supervisor recovers), and `2` for provider/harness errors.
 An eval can correctly expose a Cerebro or model problem and therefore exit
-nonzero. Failed runs stay in the denominator. Parent token totals exclude child
-and Jev usage; durations include all stages. One repetition is a smoke test,
+nonzero. Failed runs stay in the denominator. Private and published reports use
+the same matched statistics and usage ledgers for all recorded workers and Jev.
+Durations include all stages. One repetition is a smoke test,
 not statistical evidence that Jev improves general performance.
 
 No production code, user checkout, user configuration, installation, commit or

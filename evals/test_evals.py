@@ -23,7 +23,7 @@ def config_native(root):
 from pathlib import Path
 args=sys.argv[1:]
 if '--version' in args:
-    print('configuration-test-native')
+    print('codex-cli 0.0.0-eval-fixture')
 elif 'mcp' in args:
     print('[]')
 elif 'exec' in args:
@@ -221,25 +221,7 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(run.exit_status([row]), 1)
         self.assertEqual(run.exit_status([row, {'correct': False, 'error': 'provider timeout'}]), 2)
 
-    def test_paired_summary_preserves_regressions_and_errors(self):
-        rows = [
-            {'case': 'a', 'repeat': 0, 'arm': 'without_jev', 'correct': False},
-            {'case': 'a', 'repeat': 0, 'arm': 'with_jev', 'correct': True},
-            {'case': 'b', 'repeat': 0, 'arm': 'without_jev', 'correct': True},
-            {'case': 'b', 'repeat': 0, 'arm': 'with_jev', 'correct': False, 'error': 'timeout'},
-            {'case': 'c', 'repeat': 0, 'arm': 'without_jev', 'correct': True},
-            {'case': 'c', 'repeat': 0, 'arm': 'with_jev', 'correct': True},
-        ]
-        summary = run.paired_summary(rows)
-        self.assertEqual(summary['pairs'], 3)
-        self.assertEqual((summary['improved'], summary['regressed'], summary['tied']), (1, 1, 1))
-        self.assertEqual(summary['arms']['with_jev']['errors'], 1)
-        self.assertEqual(summary['arms']['with_jev']['total'], 3)
 
-    def test_missing_arm_is_not_counted_as_a_tie(self):
-        summary = run.paired_summary([{'case': 'a', 'repeat': 0, 'arm': 'with_jev', 'correct': True}])
-        self.assertEqual(summary['pairs'], 0)
-        self.assertEqual(summary['incomplete_pairs'], 1)
 
     def test_ground_truth_is_not_in_model_packet(self):
         for case in run.load_cases():

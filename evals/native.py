@@ -18,7 +18,7 @@ import time
 import uuid
 
 from runtime import file_hashes
-from fixtures import PARSER_TESTS, TEST_IDENTITIES
+from fixtures import INTEGRATION_CHECK, PARSER_TESTS, TEST_IDENTITIES
 
 
 def shell_commands(command):
@@ -78,9 +78,26 @@ class TestJournal:
                   and all(isinstance(result, dict) and isinstance(result.get('name'), str)
                           and result.get('passed') is True for result in results)
                   and sorted(result.get('name', '') for result in results) == sorted(TEST_IDENTITIES))
-        return {'run_id': after['run_id'], 'worker_id': self.worker_id, 'journal': str(self.path),
+        return {'type': 'tests', 'source_root': str(repo.resolve()),
+                'run_id': after['run_id'], 'worker_id': self.worker_id, 'journal': str(self.path),
                 'thread_id': self.thread_id, 'passed': passed, 'source': source,
                 'started_at': before['time'], 'finished_at': after['time'], 'unchanged_during_check': True}
+
+    def validate_runtime(self, record, repo):
+        source = record.get('source')
+        if (not isinstance(source, dict) or source != file_hashes(repo)
+                or source.get('integration_check.py') != hashlib.sha256(INTEGRATION_CHECK.encode()).hexdigest()
+                or record.get('check') != 'staging' or record.get('outcome') != 'unavailable'
+                or type(record.get('expected_exit_code')) is not int or record['expected_exit_code'] != 3
+                or record.get('worker_id') != self.worker_id or record.get('role') != self.role
+                or record.get('cwd') != str(repo.resolve()) or record.get('source_root') != str(repo.resolve())
+                or type(record.get('time')) not in (int, float) or not math.isfinite(record['time'])
+                or not self.started_at <= record['time'] <= time.time()):
+            return None
+        return {'type': 'runtime_check', 'check': 'staging', 'outcome': 'unavailable', 'expected_exit_code': 3,
+                'run_id': record['run_id'], 'worker_id': self.worker_id, 'journal': str(self.path),
+                'thread_id': self.thread_id, 'passed': False, 'source_root': str(repo.resolve()), 'source': source,
+                'started_at': record['time'], 'finished_at': record['time'], 'unchanged_during_check': True}
 
     def take(self, repo, thread_id):
         if not thread_id:
@@ -96,6 +113,7 @@ class TestJournal:
         lines = self.buffer.split(b'\n')
         self.buffer = lines.pop()
         receipts = []
+        roots = repo if isinstance(repo, list) else [repo]
         for line in lines:
             try:
                 record = json.loads(line)
@@ -106,13 +124,21 @@ class TestJournal:
             run_id = record.get('run_id')
             if not isinstance(run_id, str) or not re.fullmatch('[0-9a-f]{32}', run_id) or run_id in self.consumed:
                 continue
+            root = next((root for root in roots if str(root.resolve()) == record.get('source_root')), None)
+            if record.get('kind') == 'runtime_check':
+                self.consumed.add(run_id)
+                before = self.pending.pop(run_id, None)
+                receipt = self.validate_runtime(record, root) if root is not None and before is None else None
+                if receipt is not None:
+                    receipts.append(receipt)
+                continue
             if record.get('phase') == 'before' and run_id not in self.pending:
                 self.pending[run_id] = record
                 continue
             before = self.pending.pop(run_id, None)
             self.consumed.add(run_id)
             if before is not None and record.get('phase') == 'after':
-                receipt = self.validate(before, record, repo)
+                receipt = self.validate(before, record, root) if root is not None else None
                 if receipt is not None:
                     receipts.append(receipt)
         return receipts
@@ -178,6 +204,14 @@ def main():
             record({'type': 'steer', 'thread_id': steered_thread, 'passed': 'result' in event and 'error' not in event})
         method = event.get('method')
         item = params.get('item', {})
+        if method == 'thread/tokenUsage/updated':
+            record({'type': 'token_usage', 'thread_id': params['threadId'],
+                    'usage': params['tokenUsage']['total']})
+        elif method == 'turn/started':
+            record({'type': 'turn_started', 'thread_id': thread_id})
+        elif method == 'turn/completed':
+            record({'type': 'turn_finished', 'thread_id': thread_id,
+                    'completed': params['turn']['status'] == 'completed'})
         is_action = item.get('type') in ('commandExecution', 'fileChange', 'mcpToolCall')
         if method == 'item/started' and is_action:
             actions[item['id']] = {'source': file_hashes(repo), 'started_at': time.time()}

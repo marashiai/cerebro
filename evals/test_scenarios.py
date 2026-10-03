@@ -97,13 +97,17 @@ class ScenarioTests(unittest.TestCase):
             root = Path(name)
             rows = [{'case': 'single', 'kind': 'delivery', 'mode': 'live', 'paired': False,
                      'correct': False, 'checks': {'required_review': False}, 'repeat': 0,
-                     'arm': 'without_jev', 'artifacts': str(root / 'single'), 'elapsed_seconds': 1.0}]
-            manifest = {'settings': {'efforts': {'implementation': 'low'}}}
+                     'arm': 'without_jev', 'artifacts': str(root / 'single'), 'elapsed_seconds': 1.0,
+                     'expected_arms': ['without_jev'], 'settings': {**run.resolve_config({}),
+                         'jev_model': 'jev-latest', 'jev_confidence': .8, 'timeout': 900,
+                         'jev_endpoint': 'https://unused.invalid'}}]
+            manifest = {}
             run.report(root, rows, manifest)
             result = json.loads((root / 'results.json').read_text())
-            self.assertEqual(result['paired_summary'], {})
-            self.assertEqual(result['single_condition_summary']['delivery']['total'], 1)
             self.assertEqual(result['exit_status'], 1)
+            cohort = json.loads((root / 'aggregate.json').read_text())['cohorts'][0]
+            self.assertEqual(cohort['incomplete_units'], [])
+            self.assertEqual(cohort['arms']['without_jev']['trials'], 1)
             self.assertIn('required_review', (root / 'report.md').read_text())
 
     def test_catalogue_has_all_requested_areas_without_duplicate_ids(self):
