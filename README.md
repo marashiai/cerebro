@@ -73,6 +73,11 @@ How to drive each of these: **[docs/USAGE.md](docs/USAGE.md)**.
 How it works inside — design, decisions, constraints:
 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
+Measured outcomes, wall time, token usage and estimated cost:
+**[evaluation results and charts](evals/README.md)**. The evals compare a native
+single agent, Cerebro, and Cerebro with Jev on the same tasks, and report both
+improvements and overhead. Models and efforts are configurable for each role.
+
 ## Use cases
 
 Example ways people drive cerebro day to day. Mostly you talk to the

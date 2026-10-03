@@ -47,7 +47,8 @@ def job_outcomes(session):
         status = Path(job['status'])
         text = status.read_text().strip() if status.exists() else ''
         updates = Path(job['status'] + '.updates.json')
-        outcomes.append({'id': job['id'], 'exit_code': int(text) if text.lstrip('-').isdigit() else None,
+        outcomes.append({'id': job['id'], 'command': job['command'],
+                         'exit_code': int(text) if text.lstrip('-').isdigit() else None,
                          'published_notices': json.loads(updates.read_text())['sequence'] if updates.exists() else 0})
     return outcomes
 
@@ -129,7 +130,7 @@ def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, 
     corrections = {call['response'].get('job_id') for call in calls
                    if call['argv'][0] in ('apply-review', 'execute') and call['success']}
     corrections.discard(None)
-    if len(corrections) > max_implementations:
+    if max_implementations is not None and len(corrections) > max_implementations:
         violations.append('exceeded the implementation-job budget')
     initial_path = directory / 'first-response.json'
     initial = json.loads(initial_path.read_text()) if initial_path.exists() else {}

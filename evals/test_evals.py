@@ -270,9 +270,12 @@ class EvalTests(unittest.TestCase):
             for identifier, status in [('a', 'running'), ('b', '2'), ('c', '0')]:
                 path = jobs / (identifier + '.status')
                 path.write_text(status)
-                (jobs / (identifier + '.json')).write_text(json.dumps({'id': identifier, 'status': str(path)}))
-            results = {job['id']: job['exit_code'] for job in run.job_outcomes(session)}
+                (jobs / (identifier + '.json')).write_text(json.dumps({
+                    'id': identifier, 'command': 'execute', 'status': str(path)}))
+            outcomes = run.job_outcomes(session)
+            results = {job['id']: job['exit_code'] for job in outcomes}
             self.assertEqual(results, {'a': None, 'b': 2, 'c': 0})
+            self.assertEqual({job['command'] for job in outcomes}, {'execute'})
 
     def test_matched_review_arms_get_identical_evidence(self):
         from review_check import context

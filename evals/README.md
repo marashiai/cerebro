@@ -55,6 +55,15 @@ require a Cerebro plan, spec, review command or session artifact to pass.
 Cerebro's mechanism receipts are separate diagnostics. Model or monitoring
 overrides invalidate the assigned comparison condition.
 
+A terminal failed attempt does not invalidate an otherwise verified recovery:
+both workflows may recover within the same parent time budget, without a separate
+job-count cap in the product comparison. Cerebro's failed job attempts
+remain diagnostic counts, with their time and usage retained. Unfinished children
+still invalidate a claimed handoff. The original contract suites separately require
+successful durable jobs; their stricter scores are not product-comparison outcomes.
+`task_success` is the final score including condition validity;
+`portable_checks_passed` records the delivery checks before those condition gates.
+
 The eight tasks cover code with executable documentation, an unavailable
 acceptance runtime, mixed and stale reviews, tempting unrelated work, required
 domain investigation, related branch reuse and dirty-checkout isolation.

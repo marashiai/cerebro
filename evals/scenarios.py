@@ -294,7 +294,7 @@ def trial(name, directory, seed, arm, settings):
             'and use ' + watch_flag + ' for every implementation or correction. Do not open a review UI. '
             'If a live job returns a scope notice, evaluate it, steer only a justified correction, then '
             'wait --after its sequence. Quiet children need no progress polling. A provider/monitor '
-            'failure must remain visible; do not disable watching or waive a required check. '
+            'failure must remain visible; preserve the assigned monitoring condition and every required check. '
             'For these local parser tasks, runtime verification means executing the required checks '
             'in the task checkout; the staging case additionally requires its integration_check.py. '
             'Return the structured final status with factual claims and any remaining acceptance blockers.'

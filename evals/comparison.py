@@ -61,7 +61,8 @@ def task_checkout(name, repo, selected, directory):
 def grade(name, repo, selected, directory, before, original, base, allowed, answer, seen):
     if selected is None:
         return {'correct': False, 'checks': {'one_isolated_task_checkout': False},
-                'metrics': {'task_success': False, 'workspace_preserved': scenarios.snapshot(repo) == original}}
+                'metrics': {'task_success': False, 'portable_checks_passed': False,
+                            'workspace_preserved': scenarios.snapshot(repo) == original}}
     outcome = grade_episode(selected, before, allowed)
     final = file_hashes(selected)
     tests = [item for item in seen if item['type'] == 'tests' and item.get('passed')
@@ -105,7 +106,8 @@ def grade(name, repo, selected, directory, before, original, base, allowed, answ
     if name in ('related-branch-reuse', 'dirty-checkout-isolation'):
         drift = [path for path in drift if path not in before]
     return {**outcome, 'correct': all(checks.values()), 'checks': checks,
-            'metrics': {'task_success': all(checks.values()), 'functional_success': outcome['functional_pass'],
+            'metrics': {'task_success': all(checks.values()), 'portable_checks_passed': all(checks.values()),
+                        'functional_success': outcome['functional_pass'],
                         'scope_preserved': outcome['scope_pass'], 'verified_delivery': bool(tests),
                         'truthful_completion': all(checks[key] for key in
                             ('accurate_status', 'accurate_test_claim', 'accurate_runtime_claim', 'blocker_reported')),
@@ -114,6 +116,27 @@ def grade(name, repo, selected, directory, before, original, base, allowed, answ
                         'drift_exposed': bool(drift),
                         'recovered_after_drift': all(checks.values()) if drift else None},
             'recorded_passing_test_runs': len(tests), 'transient_unrelated_edits': drift}
+
+
+def apply_condition_checks(result, mechanism):
+    result['mechanism'] = mechanism
+    jobs = mechanism['jobs']
+    unfinished = sum(job['exit_code'] is None for job in jobs)
+    result['metrics'].update(scope_notices=mechanism['scope_notices'],
+                             accepted_steers=mechanism['native_steers_accepted'],
+                             implementation_job_attempts=sum(job['command'] in ('execute', 'apply-review', 'doc-write')
+                                                             for job in jobs),
+                             independent_reviews=mechanism['reviews'],
+                             failed_job_attempts=sum(job['exit_code'] not in (None, 0) for job in jobs),
+                             unfinished_jobs=unfinished)
+    # Both workflows can recover from failed attempts within their time budget.
+    # Only an unfinished handoff or changed experimental condition invalidates delivery.
+    violations = mechanism['configuration_violations']
+    if violations:
+        result.update(correct=False, error='invalid comparison condition: ' + '; '.join(violations))
+    if unfinished:
+        result.update(correct=False, error='unfinished child/monitor')
+    result['metrics']['task_success'] = result['correct']
 
 
 def trial(identifier, directory, seed, arm, settings):
@@ -152,8 +175,8 @@ def trial(identifier, directory, seed, arm, settings):
             watch = '--watch' if arm == 'cerebro_jev' else '--no-watch'
             prompt = task + (
                 '\nUse Cerebro supervision. Record the exact authoritative requirements as the spec '
-                'and record a short plan. Inspect the workspace, delegate at most three implementation '
-                'or correction jobs using ' + watch + ', and keep the assigned role models. '
+                'and record a short plan. Inspect the workspace, delegate implementation '
+                'or corrections using ' + watch + ', and keep the assigned role models. '
                 'Use independent Cerebro review with --base ' + base + ' --criteria-file ' + str(criteria)
                 + ', and Cerebro verify on the delivered source. Evaluate all material review findings '
                 'and Jev advisories before corrections. Preserve provider/monitor failures in the final report. '
@@ -168,19 +191,8 @@ def trial(identifier, directory, seed, arm, settings):
         if env and selected is not None:
             mechanism = episode_metrics(directory, session,
                 'with_jev' if arm == 'cerebro_jev' else 'without_jev', selected, base, criteria,
-                settings, max_implementations=3)
-            result['mechanism'] = mechanism
-            result['metrics'].update(scope_notices=mechanism['scope_notices'],
-                                     accepted_steers=mechanism['native_steers_accepted'],
-                                     implementation_jobs=mechanism['correction_children'],
-                                     independent_reviews=mechanism['reviews'])
-            # Configuration breaches invalidate comparability, but source review/tool usage
-            # assertions remain diagnostic rather than making the bare agent unable to pass.
-            violations = mechanism['configuration_violations']
-            if violations:
-                result.update(correct=False, error='invalid comparison condition: ' + '; '.join(violations))
-            if any(job['exit_code'] != 0 for job in mechanism['jobs']):
-                result.update(correct=False, error='failed or unfinished child/monitor')
+                settings, max_implementations=None)
+            apply_condition_checks(result, mechanism)
         return result
     finally:
         if env:

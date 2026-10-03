@@ -156,8 +156,9 @@ def episode_trial(name, directory, seed, arm, settings):
             'Evaluate review findings and any advisory Jev assessment before corrections. If necessary, '
             'delegate at most two correction children, using ' + watch_flag + ', then review again. '
             'Always keep the assigned monitoring setting and role models; do not use --model overrides, '
-            'disable watching, change the spec, commit, publish, or open a review UI. '
-            'A monitoring/provider failure is a failed run: report it, do not silently resume without Jev. '
+            'change the spec, commit, publish, or open a review UI. '
+            'A monitoring/provider failure is a failed run: report it, do not change the assigned '
+            'monitoring condition or waive a provider failure. '
             'Only the disposable repository and this session belong to this task. '
             'Conclude with actual evidence and any unresolved limitations.\n\n' + json.dumps(response)
         )
