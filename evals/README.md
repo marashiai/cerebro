@@ -2,20 +2,27 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-03-happy-path-jev/report.md)
+[Latest published results](results/2026-10-04-lease-queue/report.md)
 
-Configuration `6fd4135f914c`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer + Jev 1/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer + Jev **+0.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
+Configuration `8faa3267495d`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer 0/1; Supervisor + implementor + reviewer + Jev 0/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-100.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
 Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare supervisor model | 1/1 | 39.1 | 0.0553 |
-| Supervisor + implementor + reviewer + Jev | 1/1 | 110.6 | 0.1393 |
+| Bare supervisor model | 1/1 | 151.5 | 0.1473 |
+| Supervisor + implementor + reviewer | 0/1 | 301.6 | unknown |
+| Supervisor + implementor + reviewer + Jev | 0/1 | 301.5 | unknown |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-03-happy-path-jev/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
+
+The [lease queue interpretation](results/2026-10-04-lease-queue/interpretation.md)
+separates deadline failures from post-run behavioral checks and documents the
+requirements lost during delegation. The previous
+[happy-path comparison](results/2026-10-03-happy-path-jev/report.md) passed in both
+conditions, with additional time and cost for Cerebro.
 
 The [Terra pilot](results/2026-10-03-terra-pilot/report.md) and its
 [interpretation](results/2026-10-03-terra-pilot/interpretation.md) describe the

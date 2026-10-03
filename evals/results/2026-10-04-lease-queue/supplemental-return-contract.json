@@ -1,0 +1,60 @@
+{
+  "expected": {
+    "busy_claim": {
+      "returned": null
+    },
+    "wrong_token_complete": {
+      "returned": false
+    },
+    "wrong_token_retry": {
+      "returned": false
+    }
+  },
+  "trials": [
+    {
+      "arm": "bare_supervisor",
+      "observations": {
+        "busy_claim": {
+          "returned": null
+        },
+        "wrong_token_complete": {
+          "returned": false
+        },
+        "wrong_token_retry": {
+          "returned": false
+        }
+      },
+      "exit_code": 0
+    },
+    {
+      "arm": "supervisor",
+      "observations": {
+        "busy_claim": {
+          "returned": null
+        },
+        "wrong_token_complete": {
+          "returned": false
+        },
+        "wrong_token_retry": {
+          "returned": false
+        }
+      },
+      "exit_code": 0
+    },
+    {
+      "arm": "supervisor_jev",
+      "observations": {
+        "busy_claim": {
+          "raised": "ValueError"
+        },
+        "wrong_token_complete": {
+          "raised": "ValueError"
+        },
+        "wrong_token_retry": {
+          "raised": "ValueError"
+        }
+      },
+      "exit_code": 0
+    }
+  ]
+}
