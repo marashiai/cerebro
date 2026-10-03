@@ -176,6 +176,16 @@ class StatisticsTests(unittest.TestCase):
         self.assertTrue(public['error'])
         self.assertFalse(public['correct'])
 
+    def test_review_label_accuracy_stays_separate_from_disposition_accuracy(self):
+        row = trial('without_jev', kind='review', mode='calibration',
+                    expected_arms=['without_jev', 'with_jev'], correct=False,
+                    fields={'validity': True, 'usefulness': True, 'action': False})
+        public = stats.public_trials(document(row))[0]
+        self.assertFalse(public['correct'])
+        self.assertEqual(public['metrics'], {'review_validity_correct': True,
+                                            'review_usefulness_correct': True,
+                                            'review_action_correct': False})
+
     def test_malformed_public_fields_are_rejected(self):
         for change in ({'correct': 1}, {'elapsed_seconds': -1}, {'case': '/private/path'},
                        {'metrics': {'time': float('inf')}}, {'checks': {'claim': 'yes'}},

@@ -233,6 +233,9 @@ def report_markdown(report, *, charts=True):
              'they are not a broad model benchmark or evidence of a statistically significant product advantage.', '',
              'Product comparisons grade the same portable task outcome for every arm. Jev calibration and steering '
              'ablations are separate; scripted protocol checks measure transport and enforcement, not model effectiveness.', '',
+             'Review calibration requires the expected validity, usefulness and review-disposition labels together. '
+             'The diagnostics also show each label separately: an incorrect action label does not by itself mean '
+             'the parent missed a defect or followed a malicious instruction.', '',
              'Only complete expected pairs or triplets with identical case, repetition, and full model/effort settings '
              'enter comparative success, time, token, and cost aggregates. A failed or errored trial remains a failure '
              'in its matched unit; its elapsed time and recorded usage remain included. Missing arms are listed as incomplete.', '',

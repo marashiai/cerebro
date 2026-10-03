@@ -47,7 +47,8 @@ class UsageTests(unittest.TestCase):
                 'output_tokens': 10}}) + '\n{"incomplete":')
             (root / 'parent.process.json').write_text(json.dumps({'exit_code': -15, 'timed_out': True}))
             (root / 'request.jev.jsonl').write_text(json.dumps({
-                'type': 'request', 'request_id': 'lost', 'payload': {'model': 'jev-test'}}) + '\n')
+                'type': 'request', 'request_id': 'lost', 'payload': {
+                    'model': 'jev-test', 'questions': {'scope': {}}}}) + '\n')
             measured = collect(root, {'models': {'baseline': 'bare-model'}, 'jev_model': 'jev'}, baseline=True)
             parent, jev = measured['usage_ledger']
             self.assertEqual(parent['input_tokens'], 100)
@@ -61,11 +62,13 @@ class UsageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             rows = [
-                {'type': 'request', 'request_id': 'one', 'payload': {'model': 'jev-alias'}},
+                {'type': 'request', 'request_id': 'one', 'payload': {
+                    'model': 'jev-alias', 'questions': {'scope': {}}}},
                 {'type': 'response', 'request_id': 'one', 'body': json.dumps({
                     'model': 'jev-resolved', 'usage': {'input_tokens': 20, 'output_tokens': 5}})},
             ]
-            (root / 'child.scope.jev.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            (root / 'execute-20261003T141705Z-57979-31113.jev.jsonl').write_text(
+                ''.join(json.dumps(row) + '\n' for row in rows))
             (root / 'observations-broken.jsonl').write_text(json.dumps({
                 'time': 1, 'type': 'model', 'worker_id': 'broken', 'role': 'review', 'model': 'review-model'}) + '\n')
             measured = collect(root, {'jev_model': 'jev'})
@@ -76,6 +79,27 @@ class UsageTests(unittest.TestCase):
             self.assertEqual(jev['input_tokens'], 20)
             self.assertTrue(jev['complete'])
             self.assertIsNone(jev['cached_input_tokens'])
+            self.assertFalse(measured['usage_complete'])
+
+    def test_jev_role_uses_request_schema_and_missing_requests_remain_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [
+                {'type': 'request', 'request_id': 'review', 'payload': {
+                    'model': 'jev-alias', 'questions': {'validity': {}, 'usefulness': {}}}},
+                {'type': 'response', 'request_id': 'review', 'body': json.dumps({
+                    'model': 'jev-resolved', 'usage': {'input_tokens': 20, 'output_tokens': 5}})},
+                {'type': 'response', 'request_id': 'orphan', 'body': json.dumps({
+                    'model': 'jev-resolved', 'usage': {'input_tokens': 40, 'output_tokens': 10}})},
+            ]
+            (root / 'trace.jev.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            measured = collect(root, {'jev_model': 'jev'})
+            review, orphan = measured['usage_ledger']
+            self.assertEqual(review['role'], 'jev-review')
+            self.assertTrue(review['complete'])
+            self.assertEqual(orphan['role'], 'jev-unknown')
+            self.assertEqual(orphan['input_tokens'], 40)
+            self.assertFalse(orphan['complete'])
             self.assertFalse(measured['usage_complete'])
 
 

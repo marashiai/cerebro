@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 ROLES = ('baseline', 'implementation', 'review', 'supervisor')
 ARMS = ('bare', 'cerebro', 'cerebro_jev', 'without_jev', 'with_jev', 'protocol')
 LEDGER_ROLES = set(ROLES) | {'execute', 'apply-review', 'doc-write', 'verify',
-                                'audit', 'improve', 'jev-scope', 'jev-review'}
+                                'audit', 'improve', 'jev-scope', 'jev-review', 'jev-unknown'}
 TOKEN_KEYS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
 PRICE_KEYS = ('input_per_million', 'cached_input_per_million', 'cache_write_input_per_million', 'output_per_million')
 BOOTSTRAP_MIN_CASES = 10
@@ -210,6 +210,10 @@ def public_trials(document, prices=None):
                 metrics[key] = value
         row['metrics'] = {identifier(key, 'metric name'): value if isinstance(value, bool)
                           else number(value, 'metric') for key, value in metrics.items()}
+        if row['mode'] == 'calibration':
+            for field in ('validity', 'usefulness', 'action'):
+                if field in raw.get('fields', {}):
+                    row['metrics']['review_' + field + '_correct'] = boolean(raw['fields'][field], 'review score')
         for source, target in (('protocol_violations', 'protocol_violation_count'),
                                ('transient_unrelated_edits', 'transient_unrelated_edit_count')):
             if source in raw:

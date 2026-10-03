@@ -88,8 +88,14 @@ def collect(directory, settings, *, baseline=False):
                 continue
             item = requests.setdefault(identifier, {})
             item[event.get('type')] = event
-            item['role'] = 'jev-scope' if '.scope.' in path.name else 'jev-review'
     for item in requests.values():
+        questions = item.get('request', {}).get('payload', {}).get('questions', {})
+        if 'scope' in questions:
+            role = 'jev-scope'
+        elif 'validity' in questions and 'usefulness' in questions:
+            role = 'jev-review'
+        else:
+            role = 'jev-unknown'
         response = item.get('response', {})
         try:
             body = json.loads(response.get('body', '{}'))
@@ -100,7 +106,7 @@ def collect(directory, settings, *, baseline=False):
         model = model or item.get('request', {}).get('payload', {}).get('model', settings['jev_model'])
         measured = {field: count(usage.get(field))
                     for field in ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')}
-        ledger.append({'provider': 'jev', 'role': item['role'], 'model': model, **measured,
-                       'complete': (not response.get('error') and measured['input_tokens'] is not None
+        ledger.append({'provider': 'jev', 'role': role, 'model': model, **measured,
+                       'complete': (role != 'jev-unknown' and not response.get('error') and measured['input_tokens'] is not None
                                     and measured['output_tokens'] is not None)})
     return {'usage_ledger': ledger, 'usage_complete': bool(ledger) and all(item['complete'] for item in ledger)}
