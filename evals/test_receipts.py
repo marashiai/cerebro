@@ -28,12 +28,12 @@ class ReceiptTests(unittest.TestCase):
         (self.repo / 'parser.py').write_text(FIXED)
 
     def journal(self):
-        return TestJournal(self.root, uuid.uuid4().hex, 'verify')
+        return TestJournal(self.root, uuid.uuid4().hex, 'execute')
 
     def execute(self, journal, argv=None, cwd=None):
         return subprocess.run([sys.executable, *(argv or ['-m', 'unittest', '-v'])],
                               cwd=cwd or self.repo, text=True, capture_output=True,
-                              env={**os.environ, **journal.environment(), 'CEREBRO_CHILD_ROLE': 'verify'}, timeout=10)
+                              env={**os.environ, **journal.environment(), 'CEREBRO_CHILD_ROLE': 'execute'}, timeout=10)
 
     def test_captured_output_has_complete_receipt_with_real_start_time_and_no_replay(self):
         journal = self.journal()
@@ -109,7 +109,7 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(journal.take(self.repo, 'native-thread'), [])
 
     def test_wrong_worker_or_role_and_duplicate_before_records_are_rejected(self):
-        for field, value in [('worker_id', 'another-worker'), ('role', 'execute'), ('phase', 'before')]:
+        for field, value in [('worker_id', 'another-worker'), ('role', 'review'), ('phase', 'before')]:
             with self.subTest(field=field):
                 journal = self.journal()
                 self.execute(journal)
@@ -178,7 +178,7 @@ class ReceiptTests(unittest.TestCase):
 
     def test_runtime_receipt_rejects_wrong_worker_role_and_outcome(self):
         (self.repo / 'integration_check.py').write_text(INTEGRATION_CHECK)
-        for field, value in [('worker_id', 'foreign-worker'), ('role', 'execute'),
+        for field, value in [('worker_id', 'foreign-worker'), ('role', 'review'),
                              ('outcome', 'available'), ('expected_exit_code', 0), ('check', 'unrelated')]:
             with self.subTest(field=field):
                 journal = self.journal()
@@ -217,7 +217,7 @@ for raw in sys.stdin:
                                 input=''.join(json.dumps(value) + '\n' for value in requests),
                                 cwd=self.root, text=True, capture_output=True, timeout=10,
                                 env={**os.environ, 'CEREBRO_EVAL_DIR': str(self.root),
-                                     'CEREBRO_EVAL_REPO': str(self.repo), 'CEREBRO_CHILD_ROLE': 'verify'})
+                                     'CEREBRO_EVAL_REPO': str(self.repo), 'CEREBRO_CHILD_ROLE': 'execute'})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('test_empty', result.stdout)
         self.assertNotIn('CEREBRO_EVAL_TEST_RECEIPT', result.stdout)
@@ -228,7 +228,7 @@ for raw in sys.stdin:
         receipts = [value for value in seen if value['type'] == 'tests']
         self.assertEqual(len(receipts), 1)
         self.assertTrue(receipts[0]['passed'])
-        self.assertEqual(receipts[0]['role'], 'verify')
+        self.assertEqual(receipts[0]['role'], 'execute')
         self.assertEqual(receipts[0]['thread_id'], 'native-thread')
         self.assertEqual(receipts[0]['source_root'], str(self.repo))
         activity = next(value for value in seen if value['type'] == 'activity')
@@ -239,7 +239,7 @@ for raw in sys.stdin:
         self.assertEqual(len(runtime), 1)
         self.assertEqual(runtime[0]['expected_exit_code'], 3)
         self.assertEqual(runtime[0]['source_root'], str(self.repo))
-        self.assertEqual(runtime[0]['role'], 'verify')
+        self.assertEqual(runtime[0]['role'], 'execute')
 
 
 if __name__ == '__main__':

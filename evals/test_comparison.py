@@ -11,28 +11,17 @@ import scenarios
 
 
 class ComparisonTests(unittest.TestCase):
-    def test_recovered_attempts_preserve_delivery_but_unfinished_or_changed_conditions_fail(self):
-        for codes, violations, passed in [([1, 0], [], True), ([1, None], [], False),
-                                           ([1, 0], ['watch_override'], False)]:
-            with self.subTest(codes=codes, violations=violations):
-                result = {'correct': True, 'metrics': {'task_success': True, 'portable_checks_passed': True}}
-                mechanism = {'jobs': [{'command': 'execute', 'exit_code': code} for code in codes]
-                                    + [{'command': 'doc-write', 'exit_code': 0}, {'command': 'review', 'exit_code': 0}],
-                             'scope_notices': 0, 'native_steers_accepted': 0,
-                             'correction_children': 2, 'reviews': 1,
-                             'configuration_violations': violations}
-                comparison.apply_condition_checks(result, mechanism)
-                self.assertEqual(result['correct'], passed)
-                self.assertEqual(result['metrics']['task_success'], passed)
-                self.assertTrue(result['metrics']['portable_checks_passed'])
-                self.assertEqual('error' in result, not passed)
-                self.assertEqual(result['metrics']['failed_job_attempts'], 1)
-                self.assertEqual(result['metrics']['unfinished_jobs'], codes.count(None))
-                self.assertEqual(result['metrics']['implementation_job_attempts'], 3)
-                result = {'correct': False, 'metrics': {'task_success': False}}
-                comparison.apply_condition_checks(result, mechanism)
-                self.assertFalse(result['correct'])
-                self.assertFalse(result['metrics']['task_success'])
+    def test_role_separation_is_separate_from_task_success(self):
+        result = {'correct': True, 'metrics': {'task_success': True}}
+        mechanism = {'jobs': [{'command': 'execute', 'exit_code': 0}], 'reviews': 0,
+                     'role_separation_expected': True, 'condition_valid': False, 'condition_violations': ['missing independent review'],
+                     'supervisor_source_edits': 1, 'implementation_attempts': 1,
+                     'jev_batches': 0, 'jev_notices': 0, 'accepted_steers': 0}
+        comparison.apply_condition_checks(result, mechanism)
+        self.assertTrue(result['correct'])
+        self.assertTrue(result['metrics']['task_success'])
+        self.assertFalse(result['metrics']['role_separated_success'])
+        self.assertFalse(result['condition_valid'])
 
     def test_task_checkout_ignores_clean_roots_and_rejects_ambiguous_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -14,19 +14,21 @@ import stats
 SETTINGS = {'models': {role: 'test-model' for role in stats.ROLES},
             'efforts': {role: 'low' for role in stats.ROLES},
             'jev_model': 'jev-test', 'jev_confidence': .8, 'timeout': 120,
-            'jev_endpoint': 'https://private.example.org/private-endpoint'}
+            'jev_endpoint': 'https://private.example.org/private-endpoint',
+            'jobs_requested': 1, 'jobs_effective': 1, 'timing_mode': 'isolated',
+            'baseline_roles': {'bare_implementor': 'implementation', 'bare_supervisor': 'supervisor'}}
 PRICES = {'as_of': '2026-10-03', 'source': 'https://example.org/prices',
           'basis': 'Synthetic test rates; not measured provider prices.',
           'models': {'test-model': {'input_per_million': 2, 'cached_input_per_million': .2,
                                    'cache_write_input_per_million': 2.5, 'output_per_million': 8}}}
 
 
-def trial(arm='bare', case='parser', repeat=0, **changes):
+def trial(arm='bare_implementor', case='parser', repeat=0, **changes):
     row = {'case': case, 'kind': 'delivery', 'mode': 'comparison', 'arm': arm,
-           'repeat': repeat, 'paired': True, 'expected_arms': ['bare', 'cerebro'],
+           'repeat': repeat, 'paired': True, 'expected_arms': ['bare_implementor', 'supervisor'],
            'settings': copy.deepcopy(SETTINGS), 'correct': True, 'elapsed_seconds': 10,
            'usage_complete': True,
-           'usage_ledger': [{'provider': 'openai', 'role': 'baseline' if arm == 'bare' else 'supervisor',
+           'usage_ledger': [{'provider': 'openai', 'role': 'implementation' if arm == 'bare_implementor' else 'supervisor',
                              'model': 'test-model', 'input_tokens': 100, 'cached_input_tokens': 20,
                              'cache_write_input_tokens': 10, 'output_tokens': 50, 'complete': True}]}
     row.update(changes)
@@ -39,12 +41,12 @@ def document(*rows):
 
 class StatisticsTests(unittest.TestCase):
     def test_only_matched_units_enter_comparison_and_failures_keep_time_cost(self):
-        report = stats.summarize(document(trial(), trial('cerebro', error='timeout', elapsed_seconds=30),
+        report = stats.summarize(document(trial(), trial('supervisor', error='timeout', elapsed_seconds=30),
                                           trial(case='unmatched', elapsed_seconds=999)), PRICES)
         cohort = report['cohorts'][0]
         self.assertEqual((cohort['matched_units'], cohort['excluded_trials'], cohort['all_errors']), (1, 1, 1))
-        self.assertEqual(cohort['arms']['bare']['mean_seconds'], 10)
-        failed = cohort['arms']['cerebro']
+        self.assertEqual(cohort['arms']['bare_implementor']['mean_seconds'], 10)
+        failed = cohort['arms']['supervisor']
         self.assertEqual((failed['trials'], failed['passed'], failed['errors']), (1, 0, 1))
         self.assertEqual(failed['mean_seconds'], 30)
         self.assertAlmostEqual(failed['mean_cost_usd'], .000569)
@@ -53,7 +55,7 @@ class StatisticsTests(unittest.TestCase):
 
     def test_full_model_and_effort_configuration_must_match(self):
         for component, value in [('models', 'another-model'), ('efforts', 'high')]:
-            different = trial('cerebro')
+            different = trial('supervisor')
             different['settings'][component]['review'] = value
             cohorts = stats.summarize(document(trial(), different))['cohorts']
             self.assertEqual(len(cohorts), 2)
@@ -63,7 +65,7 @@ class StatisticsTests(unittest.TestCase):
     def test_jev_configuration_and_time_budget_must_also_match(self):
         for key, value in [('jev_model', 'jev-other'), ('jev_confidence', .9), ('timeout', 180),
                            ('jev_endpoint', 'https://different.example.org')]:
-            changed = trial('cerebro')
+            changed = trial('supervisor')
             changed['settings'][key] = value
             cohorts = stats.summarize(document(trial(), changed))['cohorts']
             self.assertEqual(sum(item['matched_units'] for item in cohorts), 0)
@@ -72,8 +74,8 @@ class StatisticsTests(unittest.TestCase):
 
     def test_public_model_names_can_use_provider_namespaces_and_version_tags(self):
         row = trial(capability='truthful-blocker')
-        row['settings']['models']['baseline'] = 'provider/future-model:release+preview@v2'
-        row['settings']['efforts']['baseline'] = 'future-effort'
+        row['settings']['models']['implementation'] = 'provider/future-model:release+preview@v2'
+        row['settings']['efforts']['implementation'] = 'future-effort'
         public = stats.public_trials(document(row))[0]
         self.assertEqual(public['settings']['models'], row['settings']['models'])
         self.assertEqual(public['capability'], 'truthful-blocker')
@@ -82,39 +84,51 @@ class StatisticsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'duplicate arm'):
             stats.summarize(document(trial(), trial()))
         with self.assertRaisesRegex(ValueError, 'inconsistent kind or expected arms'):
-            stats.summarize(document(trial(), trial('cerebro', expected_arms=['bare', 'cerebro', 'cerebro_jev'])))
+            stats.summarize(document(trial(), trial('supervisor', expected_arms=['bare_implementor', 'supervisor', 'supervisor_jev'])))
 
     def test_pairs_and_triplets_are_distinct_cohorts(self):
-        triplet = ['bare', 'cerebro', 'cerebro_jev']
-        rows = [trial(), trial('cerebro')]
+        triplet = ['bare_implementor', 'supervisor', 'supervisor_jev']
+        rows = [trial(), trial('supervisor')]
         rows += [trial(arm, 'watched', expected_arms=triplet) for arm in triplet]
         cohorts = stats.summarize(document(*rows))['cohorts']
         self.assertEqual(sorted(len(item['expected_arms']) for item in cohorts), [2, 3])
         self.assertEqual([item['matched_units'] for item in cohorts], [1, 1])
         jev = next(item for item in cohorts if len(item['expected_arms']) == 3)
         self.assertEqual([(item['before'], item['after']) for item in jev['deltas']],
-                         [('bare', 'cerebro'), ('bare', 'cerebro_jev'), ('cerebro', 'cerebro_jev')])
+                         [('bare_implementor', 'supervisor'), ('bare_implementor', 'supervisor_jev'), ('supervisor', 'supervisor_jev')])
 
     def test_expected_arms_define_pairing_independently_of_runner_dispatch_flag(self):
-        report = stats.summarize(document(trial(paired=False), trial('cerebro', paired=False)))
+        report = stats.summarize(document(trial(paired=False), trial('supervisor', paired=False)))
         self.assertEqual(report['cohorts'][0]['matched_units'], 1)
         self.assertTrue(all(row['paired'] for row in report['trials']))
 
     def test_repetitions_do_not_create_independent_case_samples(self):
-        rows = [trial(arm, repeat=repeat) for repeat in range(12) for arm in ('bare', 'cerebro')]
+        rows = [trial(arm, repeat=repeat) for repeat in range(12) for arm in ('bare_implementor', 'supervisor')]
         delta = stats.summarize(document(*rows))['cohorts'][0]['deltas'][0]
         self.assertEqual((delta['pairs'], delta['independent_cases']), (12, 1))
         self.assertTrue(all(value is None for value in delta['cluster_bootstrap_95'].values()))
 
     def test_cluster_intervals_preserve_direction_and_are_reproducible(self):
-        rows = [trial(arm, 'case-%d' % case, correct=arm == 'cerebro' or case % 2 == 0)
-                for case in range(stats.BOOTSTRAP_MIN_CASES) for arm in ('bare', 'cerebro')]
+        rows = [trial(arm, 'case-%d' % case, correct=arm == 'supervisor' or case % 2 == 0)
+                for case in range(stats.BOOTSTRAP_MIN_CASES) for arm in ('bare_implementor', 'supervisor')]
         first = stats.summarize(document(*rows))['cohorts'][0]['deltas'][0]
         second = stats.summarize(document(*rows))['cohorts'][0]['deltas'][0]
         self.assertEqual(first, second)
         self.assertEqual((first['pass_rate_delta_pp'], first['improved'], first['tied']), (50, 5, 5))
         low, high = first['cluster_bootstrap_95']['pass_rate_delta_pp']
         self.assertTrue(0 <= low < 50 < high <= 100)
+
+    def test_concurrency_is_part_of_matching_and_unmeasured_time_stays_unknown(self):
+        parallel = trial('supervisor')
+        parallel['settings'].update(jobs_requested=3, jobs_effective=3, timing_mode='shared-load')
+        self.assertEqual(len(stats.summarize(document(trial(), parallel))['cohorts']), 2)
+        missing = trial('supervisor', error='worker died', elapsed_seconds=None, usage_complete=False,
+                        metrics={'attempted_trial': True})
+        report = stats.summarize(document(trial(), missing))
+        arm = report['cohorts'][0]['arms']['supervisor']
+        self.assertEqual((arm['trials'], arm['errors'], arm['timed_trials']), (1, 1, 0))
+        self.assertIsNone(arm['mean_seconds'])
+        self.assertIsNone(report['cohorts'][0]['deltas'][0]['mean_seconds_delta'])
 
     def test_wilson_single_success_is_not_certainty(self):
         low, high = stats.wilson(1, 1)
@@ -123,12 +137,12 @@ class StatisticsTests(unittest.TestCase):
         self.assertIsNone(stats.wilson(0, 0))
 
     def test_missing_usage_and_cost_remain_unknown_with_known_partial_tokens(self):
-        incomplete = trial('cerebro', usage_complete=False)
+        incomplete = trial('supervisor', usage_complete=False)
         incomplete['usage_ledger'].append({'provider': 'openai', 'role': 'execute', 'model': 'test-model',
                                          'input_tokens': None, 'output_tokens': None, 'complete': False})
-        no_usage = trial('cerebro', 'other', usage_complete=False, usage_ledger=[])
+        no_usage = trial('supervisor', 'other', usage_complete=False, usage_ledger=[])
         cohort = stats.summarize(document(trial(), incomplete, trial(case='other'), no_usage), PRICES)['cohorts'][0]
-        item = cohort['arms']['cerebro']
+        item = cohort['arms']['supervisor']
         self.assertEqual(item['known_tokens']['input_tokens'], 100)
         self.assertEqual(item['usage_complete_trials'], 0)
         self.assertEqual(item['cost_known_trials'], 0)
@@ -195,7 +209,7 @@ class StatisticsTests(unittest.TestCase):
                 stats.summarize(document(trial(**change)))
 
     def test_protocol_and_calibration_results_do_not_enter_product_aggregates(self):
-        rows = [trial(), trial('cerebro')]
+        rows = [trial(), trial('supervisor')]
         rows += [trial('protocol', 'guard', mode='protocol', paired=False, expected_arms=['protocol'], correct=False)]
         rows += [trial(arm, 'review', mode='calibration', kind='review', expected_arms=['without_jev', 'with_jev'])
                  for arm in ('without_jev', 'with_jev')]
@@ -208,8 +222,8 @@ class StatisticsTests(unittest.TestCase):
 
 class PublicationTests(unittest.TestCase):
     def test_unknown_price_remains_visible_in_charts(self):
-        arms = ['bare', 'cerebro', 'cerebro_jev']
-        rows = [trial(arm, expected_arms=arms, usage_complete=arm != 'cerebro_jev') for arm in arms]
+        arms = ['bare_implementor', 'supervisor', 'supervisor_jev']
+        rows = [trial(arm, expected_arms=arms, usage_complete=arm != 'supervisor_jev') for arm in arms]
         cohort = stats.summarize(document(*rows), PRICES)['cohorts'][0]
 
         def inspect_chart(figure, output, name):
@@ -220,9 +234,9 @@ class PublicationTests(unittest.TestCase):
                 self.assertTrue(axis.bbox.contains(*axis.transData.transform(unknown.get_position())))
                 self.assertIn('0/1 complete', [text.get_text() for text in axis.texts])
                 self.assertEqual([text.get_text() for text in axis.get_xticklabels()],
-                                 ['Bare agent', 'Cerebro', 'Cerebro + Jev'])
+                                 ['Bare\nimplementor', 'Supervised\nworkers', 'Supervised\n+ Jev'])
             else:
-                self.assertIn('Unpriced: Cerebro + Jev', [text.get_text() for text in figure.axes[1].texts])
+                self.assertIn('Unpriced: Supervised + Jev', [text.get_text() for text in figure.axes[1].texts])
 
         with patch('publish.save_chart', side_effect=inspect_chart):
             publish.chart_cohort(cohort, Path('.'), 'test')
@@ -234,19 +248,19 @@ class PublicationTests(unittest.TestCase):
         return private
 
     def test_private_markdown_omits_unrendered_chart_links(self):
-        report = stats.summarize(document(trial(), trial('cerebro')), PRICES)
+        report = stats.summarize(document(trial(), trial('supervisor')), PRICES)
         text = publish.report_markdown(report, charts=False)
         self.assertNotIn('.svg', text)
         self.assertNotIn('.png', text)
         self.assertIn('[Sanitized trial data](trials.json)', text)
         self.assertIn('[Aggregate statistics](aggregate.json)', text)
-        self.assertIn('Bare agent | 1/1', text)
+        self.assertIn('Bare implementor | 1/1', text)
         self.assertIn('### Recorded provider and role usage', text)
 
     def test_real_publication_renders_and_never_overwrites(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            private = self.write_run(root, [trial(), trial('cerebro', correct=False)])
+            private = self.write_run(root, [trial(), trial('supervisor', correct=False)])
             output = root / 'results' / 'test'
             readme = root / 'README.md'
             before, after = '# Intro\r\nRetain this.\r\n', '\r\n## Other\r\nRetain too.\r\n'
@@ -258,7 +272,8 @@ class PublicationTests(unittest.TestCase):
             for image in output.glob('*.png'):
                 self.assertEqual(image.read_bytes()[:8], b'\x89PNG\r\n\x1a\n')
             for image in output.glob('*.svg'):
-                self.assertIn('Bare agent', image.read_text())
+                self.assertIn('Bare', image.read_text())
+                self.assertIn('implementor', image.read_text())
             published = '\n'.join(path.read_text() for path in output.iterdir() if path.suffix != '.png')
             self.assertNotIn('/private/config/token', published)
             text = readme.read_bytes().decode()
@@ -274,7 +289,7 @@ class PublicationTests(unittest.TestCase):
     def test_readme_markers_validated_before_writing_public_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            private = self.write_run(root, [trial(), trial('cerebro')])
+            private = self.write_run(root, [trial(), trial('supervisor')])
             readme = root / 'README.md'
             readme.write_text('Untouched documentation.\n')
             with self.assertRaisesRegex(ValueError, 'marker pair'):

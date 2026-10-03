@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -15,19 +16,10 @@ ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / 'lib'
 CLI = ROOT / 'bin' / 'cerebro'
 sys.path.insert(0, str(LIB / 'python'))
-from codex_launch import guarded_options, toml
-from model_config import ROLES
+from codex_launch import supervisor_options, toml
 
-ROLE_GROUPS = {role: group for group, roles in {
-    'implementation': ('execute', 'apply-review', 'doc-write'),
-    'review': ('review', 'verify', 'audit', 'improve'),
-    'supervisor': ('supervisor',),
-    'baseline': ('baseline',),
-}.items() for role in roles}
-
-
-def role_model(role, models):
-    return models[ROLE_GROUPS[role]]
+ROLE_GROUPS = {'execute': 'implementation', 'review': 'review', 'supervisor': 'supervisor',
+               'implementation': 'implementation'}
 
 
 @contextmanager
@@ -43,7 +35,9 @@ def environment(values):
 
 
 def write_json(path, value):
-    path.write_text(json.dumps(value, indent=2) + '\n')
+    temporary = path.with_name('.' + path.name + '.tmp')
+    temporary.write_text(json.dumps(value, indent=2) + '\n')
+    temporary.replace(path)
 
 
 def file_hashes(repo):
@@ -58,6 +52,11 @@ def process(argv, env, cwd, prefix, stdin='', timeout=600):
     with prefix.with_suffix('.stdout.jsonl').open('w') as out, prefix.with_suffix('.stderr').open('w') as err:
         proc = subprocess.Popen(argv, cwd=cwd, env=env, text=True, stdin=subprocess.PIPE,
                                 stdout=out, stderr=err, start_new_session=True)
+        running = prefix.with_suffix('.process-running.json')
+        identity = subprocess.run(['ps', '-p', str(proc.pid), '-o', 'lstart='], capture_output=True, text=True).stdout.strip()
+        write_json(running, {'pid': proc.pid, 'identity': identity, 'started_at': time.time(),
+                             'owner': 'cerebro-eval', 'trial_directory': str(prefix.parent.resolve()),
+                             'prefix': prefix.name})
         try:
             proc.communicate(stdin, timeout=timeout)
         except BaseException as error:
@@ -72,6 +71,7 @@ def process(argv, env, cwd, prefix, stdin='', timeout=600):
     outcome = {'exit_code': proc.returncode, 'elapsed_seconds': round(time.monotonic() - started, 3),
                'timed_out': isinstance(failure, subprocess.TimeoutExpired)}
     write_json(prefix.with_suffix('.process.json'), outcome)
+    running.unlink(missing_ok=True)
     if isinstance(failure, subprocess.TimeoutExpired):
         raise RuntimeError('native stage exceeded %ss; see %s' % (timeout, prefix)) from None
     if failure:
@@ -81,73 +81,58 @@ def process(argv, env, cwd, prefix, stdin='', timeout=600):
     return outcome
 
 
-def setup(directory, settings, watch, requirements):
+def setup(directory, settings, watch):
     session = directory / 'home' / 'sessions' / 'eval'
-    for child in ('children', 'plans'):
+    for child in ('children',):
         (session / child).mkdir(parents=True, exist_ok=True)
     write_json(session / 'metadata.json', {'id': 'eval', 'backend': 'codex', 'role': 'supervisor'})
-    (session / 'spec.md').write_text(requirements)
     native = directory / 'codex-eval'
-    choices = ''.join('|'.join(role for role, kind in ROLE_GROUPS.items() if kind == group)
-                      + ') eval_effort=' + shlex.quote(toml(settings['efforts'][group])) + ' ;;\n'
-                      for group in ROLES)
-    native.write_text('#!/usr/bin/env bash\ncase "${CEREBRO_CHILD_ROLE:?missing child role}" in\n'
-                      + choices + '*) echo "Unknown eval child role" >&2; exit 2 ;;\nesac\nexec '
+    native.write_text('#!/usr/bin/env bash\nexec '
                       + shlex.quote(sys.executable) + ' '
                       + shlex.quote(str(Path(__file__).with_name('native.py'))) + ' '
-                      + shlex.quote(settings['codex']) + ' -c "model_reasoning_effort=$eval_effort" "$@"\n')
+                      + shlex.quote(settings['codex']) + ' "$@"\n')
     native.chmod(0o700)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CEREBRO_')}
+    native_home = directory / 'native-home'
+    native_home.mkdir(exist_ok=True)
+    auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
+    if auth.is_file():
+        shutil.copyfile(auth, native_home / 'auth.json')
+        (native_home / 'auth.json').chmod(0o600)
+    env['CODEX_HOME'] = str(native_home)
     env.update(CEREBRO_HOME=str(directory / 'home'), CEREBRO_SESSION_DIR=str(session),
                CEREBRO_SESSION_ID='eval', CEREBRO_BACKEND='codex', CEREBRO_LIB_DIR=str(LIB),
-               CEREBRO_CODEX_CMD=str(native), CEREBRO_MODEL=settings['models']['implementation'],
-               CEREBRO_REVIEW_MODEL=settings['models']['review'], CEREBRO_SUPERVISOR_MODEL=settings['models']['supervisor'],
+               CEREBRO_CODEX_CMD=str(native), CEREBRO_MODEL=settings['models']['implementation'] or '',
+               CEREBRO_REVIEW_MODEL=settings['models']['review'] or '', CEREBRO_SUPERVISOR_MODEL=settings['models']['supervisor'] or '',
+               CEREBRO_IMPLEMENTOR_EFFORT=settings['efforts']['implementation'] or '',
+               CEREBRO_REVIEW_EFFORT=settings['efforts']['review'] or '',
+               CEREBRO_SUPERVISOR_EFFORT=settings['efforts']['supervisor'] or '',
                CEREBRO_JEV_ENABLED=str(int(watch)), CEREBRO_JEV_API_KEY=settings['jev_api_key'],
                CEREBRO_JEV_MODEL=settings['jev_model'], CEREBRO_JEV_ENDPOINT=settings['jev_endpoint'],
                CEREBRO_JEV_CONFIDENCE=str(settings['jev_confidence']), CEREBRO_TIMEOUT=str(settings['timeout']),
                CEREBRO_PAIR_IDLE='0', CEREBRO_PAIR_STALL_RETRIES='0')
     env.update(CEREBRO_EVAL_DIR=str(directory), CEREBRO_EVAL_REPO=str(directory / 'repo'))
     # Use production materialization rather than maintaining a second MCP configuration.
-    process(['bash', '-c', 'source "$1/backend.sh"; backend_supervisor_config supervisor',
-             'cerebro-eval', str(LIB)], env, directory, directory / 'configure', timeout=20)
+    try:
+        process(['bash', '-c', 'source "$1/backend.sh"; backend_supervisor_config supervisor',
+                 'cerebro-eval', str(LIB)], env, directory, directory / 'configure', timeout=20)
+    except BaseException:
+        cleanup(env)
+        raise
     return env, session
 
 
 def codex(directory, env, prompt, settings, *, schema=None, supervisor=False):
-    session = env['CEREBRO_SESSION_DIR']
-    with environment(env):
-        options = guarded_options(settings['codex'], 'supervisor', str(directory), session)
+    import baseline
+    options = []
     if supervisor:
+        with environment(env):
+            options = supervisor_options(env['CEREBRO_SESSION_DIR'])
         instructions = (LIB / 'payloads/skills/cerebro-supervisor/SKILL.md').read_text()
     else:
-        # Calibration measures a decision from identical evidence, without extra searches.
-        options += ['-c', 'mcp_servers.cerebro.enabled=false']
         instructions = 'Use only the evidence supplied in the prompt. Return the requested JSON decision.'
-    options += ['-c', 'developer_instructions=' + toml(instructions),
-                '-c', 'model_reasoning_effort=' + toml(settings['efforts']['supervisor']),
-                '-c', 'project_doc_max_bytes=0']
-    output = directory / 'answer.json' if schema else directory / 'answer.md'
-    argv = [settings['codex'], '--no-daemon', '--strict-config', *options, 'exec',
-            '--ephemeral', '--skip-git-repo-check', '--json', '--color', 'never',
-            '--model', settings['models']['supervisor'], '--output-last-message', str(output)]
-    if schema:
-        schema_path = directory / 'output-schema.json'
-        write_json(schema_path, schema)
-        argv += ['--output-schema', str(schema_path)]
-    argv += ['-']
-    (directory / 'prompt.txt').write_text(prompt)
-    result = process(argv, env, directory, directory / 'parent', prompt, settings['timeout'])
-    result['usage'] = {}
-    for line in (directory / 'parent.stdout.jsonl').read_text().splitlines():
-        event = json.loads(line)
-        if event.get('type') == 'turn.completed':
-            for key, value in event.get('usage', {}).items():
-                if isinstance(value, (int, float)):
-                    result['usage'][key] = result['usage'].get(key, 0) + value
-    if not output.is_file():
-        raise RuntimeError('Codex completed without a final answer')
-    result['answer'] = json.loads(output.read_text()) if schema else output.read_text()
-    return result
+    return baseline.run(directory, directory / 'repo', prompt, settings, schema, 'supervisor',
+                        env=env, options=options, instructions=instructions)
 
 
 def command(directory, env, argv, timeout, *, prefix='delegation', stdin=''):
@@ -167,18 +152,64 @@ def command(directory, env, argv, timeout, *, prefix='delegation', stdin=''):
 
 
 def cleanup(env):
-    """Cancel only still-running jobs belonging to this eval session."""
+    """Stop eval-owned detached jobs and remove the temporary native auth copy."""
     session = Path(env['CEREBRO_SESSION_DIR'])
-    for path in (session / 'detached-jobs').glob('*.json'):
-        job = json.loads(path.read_text())
-        if not job.get('id') or not job.get('status'):
-            continue
-        status = Path(job['status'])
-        if status.exists() and status.read_text().strip().lstrip('-').isdigit():
-            continue
-        result = subprocess.run([str(CLI), 'cancel', job['id']], env=env, capture_output=True, timeout=15)
-        if result.returncode:
-            raise RuntimeError('could not cancel eval-owned job ' + job['id'])
+    errors = []
+    try:
+        directory = Path(env['CEREBRO_EVAL_DIR'])
+        for prefix in ('parent', 'configure', 'delegation', 'native-contract'):
+            path = directory / (prefix + '.process-running.json')
+            if not path.exists() and not path.is_symlink():
+                continue
+            try:
+                if path.is_symlink() or not path.is_file() or path.resolve().parent != directory.resolve():
+                    raise ValueError('eval process receipt must be a regular top-level file')
+                owned = json.loads(path.read_text())
+                if (not isinstance(owned, dict) or owned.get('owner') != 'cerebro-eval' or owned.get('prefix') != prefix
+                        or owned.get('trial_directory') != str(directory.resolve())
+                        or type(owned.get('pid')) is not int or owned['pid'] < 1
+                        or not isinstance(owned.get('identity'), str)):
+                    raise ValueError('invalid eval process ownership receipt')
+                pid = owned['pid']
+                current = subprocess.run(['ps', '-p', str(pid), '-o', 'lstart='], capture_output=True, text=True).stdout.strip()
+                terminated = bool(current and current == owned['identity'])
+                if terminated:
+                    try:
+                        if os.getpgid(pid) != pid:
+                            raise ValueError('recorded eval process is no longer its process-group leader')
+                        os.killpg(pid, signal.SIGTERM)
+                        time.sleep(3.5)
+                        active = subprocess.run(['ps', '-p', str(pid), '-o', 'lstart='],
+                                                capture_output=True, text=True).stdout.strip()
+                        state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='],
+                                               capture_output=True, text=True).stdout.strip()
+                        if active == owned['identity'] and not state.startswith('Z'):
+                            os.killpg(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                write_json(path.with_suffix('.cleanup.json'), {'owned_pid': pid, 'terminated': terminated})
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                errors.append(prefix + ': ' + str(error))
+        for path in (session / 'detached-jobs').glob('*.json'):
+            try:
+                job = json.loads(path.read_text())
+                if not isinstance(job, dict):
+                    raise ValueError('detached eval job metadata must be an object')
+                if not job.get('id') or not job.get('status'):
+                    continue
+                status = Path(job['status'])
+                if status.exists() and status.read_text().strip().lstrip('-').isdigit():
+                    continue
+                result = subprocess.run([str(CLI), 'cancel', job['id']], env=env, capture_output=True, timeout=15)
+                if result.returncode:
+                    errors.append('could not cancel eval-owned job ' + job['id'])
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                errors.append(str(error))
+    finally:
+        native_home = Path(env['CEREBRO_EVAL_DIR']) / 'native-home'
+        (native_home / 'auth.json').unlink(missing_ok=True)
+    if errors:
+        raise RuntimeError('; '.join(errors))
 
 
 def redact(directory, secret):

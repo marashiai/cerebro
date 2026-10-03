@@ -1,11 +1,11 @@
-"""Grade receipts from the real parent, native children and durable jobs."""
+"""Separate task outcomes from model, role and monitoring condition evidence."""
 
-from collections import Counter
 import json
 from pathlib import Path
 
-from runtime import ROLE_GROUPS, file_hashes, role_model
-from fixtures import git
+from runtime import ROLE_GROUPS, file_hashes
+from usage import records
+
 
 def tool_response(item):
     if item.get('error') or item.get('status') == 'failed':
@@ -23,8 +23,7 @@ def tool_response(item):
 
 def parent_calls(directory):
     calls = []
-    for line in (directory / 'parent.stdout.jsonl').read_text().splitlines():
-        event = json.loads(line)
+    for event in records(directory / 'parent.stdout.jsonl'):
         item = event.get('item', {})
         if event.get('type') != 'item.completed' or item.get('type') != 'mcp_tool_call':
             continue
@@ -34,7 +33,7 @@ def parent_calls(directory):
         if isinstance(args.get('argv'), list):
             response = tool_response(item)
             calls.append({'argv': args['argv'], 'response': response,
-                          'success': response.get('exit_code') == 0 and response.get('job_exit_code') in (None, 0)})
+                          'success': response.get('exit_code') == 0})
     return calls
 
 
@@ -53,108 +52,97 @@ def job_outcomes(session):
     return outcomes
 
 
-def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, max_implementations=2,
-                    watch=None, assess_reviews=None):
-    watch = arm == 'with_jev' if watch is None else watch
-    assess_reviews = arm == 'with_jev' if assess_reviews is None else assess_reviews
-    calls = parent_calls(directory)
-    commands = [call['argv'] for call in calls]
-    classifications = []
-    for path in (session / 'children').glob('*.scope.jsonl'):
-        classifications.extend(json.loads(line)['classification'] for line in path.read_text().splitlines())
-    observations = [json.loads(line) for path in directory.glob('observations-*.jsonl')
-                    for line in path.read_text().splitlines()]
-    final_source = file_hashes(repo)
-    bound = [item for item in observations if item.get('passed') and item.get('unchanged_during_check')
-             and item.get('source') == final_source]
-    test_runs = sum(item['type'] == 'tests' for item in bound)
+def evidence(directory):
+    return [event for path in directory.rglob('observations-*.jsonl') for event in records(path)]
+
+
+def condition_metrics(directory, session, arm, repo, settings):
+    seen = evidence(directory)
+    final = file_hashes(repo)
+    child = [item for item in seen if item.get('role') in ('execute', 'review')]
+    requested = [item for item in seen if item['type'] == 'model']
+    resolved = [item for item in seen if item['type'] == 'model_resolved']
     violations = []
-    configuration_violations = []
-    resolved = [item for item in observations if item['type'] == 'model_resolved']
-    if len(resolved) != sum(item['type'] == 'model' for item in observations):
-        violations.append('missing effective native model or effort evidence')
-        configuration_violations.append('missing_model_evidence')
-    for item in observations:
-        if item['type'] in ('model', 'model_resolved'):
-            expected = role_model(item['role'], settings['models'])
-            if item['model'] != expected:
-                violations.append('native child used an unexpected model')
-                configuration_violations.append('unexpected_model')
-            if item['type'] == 'model_resolved' and item['effort'] != settings['efforts'][ROLE_GROUPS[item['role']]]:
-                violations.append('native child used an unexpected reasoning effort')
-                configuration_violations.append('unexpected_effort')
-    for argv in commands:
-        if argv[0] in ('execute', 'apply-review', 'doc-write'):
-            if ('--no-watch' if watch else '--watch') in argv:
-                violations.append('changed assigned monitoring condition')
-                configuration_violations.append('watch_override')
-        if '--model' in argv:
-            expected = role_model(argv[0], settings['models'])
-            if argv[argv.index('--model') + 1] != expected:
-                violations.append('changed assigned role model')
-                configuration_violations.append('model_override')
-    reviews = []
-    bound_reviews = {item['thread_id'] for item in bound if item['type'] == 'review'}
-    for call in calls:
-        argv = call['argv']
-        if argv[0] != 'review' or not call['success'] or call['response'].get('state') != 'completed':
+    if len(requested) != len(resolved):
+        violations.append('missing native model resolution evidence')
+    for item in requested:
+        role = ROLE_GROUPS[item['role']]
+        expected_model = settings['models'][role]
+        if item.get('model') != expected_model:
+            violations.append('unexpected requested model for ' + role)
+    for item in seen:
+        if item['type'] == 'turn_settings':
+            expected_effort = settings['efforts'][ROLE_GROUPS[item['role']]]
+            if item.get('effort') != expected_effort:
+                violations.append('unexpected requested effort for ' + item['role'])
+    expected_review = arm not in ('bare_implementor', 'bare_supervisor')
+    reviews = [item for item in child if item['type'] == 'review' and item.get('passed')
+               and item.get('unchanged_during_check') and item.get('source') == final]
+    implementations = [item for item in child if item['type'] == 'model' and item['role'] == 'execute']
+    parent_edits = []
+    ambiguous_edits = []
+    for item in seen:
+        if (item['type'] != 'activity' or item.get('role') != 'supervisor'
+                or item.get('item_type') not in ('commandExecution', 'fileChange')):
             continue
-        if ('--base' not in argv or '--criteria-file' not in argv or
-                git(repo, 'rev-parse', argv[argv.index('--base') + 1]) != base or
-                Path(argv[argv.index('--criteria-file') + 1]).resolve() != criteria):
-            violations.append('review used different base or criteria')
-            continue
-        path = Path(call['response'].get('text', '').strip())
-        if not path.is_file() or not path.read_text().strip() or not path.with_suffix('.log').is_file():
-            continue
-        for line in path.with_suffix('.log').read_text().splitlines():
-            event = json.loads(line)
-            if event.get('type') == 'thread.started' and event.get('thread_id') in bound_reviews:
-                reviews.append(path)
-                break
-    assessments = list((session / 'children').glob('review-*.assessment.json'))
-    if not reviews:
-        violations.append('no completed independent review')
-    watched = any(item['type'] == 'model' and item['role'] in ('execute', 'apply-review', 'doc-write')
-                  for item in observations)
-    if watch and watched and not classifications:
-        violations.append('missing scope assessment coverage')
-    if assess_reviews and any(not path.with_suffix('.assessment.json').is_file() for path in reviews):
-        violations.append('missing review assessment coverage')
-    if not watch and classifications:
-        violations.append('disabled scope watcher unexpectedly used Jev')
-        configuration_violations.append('unexpected_scope_assessment')
-    if not assess_reviews and assessments:
-        violations.append('disabled review assessment unexpectedly used Jev')
-        configuration_violations.append('unexpected_review_assessment')
-    corrections = {call['response'].get('job_id') for call in calls
-                   if call['argv'][0] in ('apply-review', 'execute') and call['success']}
-    corrections.discard(None)
-    if max_implementations is not None and len(corrections) > max_implementations:
-        violations.append('exceeded the implementation-job budget')
-    initial_path = directory / 'first-response.json'
-    initial = json.loads(initial_path.read_text()) if initial_path.exists() else {}
-    received = [initial] + [call['response'] for call in calls]
-    notices = {(value['job_id'], value['sequence']) for value in received if 'notice' in value}
+        changed = set(item.get('changed_files', []))
+        ambiguous = set()
+        if item.get('item_type') == 'commandExecution':
+            for activity in child:
+                if (activity['type'] == 'activity' and activity.get('source_root') == item.get('source_root')
+                        and activity.get('started_at') is not None and item.get('started_at') is not None
+                        and activity.get('finished_at', activity.get('time', 0)) >= item['started_at']
+                        and activity['started_at'] <= item.get('finished_at', item.get('time', 0))):
+                    shared = {path for path in activity.get('changed_files', [])
+                              if path in changed and activity.get('source', {}).get(path) == item.get('source', {}).get(path)}
+                    ambiguous |= shared
+                    changed -= shared
+        if ambiguous:
+            ambiguous_edits.append({**item, 'changed_files': sorted(ambiguous)})
+        if changed:
+            parent_edits.append({**item, 'changed_files': sorted(changed)})
+    if expected_review and not reviews:
+        violations.append('missing independent review of delivered source')
+    if expected_review and not implementations:
+        violations.append('missing implementor delegation')
+    if arm in ('supervisor', 'supervisor_jev'):
+        if parent_edits:
+            violations.append('supervisor edited task source')
+        if ambiguous_edits:
+            violations.append('ambiguous supervisor/child source ownership')
+    if arm == 'implementor_reviewer' and any(item.get('role') == 'supervisor' for item in seen):
+        violations.append('unexpected supervisor inference')
+    scope_rows = [item for path in (session / 'children').glob('*.scope.jsonl') for item in records(path)]
+    classifications = [item for item in scope_rows if isinstance(item.get('classification'), dict)]
+    observer_failures = sum(item.get('type') == 'observer_failure' for item in scope_rows)
+    assessments = list((session / 'children').glob('*.assessment.json'))
+    monitored = arm == 'supervisor_jev'
+    if monitored and observer_failures:
+        violations.append('Jev implementation observer failed')
+    if monitored and implementations and not classifications:
+        violations.append('missing Jev implementation observation')
+    if monitored and reviews and not assessments:
+        violations.append('missing Jev review assessment')
+    if not monitored and (scope_rows or assessments):
+        violations.append('unexpected Jev use')
+    provider_failures = sum(bool(item.get('error')) for path in session.rglob('*.jev.jsonl')
+                            for item in records(path) if item.get('type') == 'response')
     jobs = job_outcomes(session)
-    steers = sum(call['argv'][0] == 'steer' and call['success'] for call in calls)
-    original_native = initial.get('notice', {}).get('native_id')
-    accepted_steers = [item for item in observations if item['type'] == 'steer' and item['passed']]
-    recovered = bool(steers and original_native and any(
-        test['type'] == 'tests' and test['thread_id'] == original_native
-        and test.get('started_at') and test['started_at'] > steer['time']
-        for test in bound for steer in accepted_steers if steer['thread_id'] == original_native))
-    return {'scope_batches': len(classifications), 'scope_notices': len(notices),
-            'published_scope_notices': sum(job['published_notices'] for job in jobs),
-            'jobs': jobs,
-            'scope_labels': dict(Counter(c['scope'] for c in classifications)),
-            'steers': steers, 'native_steers_accepted': len(accepted_steers),
-            'same_child_tested_after_steering': recovered,
-            'steer_attempts': sum(argv[0] == 'steer' for argv in commands),
-            'correction_children': len(corrections),
-            'reviews': len(reviews), 'review_assessments': len(assessments),
-            'recorded_passing_test_runs': test_runs, 'protocol_violations': violations,
-            'configuration_violations': sorted(set(configuration_violations)),
-            'effective_child_settings': [{'role': item['role'], 'model': item['model'], 'effort': item['effort']}
-                                         for item in resolved],
-            'parent_calls': calls, 'final_source_sha256': final_source}
+    calls = parent_calls(directory) if (directory / 'parent.stdout.jsonl').exists() else []
+    turn_efforts = {item['thread_id']: item.get('effort') for item in seen if item['type'] == 'turn_settings'}
+    effective = [{key: item.get(key) for key in ('role', 'model', 'effort', 'thread_id')} for item in resolved]
+    for item in effective:
+        item['thread_default_effort'] = item['effort']
+        override = turn_efforts.get(item['thread_id'])
+        item['effort_origin'] = 'turn_override' if override is not None else 'native_default'
+        if override is not None:
+            item['effort'] = override
+    return {'role_separation_expected': expected_review, 'condition_valid': not violations, 'condition_violations': sorted(set(violations)),
+            'effective_native_settings': effective,
+            'requested_native_settings': [{key: item.get(key) for key in ('role', 'model', 'effort', 'method')}
+                                          for item in requested],
+            'jev_observer_failures': observer_failures, 'jev_provider_failures': provider_failures, 'jobs': jobs, 'reviews': len(reviews), 'implementation_attempts': len(implementations),
+            'supervisor_source_edits': len(parent_edits), 'ambiguous_source_ownership': len(ambiguous_edits), 'jev_batches': len(classifications),
+            'jev_notices': sum(job['published_notices'] for job in jobs), 'review_assessments': len(assessments),
+            'accepted_steers': sum(item['type'] == 'steer' and item.get('passed', False) for item in seen),
+            'parent_calls': calls}

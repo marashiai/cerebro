@@ -3,9 +3,7 @@
 import json
 from pathlib import Path
 
-ROLES = ('implementation', 'review', 'supervisor', 'baseline')
-DEFAULT_MODELS = {'implementation': 'gpt-6-luna', 'review': 'gpt-5.6-terra', 'supervisor': 'gpt-5.6-terra'}
-DEFAULT_EFFORTS = {'implementation': 'low', 'review': 'medium', 'supervisor': 'medium'}
+ROLES = ('implementation', 'review', 'supervisor')
 
 
 def nonempty_string(value):
@@ -17,10 +15,9 @@ def nonempty_string(value):
 def add_arguments(parser):
     parser.add_argument('--config', type=Path, help='JSON defaults and per-case model/effort overrides')
     for role in ROLES:
-        for kind, defaults in (('model', DEFAULT_MODELS), ('effort', DEFAULT_EFFORTS)):
-            default = defaults.get(role, 'resolved supervisor ' + kind)
+        for kind in ('model', 'effort'):
             parser.add_argument('--' + role + '-' + kind, type=nonempty_string,
-                                help=role + ' ' + kind + '; overrides config (default: ' + default + ')')
+                                help=role + ' ' + kind + '; overrides config')
 
 
 def object_fields(value, allowed, location):
@@ -60,11 +57,8 @@ def cli_overrides(args):
 
 
 def resolve_config(config, case_id=None, overrides=None):
-    resolved = {'models': dict(DEFAULT_MODELS), 'efforts': dict(DEFAULT_EFFORTS)}
+    resolved = {'models': {role: None for role in ROLES}, 'efforts': {role: None for role in ROLES}}
     for section in (config.get('defaults', {}), config.get('cases', {}).get(case_id, {}), overrides or {}):
         for kind, roles in section.items():
             resolved[kind].update(roles)
-    for roles in resolved.values():
-        if 'baseline' not in roles:
-            roles['baseline'] = roles['supervisor']
     return resolved

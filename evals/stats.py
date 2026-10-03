@@ -10,22 +10,15 @@ import re
 from urllib.parse import urlsplit
 
 
-ROLES = ('baseline', 'implementation', 'review', 'supervisor')
-ARMS = ('bare', 'cerebro', 'cerebro_jev', 'without_jev', 'with_jev', 'protocol')
-LEDGER_ROLES = set(ROLES) | {'execute', 'apply-review', 'doc-write', 'verify',
-                                'audit', 'improve', 'jev-scope', 'jev-review', 'jev-unknown'}
+ROLES = ('implementation', 'review', 'supervisor')
+ARMS = ('bare_implementor', 'bare_supervisor', 'implementor_reviewer', 'supervisor', 'supervisor_jev',
+        'without_jev', 'with_jev', 'protocol')
+LEDGER_ROLES = set(ROLES) | {'execute', 'jev-attention', 'jev-review', 'jev-unknown'}
 TOKEN_KEYS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
 PRICE_KEYS = ('input_per_million', 'cached_input_per_million', 'cache_write_input_per_million', 'output_per_million')
 BOOTSTRAP_MIN_CASES = 10
 BOOTSTRAP_SAMPLES = 2000
-SCALAR_METRICS = (
-    'functional_pass', 'scope_pass', 'scope_batches', 'scope_notices',
-    'published_scope_notices', 'steers', 'native_steers_accepted',
-    'same_child_tested_after_steering', 'steer_attempts', 'correction_children',
-    'reviews', 'review_assessments', 'recorded_passing_test_runs',
-    'recovered_after_observed_drift', 'candidate_false_alarms', 'unnecessary_steers',
-    'parent_seconds', 'first_response_seconds',
-)
+SCALAR_METRICS = ('functional_pass', 'scope_pass', 'recorded_passing_test_runs', 'parent_seconds')
 
 
 def identifier(value, label):
@@ -67,9 +60,23 @@ def public_settings(settings):
     for key in ('models', 'efforts'):
         values = settings.get(key)
         if not isinstance(values, dict) or set(values) != set(ROLES):
-            raise ValueError('trial settings.' + key + ' must specify all four roles')
-        public[key] = {role: model_identifier(values[role]) if key == 'models' else identifier(values[role], key)
+            raise ValueError('trial settings.' + key + ' must specify all three roles')
+        public[key] = {role: None if values[role] is None else
+                       model_identifier(values[role]) if key == 'models' else identifier(values[role], key)
                        for role in ROLES}
+    for key in ('jobs_requested', 'jobs_effective'):
+        public[key] = number(settings.get(key), key, integer=True, nonnegative=True)
+        if public[key] < 1:
+            raise ValueError(key + ' must be positive')
+    if public['jobs_effective'] > public['jobs_requested']:
+        raise ValueError('effective jobs exceeds requested worker cap')
+    public['timing_mode'] = settings.get('timing_mode')
+    if public['timing_mode'] != ('isolated' if public['jobs_effective'] == 1 else 'shared-load'):
+        raise ValueError('timing_mode must describe effective concurrency')
+    expected_mapping = {'bare_implementor': 'implementation', 'bare_supervisor': 'supervisor'}
+    if settings.get('baseline_roles') != expected_mapping:
+        raise ValueError('baseline role mapping must be explicit')
+    public['baseline_roles'] = expected_mapping
     public['jev_model'] = model_identifier(settings.get('jev_model'))
     public['jev_confidence'] = number(settings.get('jev_confidence'), 'jev_confidence', nonnegative=True)
     if public['jev_confidence'] > 1:
@@ -136,7 +143,7 @@ def public_usage(row, prices):
         if entry.get('role') not in LEDGER_ROLES:
             raise ValueError('unrecognized usage role')
         item = {'provider': entry['provider'], 'role': entry['role'],
-                'model': model_identifier(entry.get('model')),
+                'model': None if entry.get('model') is None else model_identifier(entry['model']),
                 'complete': boolean(entry.get('complete'), 'usage complete')}
         for key in TOKEN_KEYS:
             value = entry.get(key)
@@ -179,9 +186,9 @@ def public_trials(document, prices=None):
                 or len(set(expected)) != len(expected)
                 or any(arm not in ARMS for arm in expected) or row['arm'] not in expected):
             raise ValueError('trial requires distinct expected_arms including its own arm')
-        allowed = ({'bare', 'cerebro'}, {'bare', 'cerebro', 'cerebro_jev'}) if row['mode'] == 'comparison' else (
-            ({'protocol'},) if row['mode'] == 'protocol' else ({'without_jev', 'with_jev'}, {'without_jev'}))
-        if set(expected) not in allowed:
+        allowed = set(ARMS[:5]) if row['mode'] == 'comparison' else (
+            {'protocol'} if row['mode'] == 'protocol' else {'without_jev', 'with_jev'})
+        if not set(expected) <= allowed:
             raise ValueError('expected_arms must match the trial mode')
         row['paired'] = len(expected) > 1
         row['expected_arms'] = [arm for arm in ARMS if arm in expected]
@@ -193,7 +200,8 @@ def public_trials(document, prices=None):
         seen.add(key)
         row['error'] = bool(raw.get('error'))
         row['correct'] = boolean(raw.get('correct'), 'correct') and not row['error']
-        row['elapsed_seconds'] = number(raw.get('elapsed_seconds'), 'elapsed_seconds', nonnegative=True)
+        row['elapsed_seconds'] = (None if raw.get('elapsed_seconds') is None else
+                                  number(raw['elapsed_seconds'], 'elapsed_seconds', nonnegative=True))
         checks = raw.get('checks', {})
         if not isinstance(checks, dict):
             raise ValueError('checks must be an object')
@@ -211,7 +219,7 @@ def public_trials(document, prices=None):
         row['metrics'] = {identifier(key, 'metric name'): value if isinstance(value, bool)
                           else number(value, 'metric') for key, value in metrics.items()}
         if row['mode'] == 'calibration':
-            for field in ('validity', 'usefulness', 'action'):
+            for field in ('validity', 'usefulness', 'proportionality', 'action'):
                 if field in raw.get('fields', {}):
                     row['metrics']['review_' + field + '_correct'] = boolean(raw['fields'][field], 'review score')
         for source, target in (('protocol_violations', 'protocol_violation_count'),
@@ -223,6 +231,15 @@ def public_trials(document, prices=None):
         jev = raw.get('jev')
         if isinstance(jev, dict) and isinstance(jev.get('score'), dict) and 'correct' in jev['score']:
             row['metrics']['jev_classification_correct'] = boolean(jev['score']['correct'], 'Jev score')
+        if row['metrics'].get('attempted_trial') is False:
+            row['elapsed_seconds'] = None
+        native = raw.get('mechanism', {})
+        row['native_settings'] = [{key: (model_identifier(item[key]) if key == 'model' else identifier(item[key], key))
+                                   if item.get(key) is not None else None for key in ('role', 'model', 'effort', 'thread_default_effort', 'effort_origin')}
+                                  for item in native.get('effective_native_settings', [])]
+        row['requested_native_settings'] = [{key: (model_identifier(item[key]) if key == 'model' else identifier(item[key], key))
+                                             if item.get(key) is not None else None for key in ('role', 'model', 'effort')}
+                                            for item in native.get('requested_native_settings', [])]
         row.update(public_usage(raw, prices))
         trials.append(row)
     return trials
@@ -252,7 +269,7 @@ def arm_summary(rows):
         for item in row['usage_ledger']:
             workers[(item['provider'], item['role'], item['model'])].append(item)
     by_role = []
-    for (provider, role, model), entries in sorted(workers.items()):
+    for (provider, role, model), entries in sorted(workers.items(), key=lambda pair: tuple(str(value) for value in pair[0])):
         estimated = [item['estimated_cost_usd'] for item in entries]
         by_role.append({'provider': provider, 'role': role, 'model': model, 'entries': len(entries),
                         'complete_entries': sum(item['complete'] for item in entries),
@@ -261,10 +278,11 @@ def arm_summary(rows):
                                          else None for key in TOKEN_KEYS},
                         'token_known_entries': {key: sum(item[key] is not None for item in entries) for key in TOKEN_KEYS},
                         'estimated_cost_usd': sum(estimated) if all(value is not None for value in estimated) else None})
+    times = [row['elapsed_seconds'] for row in rows if row['elapsed_seconds'] is not None]
     return {'trials': count, 'passed': passed, 'errors': sum(row['error'] for row in rows),
             'pass_rate': passed / count if count else None, 'wilson_95': wilson(passed, count),
-            'mean_seconds': sum(row['elapsed_seconds'] for row in rows) / count if count else None,
-            'total_seconds': sum(row['elapsed_seconds'] for row in rows),
+            'mean_seconds': sum(times) / len(times) if times else None, 'timed_trials': len(times),
+            'total_seconds': sum(times),
             'mean_cost_usd': sum(costs) / count if count and len(costs) == count else None,
             'total_cost_usd': sum(costs) if count and len(costs) == count else None,
             'cost_known_trials': len(costs), 'usage_complete_trials': sum(row['usage_complete'] for row in rows),
@@ -286,7 +304,8 @@ def paired_delta(units, before, after):
     for unit in units:
         a, b = unit[before], unit[after]
         grouped[a['case']].append((100 * (int(b['correct']) - int(a['correct'])),
-                                  b['elapsed_seconds'] - a['elapsed_seconds'],
+                                  b['elapsed_seconds'] - a['elapsed_seconds']
+                                  if a['elapsed_seconds'] is not None and b['elapsed_seconds'] is not None else None,
                                   b['cost_usd'] - a['cost_usd']
                                   if a['cost_usd'] is not None and b['cost_usd'] is not None else None))
     values = [value for case in grouped.values() for value in case]
@@ -328,8 +347,12 @@ def cohort_summary(rows):
                for (case, repeat), unit in units.items() if set(unit) != set(expected)]
     selected = [row for unit in complete for row in unit.values()]
     comparisons = [(expected[0], arm) for arm in expected[1:]]
-    if expected == ['bare', 'cerebro', 'cerebro_jev']:
-        comparisons.append(('cerebro', 'cerebro_jev'))
+    if 'supervisor' in expected and 'supervisor_jev' in expected:
+        comparisons.append(('supervisor', 'supervisor_jev'))
+    if 'bare_supervisor' in expected:
+        comparisons.extend(('bare_supervisor', arm) for arm in ('supervisor', 'supervisor_jev') if arm in expected)
+    if 'implementor_reviewer' in expected and 'supervisor' in expected:
+        comparisons.append(('implementor_reviewer', 'supervisor'))
     return {'configuration': rows[0]['configuration'], 'settings': rows[0]['settings'],
             'mode': rows[0]['mode'], 'kind': rows[0]['kind'] if rows[0]['mode'] != 'comparison' else 'capabilities',
             'expected_arms': expected, 'matched_units': len(complete),
@@ -358,8 +381,8 @@ def summarize(document, prices=None):
         kind = 'capabilities' if row['mode'] == 'comparison' else row['kind']
         groups[(row['configuration'], row['mode'], kind, tuple(row['expected_arms']))].append(row)
     cohorts = [cohort_summary(group) for _, group in sorted(groups.items())]
-    return {'schema_version': 1, 'trials': rows, 'cohorts': cohorts, 'price_sheet': prices,
+    return {'schema_version': 2, 'trials': rows, 'cohorts': cohorts, 'price_sheet': prices,
             'total_trials': len(rows), 'total_errors': sum(row['error'] for row in rows),
             'bootstrap': {'minimum_cases': BOOTSTRAP_MIN_CASES, 'samples': BOOTSTRAP_SAMPLES,
                           'unit': 'case; all repetitions retained together'},
-            'scope': 'Selected small CSV fixtures; descriptive outcomes, not a general model benchmark.'}
+            'scope': 'Selected local CSV and persisted-job fixtures; descriptive outcomes, not a general model benchmark.'}

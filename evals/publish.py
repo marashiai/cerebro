@@ -17,10 +17,16 @@ from stats import BOOTSTRAP_MIN_CASES, ROLES, TOKEN_KEYS, number, summarize
 
 START = '<!-- evals:overview:start -->'
 END = '<!-- evals:overview:end -->'
-LABELS = {'bare': 'Bare agent', 'cerebro': 'Cerebro', 'cerebro_jev': 'Cerebro + Jev',
-          'without_jev': 'Without Jev', 'with_jev': 'With Jev', 'protocol': 'Protocol'}
-COLORS = {'bare': '#748094', 'cerebro': '#6456d8', 'cerebro_jev': '#009b87',
-          'without_jev': '#748094', 'with_jev': '#009b87', 'protocol': '#6456d8'}
+LABELS = {'bare_implementor': 'Bare implementor', 'bare_supervisor': 'Bare supervisor model',
+          'implementor_reviewer': 'Implementor + reviewer', 'supervisor': 'Supervisor + implementor + reviewer',
+          'supervisor_jev': 'Supervisor + implementor + reviewer + Jev',
+          'without_jev': 'Without Jev', 'with_jev': 'With Jev', 'protocol': 'Native protocol'}
+COLORS = dict(zip(LABELS, ('#748094', '#e39b35', '#477ac0', '#6456d8', '#009b87', '#748094', '#009b87', '#6456d8')))
+
+CHART_LABELS = {'bare_implementor': 'Bare\nimplementor', 'bare_supervisor': 'Bare\nsupervisor',
+                'implementor_reviewer': 'Worker\n+ review', 'supervisor': 'Supervised\nworkers',
+                'supervisor_jev': 'Supervised\n+ Jev', 'without_jev': 'Without Jev',
+                'with_jev': 'With Jev', 'protocol': 'Native protocol'}
 
 
 def formatted(value, digits=2, signed=False):
@@ -50,13 +56,16 @@ def overview(report, link):
             continue
         parts = ['%s %d/%d' % (LABELS[arm], stats['passed'], stats['trials'])
                  for arm, stats in cohort['arms'].items()]
-        delta = cohort['deltas'][0]
-        lines.append('Configuration `%s`: **%s** shared task outcomes; Cerebro − bare **%s percentage points**. '
-                     '%d matched %s across %d distinct cases; %d incomplete units excluded. '
-                     'Small selected CSV fixtures; descriptive results.' % (
-                         cohort['configuration'], '; '.join(parts), formatted(delta['pass_rate_delta_pp'], 1, True),
-                         cohort['matched_units'], 'triplets' if len(cohort['expected_arms']) == 3 else 'pairs',
-                         cohort['independent_cases'], len(cohort['incomplete_units'])))
+        delta_text = ''
+        if cohort['deltas']:
+            delta = cohort['deltas'][0]
+            delta_text = '; %s → %s **%s percentage points**' % (
+                LABELS[delta['before']], LABELS[delta['after']], formatted(delta['pass_rate_delta_pp'], 1, True))
+        lines.append('Configuration `%s`: **%s** shared task outcomes%s. '
+                     '%d matched groups across %d distinct cases; %d incomplete units excluded. '
+                     'Small selected local implementation fixtures; descriptive results.' % (
+                         cohort['configuration'], '; '.join(parts), delta_text,
+                         cohort['matched_units'], cohort['independent_cases'], len(cohort['incomplete_units'])))
         lines.append('')
         lines.append('Models and efforts: ' + '; '.join('%s `%s` (%s)' % (
             role, cohort['settings']['models'][role], cohort['settings']['efforts'][role]) for role in ROLES) + '.')
@@ -98,13 +107,13 @@ def chart_cohort(cohort, output, stem):
                          'axes.titleweight': 'bold', 'axes.titlelocation': 'left', 'svg.fonttype': 'none'})
     arms = cohort['expected_arms']
     stats = [cohort['arms'][arm] for arm in arms]
-    labels = [LABELS[arm] for arm in arms]
+    labels = [CHART_LABELS[arm] for arm in arms]
     colors = [COLORS[arm] for arm in arms]
     n = cohort['matched_units']
     title = ('Product capability comparison' if cohort['mode'] == 'comparison'
              else 'Jev ablation · ' + cohort['kind'])
     subtitle = '%d matched %s · %d distinct cases · configuration %s' % (
-        n, 'triplets' if len(arms) == 3 else 'pairs', cohort['independent_cases'], cohort['configuration'])
+        n, 'groups', cohort['independent_cases'], cohort['configuration'])
     known = [sum(item['known_tokens'][key] for key in ('input_tokens', 'output_tokens')) / n
              if all(item['known_tokens'][key] is not None for key in ('input_tokens', 'output_tokens')) else None
              for item in stats]
@@ -113,13 +122,13 @@ def chart_cohort(cohort, output, stem):
               (known, 'Recorded tokens per task', 'Input + output tokens; may be partial', 0),
               ([item['mean_cost_usd'] for item in stats], 'Estimated price per task', 'USD at supplied rates', 6)]
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.1))
-    fig.subplots_adjust(left=.085, right=.97, bottom=.15, top=.84, hspace=.49, wspace=.26)
+    fig.subplots_adjust(left=.085, right=.97, bottom=.19, top=.84, hspace=.60, wspace=.26)
     fig.suptitle(title, x=.085, y=.967, ha='left', fontsize=20, fontweight='bold')
     fig.text(.085, .914, subtitle, fontsize=10, color='#687284')
     for panel, (axis, (values, heading, ylabel, digits)) in enumerate(zip(axes.flat, panels)):
         axis.set_title(heading, pad=17, fontsize=12)
         axis.set_ylabel(ylabel, fontsize=9)
-        axis.set_xticks(range(len(arms)), labels, fontsize=9)
+        axis.set_xticks(range(len(arms)), labels, fontsize=8)
         axis.set_xlim(-.6, len(arms) - .4)
         axis.set_axisbelow(True)
         axis.yaxis.grid(True)
@@ -148,7 +157,7 @@ def chart_cohort(cohort, output, stem):
     plt.close(fig)
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5.4))
-    fig.subplots_adjust(left=.085, right=.97, bottom=.20, top=.78, wspace=.30)
+    fig.subplots_adjust(left=.085, right=.97, bottom=.28, top=.78, wspace=.30)
     fig.suptitle('Quality and resource use', x=.085, y=.96, ha='left', fontsize=20, fontweight='bold')
     fig.text(.085, .873, subtitle, fontsize=10, color='#687284')
     for axis, metric, xlabel in zip(axes, ('mean_seconds', 'mean_cost_usd'),
@@ -164,10 +173,8 @@ def chart_cohort(cohort, output, stem):
                 continue
             plotted = True
             x, y = item[metric], item['pass_rate'] * 100
-            axis.scatter(x, y, s=100, color=COLORS[arm], edgecolor='white', linewidth=.8, zorder=3)
-            offset = 9 + index * 12 if y < 70 else -12 - index * 12
-            axis.annotate(LABELS[arm], (x, y), xytext=(6, offset),
-                          textcoords='offset points', fontsize=9, color=COLORS[arm])
+            axis.scatter(x, y, s=100, color=COLORS[arm], edgecolor='white', linewidth=.8, zorder=3,
+                         label=CHART_LABELS[arm].replace('\n', ' '))
         if not plotted:
             axis.text(.5, .5, 'Total estimated price unavailable\nMissing usage or rate coverage',
                       transform=axis.transAxes, ha='center', va='center', color='#687284')
@@ -176,10 +183,13 @@ def chart_cohort(cohort, output, stem):
             maximum = max(item[metric] for item in stats if item[metric] is not None)
             axis.set_xlim(0, maximum * 1.4 if maximum else 1)
             if metric == 'mean_cost_usd':
-                missing = [LABELS[arm] for arm, item in zip(arms, stats) if item[metric] is None]
+                missing = [CHART_LABELS[arm].replace('\n', ' ') for arm, item in zip(arms, stats) if item[metric] is None]
                 if missing:
                     axis.text(0, 1.06, 'Unpriced: ' + ', '.join(missing), transform=axis.transAxes,
                               fontsize=9, color='#687284')
+    handles, legend_labels = axes[0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, legend_labels, loc='lower center', bbox_to_anchor=(.5, .13), ncol=3, frameon=False, fontsize=8)
     fig.text(.085, .059, 'Each point uses the same matched task units. Means include failures.\n'
              'Exploratory fixture results; paired uncertainty and per-case outcomes appear in the report.',
              fontsize=9, color='#687284', linespacing=1.6)
@@ -215,7 +225,7 @@ def public_provenance(manifest):
         if not isinstance(version, str) or not re.fullmatch(r'codex-cli [0-9]+\.[0-9]+\.[0-9]+(?:[-+.][a-zA-Z0-9.-]+)?', version):
             raise ValueError('native_version must be a public codex-cli version label')
         result['native_version'] = version
-    for key in ('repetitions', 'seed'):
+    for key in ('repetitions', 'seed', 'scheduled_trials'):
         if key in manifest:
             result[key] = number(manifest[key], key, integer=True)
             if key == 'repetitions' and result[key] < 1:
@@ -235,14 +245,14 @@ def public_provenance(manifest):
 
 def report_markdown(report, *, charts=True):
     lines = ['# Cerebro evaluation results', '',
-             'These results measure selected small CSV fixtures. They describe the recorded run; '
+             'These results measure selected local CSV and persisted-job fixtures. They describe the recorded run; '
              'they are not a broad model benchmark or evidence of a statistically significant product advantage.', '',
              'Product comparisons grade the same portable task outcome for every arm. Jev calibration and steering '
-             'ablations are separate; scripted protocol checks measure transport and enforcement, not model effectiveness.', '',
+             'ablations are separate; offline native fixture checks measure transport and lifecycle, not model effectiveness.', '',
              'Review calibration requires the expected validity, usefulness and review-disposition labels together. '
              'The diagnostics also show each label separately: an incorrect action label does not by itself mean '
              'the parent missed a defect or followed a malicious instruction.', '',
-             'Only complete expected pairs or triplets with identical case, repetition, and full model/effort settings '
+             'Only complete expected arm groups with identical case, repetition, and full model/effort settings '
              'enter comparative success, time, token, and cost aggregates. A failed or errored trial remains a failure '
              'in its matched unit; its elapsed time and recorded usage remain included. Missing arms are listed as incomplete.', '',
              'Pass-rate intervals are descriptive 95%% Wilson reference intervals on trials, conditional on selected tasks. '
@@ -289,19 +299,33 @@ def report_markdown(report, *, charts=True):
                   '%d errors among all %d recorded trials in this cohort.' % (
                       cohort['matched_units'], cohort['independent_cases'], len(cohort['incomplete_units']),
                       cohort['excluded_trials'], cohort['all_errors'], cohort['all_trials']), '',
+                  'Worker cap: %s requested, %s effective; timing: **%s**. Arms run sequentially within each case/repeat group. '
+                  'Parallel timing measures shared load, not isolated latency.' % (cohort['settings']['jobs_requested'],
+                      cohort['settings']['jobs_effective'], cohort['settings']['timing_mode']), '',
                   '| Role | Model | Effort |', '| --- | --- | --- |']
         for role in ROLES:
-            lines.append('| %s | %s | %s |' % (role, cohort['settings']['models'][role], cohort['settings']['efforts'][role]))
+            lines.append('| %s | %s | %s |' % (role, cohort['settings']['models'][role], cohort['settings']['efforts'][role] or 'native default'))
         lines += ['', 'Jev model: `%s`; confidence threshold: %s; timeout per stage: %ss. '
                   'Endpoint fingerprint: `%s`.' % (cohort['settings']['jev_model'], cohort['settings']['jev_confidence'],
                   cohort['settings']['timeout'], cohort['settings']['jev_endpoint_sha256'])]
-        lines += ['', '| Arm | Passed / trials | Pass rate | Wilson 95% | Seconds / task | Errors |',
+        lines += ['', '| Arm | Passed / trials | Pass rate | Wilson 95% | Seconds / attempted task | Errors |',
                   '| --- | ---: | ---: | ---: | ---: | ---: |']
         for arm, item in cohort['arms'].items():
             lines.append('| %s | %d/%d | %s%% | %s%% | %s | %d |' % (
                 LABELS[arm], item['passed'], item['trials'],
                 formatted(item['pass_rate'] * 100 if item['pass_rate'] is not None else None, 1),
                 interval(item['wilson_95'], 100), formatted(item['mean_seconds']), item['errors']))
+        lines += ['', 'Task outcomes are independent of role/workflow artifacts. `condition_valid` and '
+                  '`role_separated_success` are separate diagnostics; inspect their denominators before attributing gains '
+                  'to role separation. Unstarted interrupted trials stay in outcome denominators but have no timed sample.', '']
+        lines += ['', '| Arm | Valid condition / observed | Role-separated success / observed |',
+                  '| --- | ---: | ---: |']
+        for arm, item in cohort['arms'].items():
+            diagnostics = []
+            for key in ('condition_valid', 'role_separated_success'):
+                value = item['metrics'].get(key)
+                diagnostics.append('%d/%d' % (value['sum'], value['n']) if value else 'not measured')
+            lines.append('| %s | %s | %s |' % (LABELS[arm], *diagnostics))
         lines += ['', '| Arm | Known input | Cached subset | Cache-write subset | Known output | Complete usage trials | Estimated USD / task | Priced trials |',
                   '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
         for arm, item in cohort['arms'].items():

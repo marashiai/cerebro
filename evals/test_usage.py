@@ -42,14 +42,18 @@ class UsageTests(unittest.TestCase):
     def test_parent_failures_and_unanswered_jev_are_not_zero_cost_successes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / 'parent.stdout.jsonl').write_text(json.dumps({'type': 'turn.completed', 'usage': {
-                'input_tokens': 100, 'cached_input_tokens': 50, 'cache_write_input_tokens': 0,
-                'output_tokens': 10}}) + '\n{"incomplete":')
+            events = [
+                {'time': 1, 'type': 'model_resolved', 'thread_id': 'parent', 'worker_id': 'one',
+                 'role': 'implementation', 'model': 'bare-model'},
+                {'time': 2, 'type': 'token_usage', 'thread_id': 'parent', 'usage': {
+                    'totalTokens': 110, 'inputTokens': 100, 'cachedInputTokens': 50, 'outputTokens': 10}},
+                {'time': 3, 'type': 'turn_finished', 'thread_id': 'parent', 'completed': False}]
+            (root / 'observations-one.jsonl').write_text(''.join(json.dumps(event) + '\n' for event in events))
             (root / 'parent.process.json').write_text(json.dumps({'exit_code': -15, 'timed_out': True}))
             (root / 'request.jev.jsonl').write_text(json.dumps({
                 'type': 'request', 'request_id': 'lost', 'payload': {
-                    'model': 'jev-test', 'questions': {'scope': {}}}}) + '\n')
-            measured = collect(root, {'models': {'baseline': 'bare-model'}, 'jev_model': 'jev'}, baseline=True)
+                    'model': 'jev-test', 'questions': {'attention': {}}}}) + '\n')
+            measured = collect(root, {'jev_model': 'jev'})
             parent, jev = measured['usage_ledger']
             self.assertEqual(parent['input_tokens'], 100)
             self.assertEqual(parent['model'], 'bare-model')
@@ -63,7 +67,7 @@ class UsageTests(unittest.TestCase):
             root = Path(tmp)
             rows = [
                 {'type': 'request', 'request_id': 'one', 'payload': {
-                    'model': 'jev-alias', 'questions': {'scope': {}}}},
+                    'model': 'jev-alias', 'questions': {'attention': {}}}},
                 {'type': 'response', 'request_id': 'one', 'body': json.dumps({
                     'model': 'jev-resolved', 'usage': {'input_tokens': 20, 'output_tokens': 5}})},
             ]
@@ -74,7 +78,7 @@ class UsageTests(unittest.TestCase):
             measured = collect(root, {'jev_model': 'jev'})
             child, jev = measured['usage_ledger']
             self.assertFalse(child['complete'])
-            self.assertEqual(jev['role'], 'jev-scope')
+            self.assertEqual(jev['role'], 'jev-attention')
             self.assertEqual(jev['model'], 'jev-resolved')
             self.assertEqual(jev['input_tokens'], 20)
             self.assertTrue(jev['complete'])

@@ -12,9 +12,10 @@
     }
   },
   "cases": {
-    "mixed-review-recovery": {
-      "models": {"review": "gpt-6.1-sol"},
-      "efforts": {"supervisor": "high"}
+    "comparison-persisted-job-restart": {
+      "efforts": {
+        "review": "high"
+      }
     }
   }
 }

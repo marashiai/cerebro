@@ -21,24 +21,8 @@ def count(value):
     return value if type(value) is int and value >= 0 else None
 
 
-def collect(directory, settings, *, baseline=False):
+def collect(directory, settings):
     ledger = []
-    parent = records(directory / 'parent.stdout.jsonl')
-    usage = [event['usage'] for event in parent
-             if event.get('type') == 'turn.completed' and isinstance(event.get('usage'), dict)]
-    if parent or (directory / 'parent.stderr').exists():
-        role = 'baseline' if baseline else 'supervisor'
-        fields = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
-        totals = {field: (sum(item[field] for item in usage)
-                          if usage and all(count(item.get(field)) is not None for item in usage) else None)
-                  for field in fields}
-        process = directory / 'parent.process.json'
-        complete = process.is_file() and json.loads(process.read_text()).get('exit_code') == 0
-        ledger.append({'provider': 'openai', 'role': role, 'model': settings['models'][role],
-                       **totals, 'complete': bool(usage and complete
-                                                 and totals['input_tokens'] is not None
-                                                 and totals['output_tokens'] is not None)})
-
     # Native counters are cumulative for a thread, including resumed turns.
     # Count each thread once instead of summing snapshots or resumed logs.
     threads, workers = {}, {}
@@ -46,7 +30,7 @@ def collect(directory, settings, *, baseline=False):
                           key=lambda event: event['time'])
     for event in observations:
         kind, key = event['type'], event.get('thread_id')
-        if kind == 'model':
+        if kind in ('model_attempt', 'model'):
             workers[event['worker_id']] = event
         if kind == 'model_resolved':
             workers.pop(event['worker_id'], None)
@@ -90,9 +74,9 @@ def collect(directory, settings, *, baseline=False):
             item[event.get('type')] = event
     for item in requests.values():
         questions = item.get('request', {}).get('payload', {}).get('questions', {})
-        if 'scope' in questions:
-            role = 'jev-scope'
-        elif 'validity' in questions and 'usefulness' in questions:
+        if 'attention' in questions:
+            role = 'jev-attention'
+        elif ('validity' in questions and 'usefulness' in questions) or 'clean_validity' in questions:
             role = 'jev-review'
         else:
             role = 'jev-unknown'
@@ -109,4 +93,7 @@ def collect(directory, settings, *, baseline=False):
         ledger.append({'provider': 'jev', 'role': role, 'model': model, **measured,
                        'complete': (role != 'jev-unknown' and not response.get('error') and measured['input_tokens'] is not None
                                     and measured['output_tokens'] is not None)})
-    return {'usage_ledger': ledger, 'usage_complete': bool(ledger) and all(item['complete'] for item in ledger)}
+    processes = list(directory.rglob('*.process.json'))
+    native_failed = (any(json.loads(path.read_text()).get('exit_code') != 0 for path in processes)
+                     or bool(list(directory.rglob('*.process-running.json'))))
+    return {'usage_ledger': ledger, 'usage_complete': bool(ledger) and not native_failed and all(item['complete'] for item in ledger)}

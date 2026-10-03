@@ -52,6 +52,10 @@ class TestJournal:
         self.path = directory / ('test-receipts-' + worker_id + '.jsonl')
         descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         os.close(descriptor)
+        profile = directory / 'receipt-profile.json'
+        self.profile = json.loads(profile.read_text()) if profile.is_file() else {
+            'test_file': 'test_parser.py', 'test_sha256': hashlib.sha256(PARSER_TESTS.encode()).hexdigest(),
+            'test_identities': list(TEST_IDENTITIES)}
         self.started_at = time.time()
         self.offset, self.buffer = 0, b''
         self.pending, self.consumed = {}, set()
@@ -64,7 +68,7 @@ class TestJournal:
         records = (before, after)
         source = before.get('source')
         if (not isinstance(source, dict) or source != after.get('source') or source != file_hashes(repo)
-                or source.get('test_parser.py') != hashlib.sha256(PARSER_TESTS.encode()).hexdigest()
+                or source.get(self.profile['test_file']) != self.profile['test_sha256']
                 or before.get('tests') != []
                 or any(record.get('worker_id') != self.worker_id or record.get('role') != self.role
                        or record.get('cwd') != str(repo.resolve())
@@ -74,10 +78,10 @@ class TestJournal:
                 or not self.started_at <= before['time'] <= after['time'] <= time.time()):
             return None
         results = after.get('tests')
-        passed = (isinstance(results, list) and len(results) == len(TEST_IDENTITIES)
+        passed = (isinstance(results, list) and len(results) == len(self.profile['test_identities'])
                   and all(isinstance(result, dict) and isinstance(result.get('name'), str)
                           and result.get('passed') is True for result in results)
-                  and sorted(result.get('name', '') for result in results) == sorted(TEST_IDENTITIES))
+                  and sorted(result.get('name', '') for result in results) == sorted(self.profile['test_identities']))
         return {'type': 'tests', 'source_root': str(repo.resolve()),
                 'run_id': after['run_id'], 'worker_id': self.worker_id, 'journal': str(self.path),
                 'thread_id': self.thread_id, 'passed': passed, 'source': source,
@@ -155,8 +159,8 @@ def main():
     path = directory / ('observations-' + worker_id + '.jsonl')
     journal = TestJournal(directory, worker_id, role)
     lock = threading.Lock()
+    from baseline import workspaces
     starting = file_hashes(repo)
-    previous = starting
     actions = {}
     steering = {}
     thread_id = ''
@@ -166,22 +170,25 @@ def main():
             out.write(json.dumps({'time': time.time(), 'role': role, 'worker_id': worker_id,
                                   'source_root': str(repo.resolve()), **value}) + '\n')
 
+    record({'type': 'model_attempt', 'model': None})
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=sys.stderr,
                             env={**os.environ, **journal.environment()})
 
     def forward_input():
-        nonlocal repo, starting, previous
+        nonlocal repo, starting
         for line in sys.stdin.buffer:
             request = json.loads(line)
             if request.get('method') in ('thread/start', 'thread/resume'):
                 params = request.get('params', {})
                 repo = Path(params['cwd'])
                 starting = file_hashes(repo)
-                previous = starting
                 record({'type': 'model', 'method': request['method'],
-                        'model': params.get('model'), 'cwd': str(repo)})
+                        'model': params.get('model'), 'effort': os.environ.get('CEREBRO_CHILD_EFFORT') or None,
+                        'cwd': str(repo)})
             if request.get('method') == 'turn/start':
                 params = request.get('params', {})
+                record({'type': 'turn_settings', 'thread_id': params['threadId'],
+                        'effort': params.get('effort')})
                 if any(item.get('text', '').startswith('[supervisor]') for item in params.get('input', [])):
                     with lock:
                         steering[request['id']] = params['threadId']
@@ -197,7 +204,7 @@ def main():
             result = event['result']
             thread_id = result['thread']['id']
             record({'type': 'model_resolved', 'thread_id': thread_id,
-                    'model': result['model'], 'effort': result['reasoningEffort']})
+                    'model': result.get('model'), 'effort': result.get('reasoningEffort')})
         with lock:
             steered_thread = steering.pop(event.get('id'), None)
         if steered_thread:
@@ -214,28 +221,30 @@ def main():
                     'completed': params['turn']['status'] == 'completed'})
         is_action = item.get('type') in ('commandExecution', 'fileChange', 'mcpToolCall')
         if method == 'item/started' and is_action:
-            actions[item['id']] = {'source': file_hashes(repo), 'started_at': time.time()}
+            actions[item['id']] = {'source': {str(root): file_hashes(root) for root in workspaces(repo, directory)},
+                                   'started_at': time.time()}
         elif method == 'item/completed' and is_action:
-            after = file_hashes(repo)
             before = actions.pop(item['id'], {})
-            changed = sorted(name for name in set(previous) | set(after) if previous.get(name) != after.get(name))
-            record({'type': 'activity', 'thread_id': thread_id, 'cwd': item.get('cwd', str(repo)),
-                    'item_type': item['type'], 'command': item.get('command'),
-                    'exit_code': item.get('exitCode'), 'changed_files': changed,
-                    'output': (item.get('aggregatedOutput') or json.dumps(item.get('result') or ''))[-4000:],
-                    'started_at': before.get('started_at'),
-                    'unchanged_during_check': before.get('source') == after, 'source': after})
-            previous = after
+            for root in workspaces(repo, directory):
+                after = file_hashes(root)
+                prior = before.get('source', {}).get(str(root), {})
+                changed = sorted(name for name in set(prior) | set(after) if prior.get(name) != after.get(name))
+                record({'type': 'activity', 'thread_id': thread_id, 'source_root': str(root),
+                        'cwd': item.get('cwd', str(repo)), 'item_type': item['type'],
+                        'command': item.get('command'), 'exit_code': item.get('exitCode'), 'changed_files': changed,
+                        'output': (item.get('aggregatedOutput') or json.dumps(item.get('result') or ''))[-4000:],
+                        'started_at': before.get('started_at'), 'finished_at': time.time(),
+                        'unchanged_during_check': before.get('source', {}).get(str(root)) == after, 'source': after})
         elif method == 'turn/completed' and role == 'review':
             after = file_hashes(repo)
             record({'type': 'review', 'thread_id': thread_id, 'passed': params['turn']['status'] == 'completed',
                     'unchanged_during_check': starting == after, 'source': after})
         if method in ('item/completed', 'turn/completed'):
-            for receipt in journal.take(repo, thread_id):
+            for receipt in journal.take(workspaces(repo, directory), thread_id):
                 record({'type': 'tests', **receipt})
         sys.stdout.buffer.write(line)
         sys.stdout.buffer.flush()
-    for receipt in journal.take(repo, thread_id):
+    for receipt in journal.take(workspaces(repo, directory), thread_id):
         record({'type': 'tests', **receipt})
     return proc.wait()
 
