@@ -1,17 +1,46 @@
 """Offline checks prevent protocol grading from mistaking arbitrary errors for success."""
 
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from probes import guarded_checks, jobs, native_failure_matches, response_values, terminal_failure
+from probes import guarded_checks, jobs, native_failure_matches, response_values, start_parent, terminal_failure
 from probes_provider import encode_events, response_events
 
 
 class ProbeGradingTests(unittest.TestCase):
+    def test_parent_probe_passes_resolved_model_and_effort_to_native_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            native = root / 'native-argument-recorder'
+            native.write_text('#!' + sys.executable + '\nimport json,sys\n'
+                              'if "mcp" in sys.argv:\n    print("[]")\n'
+                              'else:\n    print(json.dumps({"argv":sys.argv[1:],"prompt":sys.stdin.read()}))\n')
+            native.chmod(0o700)
+            session = root / 'session'
+            session.mkdir()
+            (session / 'tools-supervisor.json').write_text(json.dumps({'mcpServers': {'cerebro': {'env': {}}}}))
+            settings = {'codex': str(native), 'models': {'supervisor': 'future-protocol-parent'},
+                        'efforts': {'supervisor': 'ultra'}}
+            processes = []
+            process = start_parent(root, {**os.environ, 'CEREBRO_SESSION_DIR': str(session)},
+                                   settings, 'parent', 'Configuration boundary probe.', processes)
+            try:
+                self.assertEqual(process.finish(10)['exit_code'], 0)
+                observed = json.loads((root / 'parent.stdout.jsonl').read_text())
+                argv = observed['argv']
+                self.assertEqual(argv[argv.index('--model') + 1], settings['models']['supervisor'])
+                self.assertEqual([arg for arg in argv if arg.startswith('model_reasoning_effort=')],
+                                 ['model_reasoning_effort=' + json.dumps(settings['efforts']['supervisor'])])
+                self.assertEqual(observed['prompt'], 'Configuration boundary probe.')
+                self.assertEqual(processes, [process])
+            finally:
+                process.stop()
+
     def test_failure_requires_matching_terminal_job_and_error_handoff(self):
         response = {'job_id': 'one', 'state': 'completed', 'exit_code': 2, 'mcp_is_error': True}
         self.assertTrue(terminal_failure(response, [{'id': 'one', 'exit_code': 2}]))

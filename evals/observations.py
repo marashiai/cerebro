@@ -52,7 +52,7 @@ def job_outcomes(session):
     return outcomes
 
 
-def episode_metrics(directory, session, arm, repo, base, criteria, efforts, *, max_implementations=2):
+def episode_metrics(directory, session, arm, repo, base, criteria, settings, *, max_implementations=2):
     calls = parent_calls(directory)
     commands = [call['argv'] for call in calls]
     classifications = []
@@ -70,17 +70,17 @@ def episode_metrics(directory, session, arm, repo, base, criteria, efforts, *, m
         violations.append('missing effective native model or effort evidence')
     for item in observations:
         if item['type'] in ('model', 'model_resolved'):
-            expected = role_model(item['role'])
+            expected = role_model(item['role'], settings['models'])
             if item['model'] != expected:
                 violations.append('native child used an unexpected model')
-            if item['type'] == 'model_resolved' and item['effort'] != efforts[ROLE_GROUPS[item['role']]]:
+            if item['type'] == 'model_resolved' and item['effort'] != settings['efforts'][ROLE_GROUPS[item['role']]]:
                 violations.append('native child used an unexpected reasoning effort')
     for argv in commands:
         if argv[0] in ('execute', 'apply-review', 'doc-write'):
             if ('--no-watch' if arm == 'with_jev' else '--watch') in argv:
                 violations.append('changed assigned monitoring condition')
         if '--model' in argv:
-            expected = role_model(argv[0])
+            expected = role_model(argv[0], settings['models'])
             if argv[argv.index('--model') + 1] != expected:
                 violations.append('changed assigned role model')
     reviews = []

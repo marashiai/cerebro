@@ -311,7 +311,7 @@ def trial(name, directory, seed, arm, settings):
             selected = next(iter(isolated_paths))
         result = grade_episode(selected, before, allowed)
         metrics = episode_metrics(directory, session, arm, selected, base, criteria,
-                                  settings['efforts'], max_implementations=3)
+                                  settings, max_implementations=3)
         final_source = file_hashes(selected)
         bound_activity = [item for item in seen if item['type'] == 'activity'
                           and item.get('source') == final_source and item.get('unchanged_during_check')]

@@ -13,8 +13,9 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from runtime import (CLI, LIB, MODELS, ROLE_GROUPS, ROOT, cleanup, codex, command, environment,
+from runtime import (CLI, LIB, ROLE_GROUPS, ROOT, cleanup, codex, command, environment,
                      file_hashes, redact, role_model, setup, write_json)
+from model_config import add_arguments, cli_overrides, load_config, resolve_config
 from fixtures import REQUIREMENTS, git, seed_repo, seed_episode, grade_episode
 from observations import tool_response, parent_calls, job_outcomes, episode_metrics
 import scenarios
@@ -180,7 +181,7 @@ def episode_trial(name, directory, seed, arm, settings):
         )
         parent = codex(directory, env, prompt, settings, supervisor=True)
         result = grade_episode(repo, before)
-        result.update(episode_metrics(directory, session, arm, repo, base, criteria, settings['efforts']))
+        result.update(episode_metrics(directory, session, arm, repo, base, criteria, settings))
         if not result['jobs'] or any(job['exit_code'] != 0 for job in result['jobs']):
             result.update(correct=False, error='failed or unfinished child/monitor; inspect durable job outcomes')
         if (session / 'spec.md').read_text() != REQUIREMENTS:
@@ -207,8 +208,8 @@ def report(directory, rows, manifest):
                                           'single_condition_summary': singles,
                                           'exit_status': exit_status(rows), 'trials': rows})
     lines = ['# Cerebro eval results', '',
-             'Live implementation: GPT-6 Luna. Live review and supervision: GPT-6.1 Sol.', '',
-             'Reasoning effort: ' + ', '.join(role + '=' + effort for role, effort in
+             'Resolved role models and efforts are recorded per case in manifest.json and each trial/settings.json.', '',
+             'Default reasoning effort: ' + ', '.join(role + '=' + effort for role, effort in
                                             manifest['settings']['efforts'].items()) + '.', '',
              'Live cases use real providers. Protocol probes use an explicitly scripted loopback provider '
              'through real native CLIs and Cerebro; they measure transport and enforcement, not model judgment. '
@@ -245,7 +246,7 @@ def report(directory, rows, manifest):
             arm, total('elapsed_seconds'), usage('input_tokens'), usage('output_tokens'),
             total('scope_notices'), total('published_scope_notices'), total('steers'),
             total('steer_attempts'), total('correction_children')))
-    lines += ['', 'Token counts cover the real Sol parent/adjudicator only; child and Jev usage are excluded. '
+    lines += ['', 'Token counts cover the real parent/adjudicator only; child and Jev usage are excluded. '
               'Durations include all stages. Faster failures do not imply faster successful delivery. '
               'Implementation jobs include initial work in complete-task cases; in bootstrapped steering '
               'episodes they count subsequent corrections only.', '',
@@ -299,9 +300,7 @@ def main():
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42, help='reproducible counterbalancing of arm order')
     parser.add_argument('--timeout', type=int, default=900, help='seconds per native parent/child stage (default: 900)')
-    for role, default in [('implementation', 'low'), ('review', 'medium'), ('supervisor', 'medium')]:
-        parser.add_argument('--' + role + '-effort', choices=('low', 'medium', 'high', 'max'),
-                            default=default, help=role + ' reasoning effort (default: ' + default + ')')
+    add_arguments(parser)
     parser.add_argument('--out', type=Path, help='new private output directory; defaults to evals/runs/<UTC>')
     args = parser.parse_args()
     if args.repeat < 1 or args.timeout < 1:
@@ -312,6 +311,13 @@ def main():
         if unknown:
             parser.error('unknown cases for this suite: ' + ', '.join(sorted(unknown)))
         selected = [entry for entry in selected if entry['id'] in args.case]
+    try:
+        model_config = load_config(args.config, {entry['id'] for entry in entries})
+        overrides = cli_overrides(args)
+        default_roles = resolve_config(model_config, overrides=overrides)
+        resolved_roles = {entry['id']: resolve_config(model_config, entry['id'], overrides) for entry in selected}
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
     if args.list:
         for entry in selected:
             print('%s [%s; %s%s]: %s' % (entry['id'], entry['suite'], entry['mode'],
@@ -322,8 +328,7 @@ def main():
         parser.error('installed, authenticated Codex CLI is required')
     config_path = Path(os.environ.get('CEREBRO_HOME', str(Path.home() / '.cerebro'))) / 'config.json'
     config = json.loads(config_path.read_text()) if config_path.is_file() else {}
-    settings = {'codex': native, 'timeout': args.timeout,
-                'efforts': {role: getattr(args, role + '_effort') for role in MODELS}}
+    settings = {'codex': native, 'timeout': args.timeout, **default_roles}
     for name, default in [('jev_api_key', ''), ('jev_model', 'jev-latest'), ('jev_endpoint', ENDPOINT), ('jev_confidence', 0.8)]:
         settings[name] = os.environ.get('CEREBRO_' + name.upper(), config.get(name, default))
     if any(entry['paired'] for entry in selected) and not settings['jev_api_key']:
@@ -331,9 +336,12 @@ def main():
     os.umask(0o077)
     directory = (args.out or HERE / 'runs' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')).resolve()
     directory.mkdir(parents=True, exist_ok=False)
-    manifest = {'created_at': datetime.now(timezone.utc).isoformat(), 'models': MODELS,
+    per_case_settings = {name: {**settings, **roles} for name, roles in resolved_roles.items()}
+    public_settings = lambda value: {key: item for key, item in value.items() if key != 'jev_api_key'}
+    manifest = {'created_at': datetime.now(timezone.utc).isoformat(),
                 'native_version': subprocess.check_output([native, '--version'], text=True).strip(),
-                'settings': {key: value for key, value in settings.items() if key != 'jev_api_key'},
+                'settings': public_settings(settings),
+                'resolved_case_settings': {name: public_settings(value) for name, value in per_case_settings.items()},
                 'repetitions': args.repeat, 'seed': args.seed,
                 'cases': [{key: value for key, value in entry.items() if key != 'case'} for entry in selected],
                 'source_commit': git(ROOT, 'rev-parse', 'HEAD'),
@@ -358,19 +366,21 @@ def main():
             for arm in arms:
                 trial = pair / arm
                 trial.mkdir(parents=True)
+                trial_settings = per_case_settings[name]
+                write_json(trial / 'settings.json', public_settings(trial_settings))
                 row = {'case': name, 'kind': kind, 'repeat': repeat, 'arm': arm, 'artifacts': str(trial),
-                       'mode': entry['mode'], 'paired': entry['paired']}
+                       'mode': entry['mode'], 'paired': entry['paired'], 'settings': public_settings(trial_settings)}
                 print('%s [%s] repeat %d' % (name, arm, repeat + 1), flush=True)
                 started = time.monotonic()
                 try:
                     if kind == 'review':
-                        outcome = review_trial(case, trial, seed, arm, settings)
+                        outcome = review_trial(case, trial, seed, arm, trial_settings)
                     elif kind == 'steering':
-                        outcome = episode_trial(name, trial, seed, arm, settings)
+                        outcome = episode_trial(name, trial, seed, arm, trial_settings)
                     elif entry['mode'] == 'protocol':
-                        outcome = probes.trial(name, trial, settings)
+                        outcome = probes.trial(name, trial, trial_settings)
                     else:
-                        outcome = scenarios.trial(name, trial, seed, arm, settings)
+                        outcome = scenarios.trial(name, trial, seed, arm, trial_settings)
                     row.update(outcome)
                 except Exception as error:
                     message = str(error)

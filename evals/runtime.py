@@ -16,17 +16,18 @@ LIB = ROOT / 'lib'
 CLI = ROOT / 'bin' / 'cerebro'
 sys.path.insert(0, str(LIB / 'python'))
 from codex_launch import guarded_options, toml
+from model_config import ROLES
 
-MODELS = {'implementation': 'gpt-6-luna', 'review': 'gpt-6.1-sol', 'supervisor': 'gpt-6.1-sol'}
 ROLE_GROUPS = {role: group for group, roles in {
     'implementation': ('execute', 'apply-review', 'doc-write'),
     'review': ('review', 'verify', 'audit', 'improve'),
     'supervisor': ('supervisor',),
+    'baseline': ('baseline',),
 }.items() for role in roles}
 
 
-def role_model(role):
-    return MODELS[ROLE_GROUPS[role]]
+def role_model(role, models):
+    return models[ROLE_GROUPS[role]]
 
 
 @contextmanager
@@ -85,7 +86,7 @@ def setup(directory, settings, watch, requirements):
     native = directory / 'codex-eval'
     choices = ''.join('|'.join(role for role, kind in ROLE_GROUPS.items() if kind == group)
                       + ') eval_effort=' + shlex.quote(toml(settings['efforts'][group])) + ' ;;\n'
-                      for group in ('implementation', 'review', 'supervisor'))
+                      for group in ROLES)
     native.write_text('#!/usr/bin/env bash\ncase "${CEREBRO_CHILD_ROLE:?missing child role}" in\n'
                       + choices + '*) echo "Unknown eval child role" >&2; exit 2 ;;\nesac\nexec '
                       + shlex.quote(sys.executable) + ' '
@@ -95,8 +96,8 @@ def setup(directory, settings, watch, requirements):
     env = {key: value for key, value in os.environ.items() if not key.startswith('CEREBRO_')}
     env.update(CEREBRO_HOME=str(directory / 'home'), CEREBRO_SESSION_DIR=str(session),
                CEREBRO_SESSION_ID='eval', CEREBRO_BACKEND='codex', CEREBRO_LIB_DIR=str(LIB),
-               CEREBRO_CODEX_CMD=str(native), CEREBRO_MODEL=MODELS['implementation'],
-               CEREBRO_REVIEW_MODEL=MODELS['review'], CEREBRO_SUPERVISOR_MODEL=MODELS['supervisor'],
+               CEREBRO_CODEX_CMD=str(native), CEREBRO_MODEL=settings['models']['implementation'],
+               CEREBRO_REVIEW_MODEL=settings['models']['review'], CEREBRO_SUPERVISOR_MODEL=settings['models']['supervisor'],
                CEREBRO_JEV_ENABLED=str(int(watch)), CEREBRO_JEV_API_KEY=settings['jev_api_key'],
                CEREBRO_JEV_MODEL=settings['jev_model'], CEREBRO_JEV_ENDPOINT=settings['jev_endpoint'],
                CEREBRO_JEV_CONFIDENCE=str(settings['jev_confidence']), CEREBRO_TIMEOUT=str(settings['timeout']),
@@ -124,7 +125,7 @@ def codex(directory, env, prompt, settings, *, schema=None, supervisor=False):
     output = directory / 'answer.json' if schema else directory / 'answer.md'
     argv = [settings['codex'], '--no-daemon', '--strict-config', *options, 'exec',
             '--ephemeral', '--skip-git-repo-check', '--json', '--color', 'never',
-            '--model', MODELS['supervisor'], '--output-last-message', str(output)]
+            '--model', settings['models']['supervisor'], '--output-last-message', str(output)]
     if schema:
         schema_path = directory / 'output-schema.json'
         write_json(schema_path, schema)

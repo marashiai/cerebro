@@ -107,9 +107,10 @@ def start_parent(directory, env, settings, name, prompt, processes):
     with environment(env):
         options = guarded_options(settings['codex'], 'supervisor', str(directory), env['CEREBRO_SESSION_DIR'])
     argv = [settings['codex'], '--no-daemon', '--strict-config', *options,
-            '-c', 'project_doc_max_bytes=0', '-c', 'model_reasoning_effort="medium"',
+            '-c', 'project_doc_max_bytes=0',
+            '-c', 'model_reasoning_effort=' + toml(settings['efforts']['supervisor']),
             'exec', '--ephemeral', '--skip-git-repo-check', '--json', '--color', 'never',
-            '--model', 'gpt-6.1-sol', '-']
+            '--model', settings['models']['supervisor'], '-']
     result = Process(argv, env, directory, name, prompt)
     processes.append(result)
     return result

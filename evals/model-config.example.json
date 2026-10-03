@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "models": {
+      "implementation": "gpt-6-luna",
+      "review": "gpt-5.6-terra",
+      "supervisor": "gpt-5.6-terra"
+    },
+    "efforts": {
+      "implementation": "low",
+      "review": "medium",
+      "supervisor": "medium"
+    }
+  },
+  "cases": {
+    "mixed-review-recovery": {
+      "models": {"review": "gpt-6.1-sol"},
+      "efforts": {"supervisor": "high"}
+    }
+  }
+}
