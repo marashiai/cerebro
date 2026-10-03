@@ -120,11 +120,16 @@ def chart_cohort(cohort, output, stem):
         axis.set_title(heading, pad=17, fontsize=12)
         axis.set_ylabel(ylabel, fontsize=9)
         axis.set_xticks(range(len(arms)), labels, fontsize=9)
+        axis.set_xlim(-.6, len(arms) - .4)
         axis.set_axisbelow(True)
         axis.yaxis.grid(True)
         maximum = max([value for value in values if value is not None] or [1])
         axis.set_ylim(0, 119 if panel == 0 else max(maximum * 1.30, .0001))
         for index, value in enumerate(values):
+            if panel in (2, 3):
+                coverage = stats[index]['usage_complete_trials' if panel == 2 else 'cost_known_trials']
+                axis.text(index, -.20, '%d/%d complete' % (coverage, n), transform=axis.get_xaxis_transform(),
+                          ha='center', fontsize=8, color='#687284')
             if value is None:
                 axis.text(index, axis.get_ylim()[1] * .07, 'Unknown', ha='center', color='#687284')
                 continue
@@ -136,10 +141,6 @@ def chart_cohort(cohort, output, stem):
                 bounds = stats[index]['wilson_95']
                 axis.errorbar(index, value, yerr=[[value - bounds[0] * 100], [bounds[1] * 100 - value]],
                               color='#293143', capsize=5, linewidth=1.2, zorder=4)
-            if panel in (2, 3):
-                coverage = stats[index]['usage_complete_trials' if panel == 2 else 'cost_known_trials']
-                axis.text(index, -.20, '%d/%d complete' % (coverage, n), transform=axis.get_xaxis_transform(),
-                          ha='center', fontsize=8, color='#687284')
     fig.text(.085, .051, 'Failures remain in every matched denominator. Pass-rate whiskers: descriptive 95% Wilson intervals.\n'
              'Repeated trials are not independent cases. Tokens show recorded counts; price is unknown when coverage is incomplete.',
              fontsize=9, color='#687284', linespacing=1.6)
@@ -174,6 +175,11 @@ def chart_cohort(cohort, output, stem):
         else:
             maximum = max(item[metric] for item in stats if item[metric] is not None)
             axis.set_xlim(0, maximum * 1.4 if maximum else 1)
+            if metric == 'mean_cost_usd':
+                missing = [LABELS[arm] for arm, item in zip(arms, stats) if item[metric] is None]
+                if missing:
+                    axis.text(0, 1.06, 'Unpriced: ' + ', '.join(missing), transform=axis.transAxes,
+                              fontsize=9, color='#687284')
     fig.text(.085, .059, 'Each point uses the same matched task units. Means include failures.\n'
              'Exploratory fixture results; paired uncertainty and per-case outcomes appear in the report.',
              fontsize=9, color='#687284', linespacing=1.6)

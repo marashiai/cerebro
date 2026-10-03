@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import publish
 import stats
@@ -206,6 +207,26 @@ class StatisticsTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_unknown_price_remains_visible_in_charts(self):
+        arms = ['bare', 'cerebro', 'cerebro_jev']
+        rows = [trial(arm, expected_arms=arms, usage_complete=arm != 'cerebro_jev') for arm in arms]
+        cohort = stats.summarize(document(*rows), PRICES)['cohorts'][0]
+
+        def inspect_chart(figure, output, name):
+            figure.canvas.draw()
+            if name.endswith('-bars'):
+                axis = figure.axes[3]
+                unknown = next(text for text in axis.texts if text.get_text() == 'Unknown')
+                self.assertTrue(axis.bbox.contains(*axis.transData.transform(unknown.get_position())))
+                self.assertIn('0/1 complete', [text.get_text() for text in axis.texts])
+                self.assertEqual([text.get_text() for text in axis.get_xticklabels()],
+                                 ['Bare agent', 'Cerebro', 'Cerebro + Jev'])
+            else:
+                self.assertIn('Unpriced: Cerebro + Jev', [text.get_text() for text in figure.axes[1].texts])
+
+        with patch('publish.save_chart', side_effect=inspect_chart):
+            publish.chart_cohort(cohort, Path('.'), 'test')
+
     def write_run(self, root, rows):
         private = root / 'private'
         private.mkdir()

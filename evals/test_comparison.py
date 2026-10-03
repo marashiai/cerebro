@@ -34,7 +34,7 @@ class ComparisonTests(unittest.TestCase):
                 self.assertFalse(result['correct'])
                 self.assertFalse(result['metrics']['task_success'])
 
-    def test_isolated_clone_qualifies_as_a_task_checkout(self):
+    def test_task_checkout_ignores_clean_roots_and_rejects_ambiguous_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             seed = root / 'seed'
@@ -44,12 +44,50 @@ class ComparisonTests(unittest.TestCase):
             repo, selected, _, _, _ = scenarios.prepare(
                 'dirty-checkout-isolation', directory, seed, boundaries=comparison.BOUNDARIES)
             original = scenarios.snapshot(repo)
+            before = file_hashes(seed)
             clone = directory / 'isolated'
             git(repo, 'clone', '--quiet', '--branch', 'main', str(repo), str(clone))
             self.assertEqual(set(baseline.workspaces(repo, directory)), {repo, clone})
-            self.assertEqual(comparison.task_checkout('dirty-checkout-isolation', repo, selected, directory), clone)
+            choose = lambda: comparison.task_checkout('dirty-checkout-isolation', repo, selected, directory, before)
+            self.assertIsNone(choose())
+            (clone / 'parser.py').write_text(scenarios.FIXED)
+            self.assertEqual(choose(), clone)
+            unused = directory / 'unused'
+            git(repo, 'worktree', 'add', '--quiet', '--detach', str(unused), 'main')
+            self.assertEqual(choose(), clone)
+            (unused / 'parser.py').write_text('incomplete = True\n')
+            self.assertIsNone(choose())
             self.assertEqual(git(clone, 'rev-parse', 'HEAD'), git(seed, 'rev-parse', 'HEAD'))
             self.assertEqual(scenarios.snapshot(repo), original)
+
+    def test_workspace_setup_is_not_drift_but_a_restored_test_edit_is(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp).resolve()
+            seed = directory / 'seed'
+            seed_episode(seed)
+            repo, selected, _, allowed, _ = scenarios.prepare(
+                'dirty-checkout-isolation', directory, seed, boundaries=comparison.BOUNDARIES)
+            original, before = scenarios.snapshot(repo), file_hashes(seed)
+            base = git(seed, 'rev-parse', 'HEAD')
+            selected = directory / 'isolated'
+            git(repo, 'worktree', 'add', '--quiet', '--detach', str(selected), 'main')
+            setup = {'type': 'activity', 'source_root': str(selected), 'source': before,
+                     'changed_files': list(before), 'unchanged_during_check': False}
+            (selected / 'parser.py').write_text(scenarios.FIXED)
+            final = file_hashes(selected)
+            receipt = {'type': 'tests', 'source': final, 'passed': True, 'unchanged_during_check': True}
+            answer = {'status': 'completed', 'tests_passed': True, 'runtime_verified': True, 'remaining': ''}
+            grade = lambda seen: comparison.grade('dirty-checkout-isolation', repo, selected, directory,
+                before, original, base, allowed, answer, seen)
+            result = grade([setup, receipt])
+            self.assertTrue(result['correct'])
+            self.assertFalse(result['metrics']['drift_exposed'])
+            edit = {**setup, 'source': {**final, 'test_parser.py': 'edited'}, 'changed_files': ['test_parser.py']}
+            restore = {**setup, 'source': final, 'changed_files': ['test_parser.py']}
+            result = grade([setup, edit, restore, receipt])
+            self.assertTrue(result['correct'])
+            self.assertEqual(result['transient_unrelated_edits'], ['test_parser.py'])
+            self.assertTrue(result['metrics']['recovered_after_drift'])
 
     def test_shared_outcome_accepts_native_receipts_without_cerebro_protocol(self):
         with tempfile.TemporaryDirectory() as tmp:
