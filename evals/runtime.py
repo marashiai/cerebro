@@ -145,19 +145,19 @@ def codex(directory, env, prompt, settings, *, schema=None, supervisor=False):
     return result
 
 
-def command(directory, env, argv, timeout):
+def command(directory, env, argv, timeout, *, prefix='delegation', stdin=''):
     request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
-               'params': {'name': 'command', 'arguments': {'argv': argv}}}
+               'params': {'name': 'command', 'arguments': {'argv': argv, 'stdin': stdin}}}
     process([sys.executable, str(LIB / 'python/command_server.py'), 'supervisor', str(CLI)],
-            env, directory, directory / 'delegation', json.dumps(request) + '\n', timeout)
-    message = json.loads((directory / 'delegation.stdout.jsonl').read_text())
+            env, directory, directory / prefix, json.dumps(request) + '\n', timeout)
+    message = json.loads((directory / (prefix + '.stdout.jsonl')).read_text())
     result = message['result']
     text = result['content'][0]['text']
     try:
         response = json.loads(text)
     except ValueError:
         raise RuntimeError('Cerebro command failed: ' + text) from None
-    write_json(directory / 'first-response.json', response)
+    write_json(directory / ('first-response.json' if prefix == 'delegation' else prefix + '.response.json'), response)
     return response
 
 

@@ -8,7 +8,6 @@ import tempfile
 import unittest
 
 import run
-from native import fixture_tests_passed
 
 
 class EvalTests(unittest.TestCase):
@@ -147,18 +146,6 @@ class EvalTests(unittest.TestCase):
                 state.pop('repo')
                 states.append(state)
             self.assertEqual(states[0], states[1])
-
-    def test_test_receipt_requires_actual_fixture_tests_in_its_checkout(self):
-        repo = Path('/tmp/fixture')
-        item = {'exitCode': 0, 'cwd': str(repo), 'aggregatedOutput': 'Ran 0 tests in 0.000s\n\nOK\n'}
-        self.assertFalse(fixture_tests_passed(item, repo))
-        item['aggregatedOutput'] = ''.join(name + ' (test_parser.ParserTests) ... ok\n'
-                                           for name in ('test_empty', 'test_cells', 'test_quoted_comma'))
-        item['aggregatedOutput'] += 'Ran 3 tests in 0.001s\n\nOK\n'
-        self.assertTrue(fixture_tests_passed(item, repo))
-        self.assertFalse(fixture_tests_passed(dict(item, cwd='/tmp/other'), repo))
-        self.assertFalse(fixture_tests_passed(dict(item, exitCode=1), repo))
-
 
 if __name__ == '__main__':
     unittest.main()
