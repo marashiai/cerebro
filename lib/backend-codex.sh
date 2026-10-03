@@ -14,7 +14,7 @@ backend_codex_resume_orchestrator() {
 
 backend_codex_child_run() {
   local pair="$1" cwd="$2" prompt="$3" role="$4" resume="$5" \
-    child_log="$6" msg_capture="$7" id_capture="$8" store_file="$9" ckey="${10}" model="${11:-$CEREBRO_MODEL}"
+    child_log="$6" msg_capture="$7" id_capture="$8" store_file="$9" ckey="${10}" model="${11-$CEREBRO_MODEL}"
   playwright_isolate_child
   if (( ! pair )); then
     local PAIR_FIFO="" PAIR_STEER="" CEREBRO_PAIR_IDLE=0 CEREBRO_JEV_ENABLED=0
@@ -24,7 +24,7 @@ backend_codex_child_run() {
 }
 
 backend_codex_pair_begin() {
-  case "$1" in execute|apply-review|doc-write) ;; *) die "pair: unsupported role: $1" ;; esac
+  case "$1" in execute|review) ;; *) die "pair: unsupported role: $1" ;; esac
   PAIR_SID="${5:-}"
   PAIR_FIFO="${4%.jsonl}.steer.fifo"
   PAIR_STEER="${4%.jsonl}.steering.md"
@@ -35,8 +35,7 @@ backend_codex_pair_begin() {
 }
 backend_codex_pair_run() {
   local cwd="$1" prompt="$2" role="$3" resume="$4" child_log="$5" \
-    msg_capture="$6" id_capture="$7" store_file="$8" ckey="$9" model="${10:-$CEREBRO_MODEL}"
-  case "$role" in review|audit|improve) backend_supervisor_config reviewer >/dev/null ;; esac
+    msg_capture="$6" id_capture="$7" store_file="$8" ckey="$9" model="${10-$CEREBRO_MODEL}"
   local instructions; instructions="$(child_sys_prompt "$role")"
   printf '%s' "$prompt" | CEREBRO_CHILD_ROLE="$role" CEREBRO_CHILD_INSTRUCTIONS="$instructions" \
     CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE" "${TIMEOUT_CMD[@]}" python3 "$CEREBRO_LIB_DIR/python/pair_process.py" \

@@ -13,8 +13,8 @@
 # Zed. It is a THIN PROXY (lib/python/acp_server.py, on the official
 # agent-client-protocol Python SDK): per ACP session it mints a cerebro session,
 # spawns a per-session upstream claude-agent-acp child, injects
-# CEREBRO_SESSION_ID, pins the restricted
-# cerebro-orchestrator agent, and relays JSON-RPC unchanged with sessionId
+# CEREBRO_SESSION_ID, pins the Cerebro
+# supervisor agent, and relays JSON-RPC unchanged with sessionId
 # remap. The upstream child owns the entire ACP capability surface (images,
 # @-mentions, thinking, elicitation, terminals, MCP, permissions, edit review,
 # model/mode/effort pickers, session load/resume/fork/list, usage); cerebro owns
@@ -98,6 +98,7 @@ cmd_acp() {
   export CEREBRO_HOME \
          CEREBRO_BACKEND \
          CEREBRO_MODEL CEREBRO_SUPERVISOR_MODEL CEREBRO_REVIEW_MODEL \
+         CEREBRO_SUPERVISOR_EFFORT CEREBRO_IMPLEMENTOR_EFFORT CEREBRO_REVIEW_EFFORT \
          CEREBRO_CLAUDE_BASE_URL CEREBRO_CLAUDE_AUTH_TOKEN
   exec "$CEREBRO_ACP_PYTHON" "$CEREBRO_LIB_DIR/python/acp_server.py"
 }
@@ -105,13 +106,13 @@ cmd_acp() {
 # cmd_acp_mint (internal) -- mint a cerebro session for one ACP session/new and
 # prepare its Cerebro-owned ACP project dir, then print only the sid. Native
 # launch happens after the proxy injects the session binding. Claude discovers
-# its restricted wrapper here. The user's repo is an additional directory.
+# its supervisor wrapper here. The user's repo is an additional directory.
 cmd_acp_mint() {
   local sid sess_dir ts proj
   sid="$(mint_uuid)"
   sess_dir="$CEREBRO_HOME/sessions/$sid"
   proj="$CEREBRO_HOME/acp/$sid"
-  mkdir -p "$sess_dir/plans" "$sess_dir/children" \
+  mkdir -p "$sess_dir/tasks" "$sess_dir/children" \
            "$proj/.claude/agents" \
     || die "acp-mint: cannot create session dirs under $CEREBRO_HOME"
   : > "$sess_dir/transcript.jsonl"

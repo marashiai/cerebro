@@ -30,7 +30,7 @@ cmd_detach() {
   [[ "$output" == /* ]] || die "detach: output path must be absolute"
 
   case "$1" in
-    audit|improve|execute|review|apply-review|verify|doc-write) ;;
+    execute|answer) ;;
     *) die "detach: '$1' is not a long-running child subcommand" ;;
   esac
 
@@ -71,12 +71,17 @@ cmd_wait() {
   require_session
   command -v python3 >/dev/null 2>&1 || die "wait: missing required command on PATH: python3"
   [[ $# -ge 1 ]] || die "usage: cerebro wait <job-id|absolute-output.status> [--after <sequence>]"
-  local target="$1" after=0; shift
-  if [[ $# -gt 0 ]]; then
-    [[ $# -eq 2 && "$1" == --after && "$2" =~ ^[0-9]+$ ]] \
-      || die "wait: expected --after <nonnegative notice sequence>"
-    after="$2"
-  fi
+  local target="$1" after=0 note="" disposition=""; shift
+  while [[ $# -gt 0 ]]; do
+    [[ $# -ge 2 && -n "$2" ]] || die "wait: missing value for $1"
+    case "$1" in
+      --after) after="${2:-}"; shift 2 ;;
+      --note) note="${2:-}"; shift 2 ;;
+      --disposition) disposition="${2:-}"; shift 2 ;;
+      *) die "wait: unknown argument: $1" ;;
+    esac
+  done
+  [[ "$after" =~ ^[0-9]+$ ]] || die "wait: --after must be a nonnegative sequence"
 
   local status job_file=""
   if [[ "$target" == /* ]]; then
@@ -104,6 +109,7 @@ cmd_wait() {
     args+=(--job-file "$job_file")
   fi
 
+  [[ -z "$note$disposition" ]] || args+=(--note "$note" --disposition "$disposition")
   python3 "$CEREBRO_LIB_DIR/python/wait_detached.py" \
     "${args[@]}"
 }

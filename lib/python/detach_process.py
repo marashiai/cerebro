@@ -23,7 +23,7 @@ def write_status(paths, value):
         write_atomic(path, value)
 
 
-def monitor(fd, output, output_status, job_status, input_path, result_path, command):
+def monitor(fd, output, output_status, job_status, input_path, result_path, job_id, command):
     statuses = (output_status, job_status)
     listener = socket.socket(fileno=fd)
     completed = threading.Event()
@@ -95,7 +95,7 @@ def monitor(fd, output, output_status, job_status, input_path, result_path, comm
             with open(result_path or output, 'ab', buffering=0) as result:
                 rc = subprocess.call(command, stdin=source, stdout=result,
                                      stderr=log, close_fds=True,
-                                     env={**os.environ, 'CEREBRO_JOB_STATUS': job_status})
+                                     env={**os.environ, 'CEREBRO_JOB_STATUS': job_status, 'CEREBRO_JOB_ID': job_id})
     except Exception as exc:
         with open(output, 'ab', buffering=0) as log:
             log.write(f'cerebro detach: launch failed: {exc}\n'.encode())
@@ -146,7 +146,7 @@ def launch(output, status, pid_path, job_file, job_id, label, command,
         proc = subprocess.Popen(
             [sys.executable, os.path.abspath(__file__), '--monitor',
              str(listener.fileno()), output, status, job_status, input_path,
-             result_path, *command],
+             result_path, job_id, *command],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, start_new_session=True,
             close_fds=True, pass_fds=(listener.fileno(),))
@@ -172,8 +172,8 @@ def launch(output, status, pid_path, job_file, job_id, label, command,
 
 
 if __name__ == '__main__':
-    if len(sys.argv) >= 9 and sys.argv[1] == '--monitor':
-        monitor(int(sys.argv[2]), *sys.argv[3:8], sys.argv[8:])
+    if len(sys.argv) >= 10 and sys.argv[1] == '--monitor':
+        monitor(int(sys.argv[2]), *sys.argv[3:9], sys.argv[9:])
     elif len(sys.argv) >= 8:
         launch(*sys.argv[1:7], sys.argv[7:])
     else:

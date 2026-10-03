@@ -36,7 +36,8 @@ else:
     native_session = home / 'native-parent.jsonl'
     seed_session(native_session, home)
     settings = {'model': 'fixture/implementation', 'supervisor_model': 'fixture/supervisor',
-                'review_model': 'fixture/review'}
+                'review_model': 'fixture/review', 'supervisor_effort': 'opaque-parent-effort',
+                'implementor_effort': 'opaque-worker-effort', 'review_effort': 'opaque-review-effort'}
     (home / 'config.json').write_text(json.dumps(settings))
     (home / 'models-config.json').write_text(json.dumps({'models': [
         {'id': settings['supervisor_model'], 'contextTokens': 1000000}]}))
@@ -78,6 +79,11 @@ else:
             launched = json.loads(result.stdout)
             argv = launched['argv']
             assert argv[argv.index('--model') + 1] == settings['supervisor_model'], argv
+            if backend == 'codex':
+                assert 'model_reasoning_effort=' + json.dumps(settings['supervisor_effort']) in argv, argv
+            else:
+                flag = '--thinking' if backend == 'pi' else '--effort'
+                assert argv[argv.index(flag) + 1] == settings['supervisor_effort'], argv
             if backend == 'claude':
                 assert launched['anthropic_model'] == settings['supervisor_model'], launched
                 assert launched['haiku_model'] == settings['supervisor_model'], launched
@@ -148,7 +154,7 @@ else:
                   'printf "%s" "${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}"')
     for initial, selected, expected in (
         (settings['supervisor_model'], settings['model'], ''),
-        (settings['supervisor_model'], '', '1000000'),
+        (settings['supervisor_model'], '', ''),
     ):
         result = subprocess.run(['bash', '-c', transition, '_', str(root / 'lib'), initial, selected],
                                 env=gateway, text=True, capture_output=True, timeout=5)
@@ -165,7 +171,7 @@ else:
     (home / 'config.json').write_text(json.dumps({'model': settings['model']}))
     result = subprocess.run(['bash', '-c', config_shell, '_', str(root / 'lib')],
                             env=environment, text=True, capture_output=True, timeout=5)
-    assert result.returncode == 0 and result.stdout == ' fixture/implementation fixture/implementation', result.stderr
+    assert result.returncode == 0 and result.stdout == ' fixture/implementation ', result.stderr
     for backend in ('pi', 'codex', 'claude'):
         result = subprocess.run(['bash', '-c', shell, '_', str(root / 'lib'),
                                  'backend_' + backend + '_launch_orchestrator', '', ''],

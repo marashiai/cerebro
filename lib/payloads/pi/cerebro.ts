@@ -8,7 +8,7 @@ export default function (pi) {
   pi.registerFlag('cerebro-bind', { type: 'string' });
   const role = () => {
     const value = pi.getFlag('cerebro-role');
-    if (value !== 'supervisor' && value !== 'reviewer') throw new Error('Unsupported Cerebro role');
+    if (value !== 'supervisor') throw new Error('Unsupported Cerebro role');
     return value;
   };
 
@@ -23,16 +23,6 @@ export default function (pi) {
       };
     },
   })(pi);
-
-  pi.on('tool_call', (event) => {
-    role();
-    if (event.toolName !== 'mcp__cerebro__command') {
-      return { block: true, reason: 'This Cerebro role can call only the guarded Cerebro command tool.' };
-    }
-  });
-  pi.on('user_bash', () => {
-    throw new Error('Shell execution is unavailable in a restricted Cerebro session.');
-  });
 
   const inputs = [];
   pi.on('message_end', (event) => {

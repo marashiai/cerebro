@@ -1,7 +1,23 @@
+# Preserve native defaults before a supervisor or worker role overrides them.
+backend_claude_capture_model_env() {
+  if [[ -z "${CEREBRO_CLAUDE_NATIVE_MODEL_ENV+x}" ]]; then
+    CEREBRO_CLAUDE_NATIVE_MODEL_ENV="$(python3 -c 'import json,os; print(json.dumps({k:os.environ[k] for k in ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_AUTO_COMPACT_WINDOW") if k in os.environ}))' )"
+    export CEREBRO_CLAUDE_NATIVE_MODEL_ENV
+  fi
+}
+
 # Custom gateways receive the selected model for both task and housekeeping calls.
 backend_claude_endpoint_env() {
   [[ -n "$CEREBRO_CLAUDE_BASE_URL" ]] || return 0
-  local model="${1-$CEREBRO_MODEL}" previous_model="${ANTHROPIC_MODEL:-}"
+  local model="${1-$CEREBRO_MODEL}" previous_model="${ANTHROPIC_MODEL:-}" key
+  backend_claude_capture_model_env
+  for key in ANTHROPIC_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_AUTO_COMPACT_WINDOW; do
+    if jq -e --arg key "$key" 'has($key)' <<<"$CEREBRO_CLAUDE_NATIVE_MODEL_ENV" >/dev/null; then
+      export "$key=$(jq -r --arg key "$key" '.[$key]' <<<"$CEREBRO_CLAUDE_NATIVE_MODEL_ENV")"
+    else
+      unset "$key"
+    fi
+  done
   export ANTHROPIC_BASE_URL="$CEREBRO_CLAUDE_BASE_URL"
   export ANTHROPIC_AUTH_TOKEN="${CEREBRO_CLAUDE_AUTH_TOKEN:-ollama}"
   unset ANTHROPIC_API_KEY
@@ -21,18 +37,8 @@ backend_claude_child_run_opts() {
   local role="$1" resume="${2:-}" model="${3:-}"
   CHILD_RUN_OPTS=(-p --output-format stream-json --verbose
     --append-system-prompt "$(child_sys_prompt "$role")")
-  case "$role" in
-    review|audit|improve)
-      local cfg; cfg="$(backend_supervisor_config reviewer)"
-      CHILD_RUN_OPTS+=(--tools "" --disable-slash-commands --setting-sources ""
-        --strict-mcp-config --mcp-config "$cfg"
-        --permission-mode dontAsk --allowedTools mcp__cerebro__command) ;;
-    execute|apply-review|doc-write|verify)
-      CHILD_RUN_OPTS+=(--permission-mode bypassPermissions
-        --tools "Read,Edit,Write,Bash,Grep,Glob,WebSearch,WebFetch,TaskOutput,TaskStop"
-        --allowedTools "Read Edit Write Bash Grep Glob WebSearch WebFetch TaskOutput TaskStop mcp__playwright__*") ;;
-    *) die "unknown child role: $role" ;;
-  esac
+  CHILD_RUN_OPTS+=(--permission-mode bypassPermissions)
+  [[ -z "${CEREBRO_CHILD_EFFORT:-}" ]] || CHILD_RUN_OPTS+=(--effort "$CEREBRO_CHILD_EFFORT")
   [[ -n "$model" ]] && CHILD_RUN_OPTS+=(--model "$model")
   [[ -n "$resume" ]] && CHILD_RUN_OPTS+=(--resume "$resume")
 }
@@ -41,7 +47,7 @@ backend_claude_child_run_opts() {
 backend_claude_child_run() {
   local pair="$1" cwd="$2" prompt="$3" role="$4" resume="$5" \
         child_log="$6" msg_capture="$7" id_capture="$8" store_file="$9" ckey="${10}"
-  local model="${11:-$CEREBRO_MODEL}"
+  local model="${11-$CEREBRO_MODEL}"
 
   playwright_isolate_child
 
@@ -76,12 +82,9 @@ backend_claude_materialise_extras() {
 backend_claude_parent_opts() {
   local config
   config="$(backend_supervisor_config supervisor)"
-  # The owned command tool loads upfront; all other tool channels and native
-  # mutation/delegation tools are unavailable.
-  PARENT_OPTS=(--tools "" --disable-slash-commands --setting-sources ""
-    --settings "$CEREBRO_HOME/.claude/settings.local.json" --strict-mcp-config --mcp-config "$config"
-    --permission-mode dontAsk --allowedTools mcp__cerebro__command
+  PARENT_OPTS=(--settings "$CEREBRO_HOME/.claude/settings.local.json" --mcp-config "$config"
     --append-system-prompt "$(cerebro_system_prompt)")
+  [[ -z "$CEREBRO_SUPERVISOR_EFFORT" ]] || PARENT_OPTS+=(--effort "$CEREBRO_SUPERVISOR_EFFORT")
   [[ -z "$CEREBRO_SUPERVISOR_MODEL" ]] || PARENT_OPTS+=(--model "$CEREBRO_SUPERVISOR_MODEL")
 }
 backend_claude_launch_orchestrator() {
@@ -99,7 +102,7 @@ backend_claude_resume_orchestrator() {
 
 # Pair mode adds a steering FIFO to the native stream-json child session.
 backend_claude_pair_begin() {
-  case "$1" in execute|apply-review|doc-write) ;; *) die "pair: unsupported role: $1" ;; esac
+  case "$1" in execute|review) ;; *) die "pair: unsupported role: $1" ;; esac
   PAIR_SID="${5:-$(mint_uuid)}"
   PAIR_FIFO="${4%.jsonl}.steer.fifo"
   PAIR_STEER="${4%.jsonl}.steering.md"
@@ -110,7 +113,7 @@ backend_claude_pair_begin() {
 }
 backend_claude_pair_run() {
   local cwd="$1" prompt="$2" role="$3" resume="$4" child_log="$5" \
-    msg_capture="$6" id_capture="$7" store_file="$8" ckey="$9" model="${10:-$CEREBRO_MODEL}"
+    msg_capture="$6" id_capture="$7" store_file="$8" ckey="$9" model="${10-$CEREBRO_MODEL}"
   backend_claude_child_run_opts "$role" "$resume" "$model"
   CHILD_RUN_OPTS+=(--input-format stream-json)
   [[ -n "$resume" ]] || CHILD_RUN_OPTS+=(--session-id "$PAIR_SID")
@@ -168,9 +171,11 @@ backend_claude_acp_child_spec() {
   else
     argv_bin='["npx","-y","@agentclientprotocol/claude-agent-acp"]'
   fi
+  backend_claude_capture_model_env
   local acp_model="$CEREBRO_SUPERVISOR_MODEL" env_json
   env_json="$(jq -n --arg model "$acp_model" \
     'if $model == "" then {} else {ANTHROPIC_MODEL:$model} end')"
+  env_json="$(jq -c --arg native "$CEREBRO_CLAUDE_NATIVE_MODEL_ENV" '. + {CEREBRO_CLAUDE_NATIVE_MODEL_ENV:$native}' <<<"$env_json")"
   if [[ -n "$CEREBRO_CLAUDE_BASE_URL" ]]; then
     env_json="$(jq -n --argjson env "$env_json" --arg base "$CEREBRO_CLAUDE_BASE_URL" \
         --arg tok "${CEREBRO_CLAUDE_AUTH_TOKEN:-ollama}" \

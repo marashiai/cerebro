@@ -7,8 +7,7 @@ import sys
 
 
 PAYLOADS = Path(__file__).resolve().parent.parent / 'payloads'
-READONLY = ('supervisor', 'reviewer')
-WRITABLE = ('execute', 'apply-review', 'doc-write', 'verify')
+ROLES = ('supervisor', 'execute', 'review')
 
 
 def validate_session(path):
@@ -23,18 +22,17 @@ def validate_session(path):
 
 
 def run_argv(executable, role, cwd, session_dir, resume, model, instructions):
-    if role not in READONLY + WRITABLE:
+    if role not in ROLES:
         raise ValueError('unsupported Pi role: ' + role)
-    argv = [executable, '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-approve',
-            '--skill', str(PAYLOADS / 'skills'), '--append-system-prompt', instructions]
-    if role in READONLY:
-        config = Path(session_dir) / ('tools-' + role + '.json')
+    argv = [executable, '--append-system-prompt', instructions]
+    if role == 'supervisor':
+        config = Path(session_dir) / 'tools-supervisor.json'
         json.loads(config.read_text())['mcpServers']['cerebro']
-        argv += ['--no-context-files', '--tools', 'mcp__cerebro__command',
-                 '-e', str(PAYLOADS / 'pi' / 'cerebro.ts'),
+        argv += ['-e', str(PAYLOADS / 'pi' / 'cerebro.ts'),
                  '--cerebro-role', role, '--cerebro-mcp-config', str(config)]
-    else:
-        argv += ['-e', 'builtin:mcp', '-e', 'builtin:codemode', '-e', 'builtin:tool-search']
+    effort = os.environ.get('CEREBRO_SUPERVISOR_EFFORT' if role == 'supervisor' else 'CEREBRO_CHILD_EFFORT')
+    if effort:
+        argv += ['--thinking', effort]
     if model:
         argv += ['--model', model]
     if resume:

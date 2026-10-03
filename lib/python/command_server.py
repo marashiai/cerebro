@@ -17,14 +17,8 @@ import uuid
 from detach_process import launch
 from wait_detached import job_response, wait_for_update
 
-READ = {"guide", "read", "grep", "ls", "status", "list", "recall", "models",
-        "learnings", "jobs"}
-SUPERVISOR = READ | {"spec", "plan", "execute", "audit", "review", "apply-review",
-                     "verify", "doc-write", "improve", "answer", "steer", "restart",
-                     "wait", "cancel", "detach", "git", "gh", "learn-note",
-                     "learn-set", "overlay", "plans", "worktrees", "hunk"}
-REVIEWER = {"guide", "read", "grep", "ls", "git", "hunk"}
-LONG = {"execute", "audit", "review", "apply-review", "verify", "doc-write", "improve", "answer"}
+OPERATIONS = {"execute", "answer", "steer", "restart", "wait", "cancel", "status", "jobs", "worktrees"}
+LONG = {"execute", "answer"}
 
 
 def run_command(role, executable, argv, stdin=""):
@@ -32,9 +26,8 @@ def run_command(role, executable, argv, stdin=""):
         raise ValueError("argv must be a nonempty array of literal strings")
     if not isinstance(stdin, str):
         raise ValueError("stdin must be text")
-    allowed = {"supervisor": SUPERVISOR, "reviewer": REVIEWER}[role]
-    if argv[0] not in allowed:
-        raise ValueError(f"{argv[0]} is unavailable to the {role}")
+    if role != "supervisor" or argv[0] not in OPERATIONS:
+        raise ValueError("unknown supervisor operation: " + argv[0])
     env = {**os.environ, "CEREBRO_ROLE": role}
     if argv[0] in LONG:
         job_id = str(uuid.uuid4())
@@ -101,7 +94,7 @@ def main():
                 reply(message["id"], {})
             elif method == "tools/list":
                 reply(message["id"], {"tools": [{"name": "command",
-                    "description": "Run a guarded Cerebro command. Literal argv; large bodies go in stdin. Child commands wait for completion or a Jev scope notice and survive parent disconnects. After handling a notice, wait <job-id> --after <sequence>.",
+                    "description": "Run a Cerebro orchestration operation. Literal argv; large bodies go in stdin. Child commands wait for completion or a Jev scope notice and survive parent disconnects. After handling a notice, wait <job-id> --after <sequence> --disposition continue|correct|stop --note <reason>. Native inspection tools remain available.",
                     "inputSchema": {"type": "object", "properties": {
                         "argv": {"type": "array", "items": {"type": "string"}},
                         "stdin": {"type": "string", "default": ""}},

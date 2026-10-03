@@ -141,6 +141,9 @@ def main():
                     result = '## 1. Meta finding\nMETA CLIMB: MAYBE'
             else:
                 result = config.get('text', 'ok')
+            if os.environ.get('TASK_FIXTURE_CONFIG'):
+                from task_fixture import result as task_result
+                result = task_result(text, os.environ['CEREBRO_CHILD_ROLE'])
             if mode == 'concurrent':
                 result = re.search(r'TOKEN=([A-Z]+)', text)[1]
             if mode == 'background':

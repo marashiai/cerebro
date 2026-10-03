@@ -127,8 +127,23 @@ def main():
     parser.add_argument('status')
     parser.add_argument('--after', type=int, default=0)
     parser.add_argument('--job-file')
+    parser.add_argument('--note')
+    parser.add_argument('--disposition', choices=['continue', 'correct', 'stop'])
     args = parser.parse_args()
     job = json.loads(Path(args.job_file).read_text()) if args.job_file else {}
+    if args.note is not None or args.disposition is not None:
+        if not args.note or not args.disposition or not args.after or not job.get('id'):
+            raise ValueError('a concern decision requires a job ID, --after, --disposition and --note')
+        updates = json.loads(Path(args.status + '.updates.json').read_text())
+        if args.after > updates['sequence']:
+            raise ValueError('decision sequence is ahead of this job')
+        from child_store_lib import _now_iso
+        decision = {'job_id': job['id'], 'sequence': args.after, 'disposition': args.disposition,
+                    'reason': args.note, 'ts': _now_iso()}
+        journal = Path(os.environ['CEREBRO_SESSION_DIR']) / 'decisions.jsonl'
+        with journal.open('a') as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX)
+            stream.write(json.dumps(decision) + '\n')
     response = job_response(job, wait_for_update(args.status, args.after))
     print(json.dumps(response))
     return response['exit_code']

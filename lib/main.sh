@@ -13,15 +13,8 @@ main() {
     -h|--help) usage; exit 0 ;;
     --resume) shift; cmd_resume "${1:-}" ;;
     list) shift; cmd_list "$@" ;;
-    plan) shift; cmd_plan "$@" ;;
-    plans) shift; cmd_plans "$@" ;;
-    audit) shift; cmd_audit "$@" ;;
-    improve) shift; cmd_improve "$@" ;;
+    _task-stage) shift; cmd_task_stage "$@" ;;
     execute) shift; cmd_execute "$@" ;;
-    review) shift; cmd_review "$@" ;;
-    apply-review) shift; cmd_apply_review "$@" ;;
-    verify) shift; cmd_verify "$@" ;;
-    doc-write) shift; cmd_doc_write "$@" ;;
     detach) shift; cmd_detach "$@" ;;
     wait) shift; cmd_wait "$@" ;;
     jobs) shift; cmd_jobs "$@" ;;
@@ -34,8 +27,6 @@ main() {
     # holds long-lived PTYs and exposes them as MCP tools so a controller can
     # drive an interactive TTY program (cerebro or any other) event-driven.
     tools) shift; cmd_tools "$@" ;;
-    guide) shift; cmd_guide "$@" ;;
-    hunk) shift; cmd_hunk "$@" ;;
     cerebro-mcp) shift; cmd_cerebro_mcp "$@" ;;
     answer) shift; cmd_answer "$@" ;;
     models)  shift; cmd_models "$@" ;;
@@ -45,16 +36,6 @@ main() {
     worktrees) shift; cmd_worktrees "$@" ;;
     recall) shift; cmd_recall "$@" ;;
     status) shift; cmd_status "$@" ;;
-    spec) shift; cmd_spec "$@" ;;
-    learnings)  shift; cmd_learnings "$@" ;;
-    learn-note) shift; cmd_learn_note "$@" ;;
-    learn-set)  shift; cmd_learn_set "$@" ;;
-    overlay)    shift; cmd_overlay "$@" ;;
-    git)    shift; cmd_git "$@" ;;
-    gh)     shift; cmd_gh "$@" ;;
-    read)   shift; cmd_read "$@" ;;
-    grep)   shift; cmd_grep "$@" ;;
-    ls)     shift; cmd_ls "$@" ;;
     *) die "unknown subcommand: $1 (try --help)" ;;
   esac
 }

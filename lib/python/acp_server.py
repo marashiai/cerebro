@@ -16,7 +16,7 @@
 #   2. env injection -- CEREBRO_SESSION_ID / CEREBRO_SESSION_DIR / CEREBRO_HOME
 #      plus the backend's child env (CLAUDE_CONFIG_DIR / Anthropic gateway env
 #      for claude) are exported into the upstream child;
-#   3. agent pinning -- the restricted cerebro-orchestrator agent is forced via
+#   3. agent pinning -- the cerebro-orchestrator agent is forced via
 #      session/set_config_option after new_session (`agent`); the agent file
 #      lives in a cerebro-owned per-session project
 #      dir that is the session cwd (the user's repo is an additional_directory,
@@ -390,7 +390,7 @@ class CerebroAgent:
         return metadata.get("foreign_session_id") or None
 
     async def _pin(self, child: Any, foreign_sid: str) -> None:
-        """Force the restricted cerebro-orchestrator via set_config_option."""
+        """Force the cerebro-orchestrator via set_config_option."""
         try:
             await child.set_config_option(
                 config_id=_SPEC_PIN["config_id"],
@@ -550,7 +550,7 @@ class CerebroAgent:
         )
         st.foreign_sid = foreign_sid
         st.relay.set_foreign(foreign_sid)
-        await self._pin(st.child, foreign_sid)  # safety belt: re-enforce the restriction
+        await self._pin(st.child, foreign_sid)  # retain the supervisor role
         return LoadSessionResponse(modes=resp.modes, config_options=_rewrite_model_option(resp.config_options))
 
     async def resume_session(

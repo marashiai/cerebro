@@ -1,6 +1,18 @@
-Review the changes against __CEREBRO_BASE__ in the current worktree.
-The merge base is __CEREBRO_MERGE_BASE__; inspect `git diff __CEREBRO_MERGE_BASE__`
-through the read-only tools. Apply the supplied engineering skill.
-Return evidence-backed findings ordered by severity with concrete triggers,
-file/line anchors and the smallest proper corrections. State verification
-gaps separately. Do not edit implementation or broaden the task.
+Independently review the implementation against the original goal, task, and
+acceptance criteria below. Inspect the actual changes with git diff against the
+specified review base commit, including uncommitted changes and untracked files.
+Read repository instructions. Use normal native inspection and command tools,
+verify test evidence where useful, and leave the implementation unchanged.
+Report concrete defects and verification gaps with proportionate corrections.
+
+End with a single JSON object (no Markdown fences):
+{"status":"complete|question|blocked|unfinished|failed","summary":"...",
+ "findings":[{"id":"F1","severity":"high|medium|low","file":"path","line":1,
+ "problem":"concrete trigger and impact","evidence":"observed evidence",
+ "requested_change":"smallest proper correction"}],
+ "criteria":[{"criterion":"exact acceptance text","result":"passed|failed|unverified","evidence":"concrete evidence or gap"}],
+ "question":"only when a decision is needed"}
+For complete, include every acceptance criterion in order and findings (empty
+when none). Complete means the review stage finished, not that acceptance passed.
+Keep findings independent of the implementor's claims. Join background checks
+before the handoff. Never modify files to fix a finding during review.

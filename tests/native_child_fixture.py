@@ -8,6 +8,9 @@ import time
 
 backend = sys.argv[1]
 mode = os.environ.get('NATIVE_FIXTURE_MODE', 'ok')
+if os.environ.get('TASK_FIXTURE_CONFIG'):
+    config = json.loads(open(os.environ['TASK_FIXTURE_CONFIG']).read())
+    mode = config.get(os.environ.get('CEREBRO_CHILD_ROLE'), {}).get('native_mode', mode)
 log_path = os.environ['NATIVE_FIXTURE_LOG']
 lock = threading.Lock()
 write_lock = threading.Lock()
@@ -52,7 +55,16 @@ def complete_codex(text, completed_turn):
                      'status': 'completed', 'command': 'fixture child', 'aggregatedOutput': 'BACKGROUND_JOINED', 'exitCode': 0})
 
 
-record({'argv': sys.argv[2:], 'isolated': os.environ.get('PLAYWRIGHT_MCP_ISOLATED')})
+record({'argv': sys.argv[2:], 'isolated': os.environ.get('PLAYWRIGHT_MCP_ISOLATED'), 'role': os.environ.get('CEREBRO_CHILD_ROLE'),
+        'anthropic_model': os.environ.get('ANTHROPIC_MODEL'), 'haiku_model': os.environ.get('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
+        'context_window': os.environ.get('CLAUDE_CODE_AUTO_COMPACT_WINDOW')})
+
+def final_text(prompt):
+    if os.environ.get('TASK_FIXTURE_CONFIG'):
+        from task_fixture import result
+        return result(prompt, os.environ['CEREBRO_CHILD_ROLE'])
+    return 'NATIVE_DONE'
+
 if backend == 'codex':
     if 'mcp' in sys.argv and 'list' in sys.argv:
         print('[{"name":"untrusted.server","enabled":true}]')
@@ -88,16 +100,17 @@ if backend == 'codex':
             send({'jsonrpc': '2.0', 'id': event['id'], 'result': result})
         if new_turn:
             notification('turn/started', turn={'id': turn_id, 'status': 'inProgress'})
-            threading.Thread(target=complete_codex, args=('NATIVE_DONE', turn_id), daemon=True).start()
+            threading.Thread(target=complete_codex, args=(final_text(params['input'][0]['text']), turn_id), daemon=True).start()
 else:
     if mode == 'resume-reject':
         print('stored session rejected', file=sys.stderr)
         raise SystemExit(2)
     send({'type': 'system', 'subtype': 'init', 'session_id': thread_id})
     if '--input-format' not in sys.argv:
-        record({'prompt': sys.stdin.read()})
+        prompt = sys.stdin.read()
+        record({'prompt': prompt})
         send({'type': 'result', 'subtype': 'error_during_execution' if mode == 'failure' else 'success',
-              'result': 'NATIVE_DONE', 'session_id': thread_id,
+              'result': final_text(prompt), 'session_id': thread_id,
               **({'is_error': True, 'errors': ['fixture failure']} if mode == 'failure' else {})})
     else:
         for line in sys.stdin:
@@ -106,5 +119,5 @@ else:
             if mode == 'steer':
                 time.sleep(0.4)
             send({'type': 'result', 'subtype': 'error_during_execution' if mode == 'failure' else 'success',
-                  'result': 'NATIVE_DONE', 'session_id': thread_id,
+                  'result': final_text(event['message']['content']), 'session_id': thread_id,
                   **({'is_error': True, 'errors': ['fixture failure']} if mode == 'failure' else {})})

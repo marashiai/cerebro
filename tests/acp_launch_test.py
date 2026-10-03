@@ -181,7 +181,7 @@ with open(os.environ['TEST_ACP_LOG'], 'a') as log:
         assert binding['CEREBRO_REVIEW_MODEL'] == 'review-native'
         stored = json.loads((session / 'tools-supervisor.json').read_text())
         assert stored == launch['mcp']
-        assert 'MCP' in launch['agent'] and 'Delegate development' in launch['agent']
+        assert 'Cerebro command tool directly' in launch['agent'] and 'Delegate coding and tests' in launch['agent']
     for backend in ('pi', 'codex'):
         before = context_log.read_bytes()
         session_count = len(list((home / 'sessions').iterdir()))

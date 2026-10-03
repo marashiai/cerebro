@@ -2,7 +2,7 @@
 # subcommand: worktrees (list / GC the per-task execute worktrees)
 # Sourced by bin/cerebro; not meant to be executed directly.
 
-# `cerebro execute --worktree` creates a persistent managed checkout under
+# `worktree: true` in a task packet creates a persistent managed checkout under
 # $CEREBRO_HOME/worktrees. Only this cleanup command removes it.
 # `cerebro worktrees` (or `... list`) reports every worktree with its
 # branch, owning repo, and in-use verdict; `cerebro worktrees cleanup` removes

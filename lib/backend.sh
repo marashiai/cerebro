@@ -3,28 +3,18 @@
 current_backend() { printf '%s' "${CEREBRO_RESUME_BACKEND:-$CEREBRO_BACKEND}"; }
 backend_is() { [[ "$(current_backend)" == "$1" ]]; }
 
-backend_child_agent_name() {
-  case "$1" in
-    execute|apply-review|doc-write|verify|review|audit|improve) printf '%s\n' "$1" ;;
-    *) die "unknown child role: $1" ;;
-  esac
-}
-backend_child_provider() { current_backend; }
-backend_answerable_pattern() { printf '%s:%s\n' "$(current_backend)" "$1"; }
 backend_materialise_extras() { "backend_$(current_backend)_materialise_extras"; }
 backend_launch_orchestrator() { "backend_$(current_backend)_launch_orchestrator" "$@"; }
 backend_resume_orchestrator() { "backend_$(current_backend)_resume_orchestrator" "$@"; }
 backend_acp_child_spec() { "backend_$(current_backend)_acp_child_spec" "$@"; }
 pair_begin() { "backend_$(current_backend)_pair_begin" "$@"; }
-pair_run() { "backend_$(current_backend)_pair_run" "$@"; }
 pair_cleanup() { "backend_$(current_backend)_pair_cleanup" "$@"; }
 child_run() { "backend_$(current_backend)_child_run" "$@"; }
 
-# Native parents call this argv-only surface; it retains the CLI's worktree,
-# review and path guards independently of each backend's tool restrictions.
+# Only the supervisor receives controller orchestration tools.
 backend_supervisor_config() {
   local role="$1"
-  case "$role" in supervisor|reviewer) ;; *) die "unsupported command role: $role" ;; esac
+  case "$role" in supervisor) ;; *) die "unsupported command role: $role" ;; esac
   export CEREBRO_ROLE="$role"
   local key
   for key in $(compgen -v CEREBRO_); do export "$key"; done

@@ -1,7 +1,0 @@
-{"kind":"user","ts":"2026-01-02T00:00:01Z","text":"first request"}
-{"kind":"event","ts":"2026-01-02T00:00:02Z","what":"review_started"}
-{"kind":"event","ts":"2026-01-02T00:00:03Z","what":"review_written"}
-{"kind":"user","ts":"2026-01-02T00:00:04Z","text":"second request"}
-{"kind":"event","ts":"2026-01-02T00:00:05Z","what":"learn_note"}
-{"kind":"user","ts":"2026-01-02T00:00:06Z","text":"third request"}
-{"kind":"user","ts":"2026-01-02T00:00:07Z","text":"fourth request"}

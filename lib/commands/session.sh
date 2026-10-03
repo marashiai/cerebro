@@ -1,21 +1,5 @@
 # Native supervisor launch, recorded-backend resume and session listing.
 
-learnings_file()         { printf '%s\n' "$CEREBRO_HOME/learnings.md"; }
-pending_learnings_file() { printf '%s\n' "$CEREBRO_HOME/pending-learnings.md"; }
-
-# User-owned harness overlays (global under $CEREBRO_HOME). Each overlay is a
-# plain-markdown file the orchestrator/children can READ when they need local
-# tuning. materialise_home() never creates or clobbers them; an absent or
-# whitespace-only overlay is simply not read.
-overlays_dir() { printf '%s\n' "$CEREBRO_HOME/overlays"; }
-overlay_file() { printf '%s\n' "$(overlays_dir)/$1.md"; }   # $1 = target
-overlay_body() {   # $1=target; echoes body only if present + non-whitespace
-  local f; f="$(overlay_file "$1")"
-  [[ -s "$f" ]] || return 0
-  local b; b="$(cat "$f")"
-  [[ "$b" =~ [^[:space:]] ]] && printf '%s' "$b"
-}
-
 cmd_launch() {
   require_interactive
   require_deps
@@ -24,7 +8,7 @@ cmd_launch() {
   local sid sess_dir ts
   sid="$(mint_uuid)"
   sess_dir="$CEREBRO_HOME/sessions/$sid"
-  mkdir -p "$sess_dir/plans" "$sess_dir/children"
+  mkdir -p "$sess_dir/tasks" "$sess_dir/children"
   : > "$sess_dir/transcript.jsonl"
   ts="$(ts_iso)"
   write_metadata_new "$sess_dir" "$sid" "$ts"

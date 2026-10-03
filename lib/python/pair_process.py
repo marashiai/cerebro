@@ -15,7 +15,6 @@ import subprocess
 import sys
 import time
 
-from codex_launch import guarded_options
 from scope_watch import watch_child
 
 
@@ -61,7 +60,7 @@ class Codex:
     def __init__(self, send, resume, cwd, model, instructions, readonly=False):
         self.send = send
         self.resume = resume
-        self.params = {'cwd': cwd, 'approvalPolicy': 'never', 'sandbox': 'read-only' if readonly else 'danger-full-access',
+        self.params = {'cwd': cwd, 'approvalPolicy': 'never', 'sandbox': 'danger-full-access',
                        'developerInstructions': instructions}
         if model:
             self.params['model'] = model
@@ -86,7 +85,8 @@ class Codex:
         text = '\n\n'.join(self.pending)
         self.pending.clear()
         self.request('turn/start', {'threadId': self.thread,
-                     'input': [{'type': 'text', 'text': text}]}, 'turn')
+                     'input': [{'type': 'text', 'text': text}],
+                     **({'effort': os.environ['CEREBRO_CHILD_EFFORT']} if os.environ.get('CEREBRO_CHILD_EFFORT') else {})}, 'turn')
 
     def steer(self, text):
         # Native turn/start atomically starts an idle turn or steers the active
@@ -162,23 +162,19 @@ def run():
     global watcher
     backend, cwd, resume, model, fifo, steer_path, child_log, executable = sys.argv[1:9]
     prompt = sys.stdin.read()
-    readonly = os.environ.get('CEREBRO_CHILD_ROLE') in ('review', 'audit', 'improve')
     watcher = watch_child(backend, cwd, prompt, fifo, child_log)
     if backend == 'pi':
         from pi_launch import run_argv
-        argv = [*run_argv(executable, 'reviewer' if readonly else os.environ['CEREBRO_CHILD_ROLE'], cwd,
+        argv = [*run_argv(executable, os.environ['CEREBRO_CHILD_ROLE'], cwd,
                         os.environ['CEREBRO_SESSION_DIR'], resume, model,
                         os.environ['CEREBRO_CHILD_INSTRUCTIONS']), '--mode', 'rpc']
     elif backend == 'claude':
         argv = [executable, *sys.argv[9:]]
     else:
-        options = guarded_options(executable, 'reviewer', cwd, os.environ['CEREBRO_SESSION_DIR']) if readonly else [
-            '-c', 'approval_policy="never"', '-c', 'sandbox_mode="danger-full-access"',
-            '--disable', 'multi_agent', '--disable', 'multi_agent_v2']
-        argv = [executable, '--no-daemon', '--strict-config', *options, 'app-server']
+        argv = [executable, 'app-server']
     env = dict(os.environ)
     for key in ('CEREBRO_SESSION_ID', 'CEREBRO_SESSION_DIR', 'CEREBRO_ROLE',
-                'CEREBRO_JEV_API_KEY', 'CEREBRO_CFG_JEV_API_KEY', 'CEREBRO_JOB_STATUS'):
+                'CEREBRO_JEV_API_KEY', 'CEREBRO_CFG_JEV_API_KEY', 'CEREBRO_JOB_STATUS', 'CEREBRO_JOB_ID'):
         env.pop(key, None)
     proc = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=sys.stderr, start_new_session=True, env=env)
@@ -193,7 +189,7 @@ def run():
     elif backend == 'claude':
         adapter = Claude(send, resume)
     else:
-        adapter = Codex(send, resume, cwd, model, os.environ['CEREBRO_CHILD_INSTRUCTIONS'], readonly)
+        adapter = Codex(send, resume, cwd, model, os.environ['CEREBRO_CHILD_INSTRUCTIONS'])
     fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK) if fifo else None
     idle_grace = float(os.environ.get('CEREBRO_PAIR_IDLE', '60'))
     stall = float(os.environ.get('CEREBRO_PAIR_STALL', '180'))
@@ -202,6 +198,7 @@ def run():
     fifo_buffer = b''
     last_activity = time.monotonic()
     idle_deadline = None
+    native_exit = None
     # SIGTERM from a timeout/cancellation must run the process-group cleanup.
     def stop(signum, frame):
         raise SystemExit(128 + signum)
@@ -212,11 +209,15 @@ def run():
         while True:
             if watcher:
                 watcher.check()
+            if native_exit is not None and not (watcher and watcher.busy()):
+                return native_exit
             now = time.monotonic()
             deadline = idle_deadline
             if deadline is None and fd is not None:
-                deadline = last_activity + (stall_busy if adapter.busy else stall)
-            watched = [proc.stdout.fileno()] + ([fd] if fd is not None else [])
+                limit = stall_busy if adapter.busy else stall
+                if limit > 0:
+                    deadline = last_activity + limit
+            watched = ([proc.stdout.fileno()] if native_exit is None else []) + ([fd] if fd is not None else [])
             if watcher:
                 watched.append(watcher.wake_fd)
             timeout = None
@@ -251,12 +252,16 @@ def run():
                         record.write('- ' + message.replace('\n', '\n  ') + '\n')
                     idle_deadline = None
                     last_activity = time.monotonic()
-            if proc.stdout.fileno() in ready:
+            if native_exit is None and proc.stdout.fileno() in ready:
                 chunk = os.read(proc.stdout.fileno(), 65536)
                 if not chunk:
-                    if watcher and watcher.busy():
-                        raise RuntimeError('native child exited before scope classification was acknowledged')
-                    return proc.wait() or (0 if idle_deadline is not None else 2)
+                    native_exit = proc.wait() or (0 if idle_deadline is not None else 2)
+                    if fd is not None:
+                        os.close(fd)
+                        fd = None
+                    if native_exit:
+                        return native_exit
+                    continue
                 output_buffer += chunk
                 while b'\n' in output_buffer:
                     line, output_buffer = output_buffer.split(b'\n', 1)

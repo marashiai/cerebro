@@ -1,3 +1,0 @@
-{"type":"system","subtype":"init","session_id":"claude-child"}
-{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}
-{"type":"result","subtype":"success","result":"done"}

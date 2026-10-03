@@ -12,7 +12,7 @@ steer_fifo_live() {
 }
 
 # ----- subcommand: cerebro steer [<pipe>] "<message>" ----------------------
-# One-shot steering: inject a single instruction into a live `--pair` child and
+# One-shot steering: inject a single instruction into a live task stage and
 # return at once (no attach, no lock). With ONE argument that argument is the
 # message and the live paired session is found automatically (the common case);
 # with TWO, the first is the <pipe> path from the child's PAIR MODE banner (to

@@ -21,174 +21,33 @@ child_fail_stderr() {
   printf '%s\n' "$tail_out" | sed 's/^/    /' >&2
 }
 
-# Bridge exit codes and diagnostics are documented in cerebro-commands.
-err_usage()  { printf 'cerebro: error: %s\n' "$*" >&2; exit 2; }
-err_path()   { printf 'cerebro: error: %s\n' "$*" >&2; exit 3; }
-err_subcmd() { printf 'cerebro: error: %s\n' "$*" >&2; exit 4; }
-err_flag()   { printf 'cerebro: error: %s\n' "$*" >&2; exit 5; }
-err_escape() { printf 'cerebro: error: %s\n' "$*" >&2; exit 6; }
-
-# Exploration misses are successful empty results unless --strict-missing is set.
-# $1 strict (0|1), $2 stdout marker, $3 strict-mode diagnostic.
-missing_target() {
-  local strict="$1" marker="$2" msg="$3"
-  if [[ "$strict" == "1" ]]; then
-    printf 'cerebro: error: %s\n' "$msg" >&2
-    exit 3
-  fi
-  printf '%s\n' "$marker"
-  exit 0
-}
-
-# True if $1 is among the remaining args.
-contains() {
-  local needle="$1"; shift
-  local hay
-  for hay in "$@"; do [[ "$hay" == "$needle" ]] && return 0; done
-  return 1
-}
-
-# Resolve path $2 relative to repo $1, requiring the result to stay inside
-# the repo. Echoes the absolute resolved path on stdout. Exits 6 if the path
-# escapes. Uses python3 for cross-platform realpath (macOS lacks GNU realpath).
 resolve_in_repo() {
   python3 "$CEREBRO_LIB_DIR/python/resolve_in_repo.py" "$1" "$2"
-}
-
-# Validate that $1 is an absolute path to a git repo. Exits 3 on any failure.
-require_git_repo() {
-  local repo="$1"
-  [[ "$repo" = /* ]] || err_path "repo path must be absolute: $repo"
-  [[ -d "$repo" ]]   || err_path "repo not a directory: $repo"
-  git --no-optional-locks -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
-    || err_path "not a git repo: $repo"
-}
-
-# Canonicalize $1 to its git worktree root and echo it on stdout. Exits 3
-# if $1 is not an absolute directory inside a git worktree. Bridges that
-# read files from the user's repo (read/grep/ls) call this to anchor
-# subsequent path resolution to the worktree boundary instead of trusting
-# an arbitrary absolute directory.
-canonical_worktree_root() {
-  local repo="$1"
-  [[ "$repo" = /* ]] || err_path "repo path must be absolute: $repo"
-  [[ -d "$repo" ]]   || err_path "repo not a directory: $repo"
-  local root
-  root="$(git --no-optional-locks -C "$repo" rev-parse --show-toplevel 2>/dev/null)" \
-    || err_path "not a git worktree: $repo"
-  [[ -n "$root" ]] || err_path "not a git worktree: $repo"
-  printf '%s\n' "$root"
-}
-
-# Echo the per-repo state key (sha1 of canonical worktree root, 16 hex).
-# Returns non-zero (and prints nothing) when $1 is not a git worktree, so
-# callers can treat a non-repo argument as "no key".
-repo_state_key() {
-  local canonical
-  canonical="$(git --no-optional-locks -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
-  [[ -n "$canonical" ]] || return 1
-  python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest()[:16])' "$canonical"
-}
-
-# Walk upward from an absolute path looking for an enclosing git worktree
-# (a directory containing a `.git` file or directory). Echoes the worktree
-# root on stdout if found; returns non-zero (and prints nothing) otherwise.
-# Bounded to 12 levels so we don't traverse the entire filesystem.
-find_enclosing_worktree() {
-  local p="$1"
-  [[ "$p" = /* ]] || return 1
-  python3 "$CEREBRO_LIB_DIR/python/find_enclosing_worktree.py" "$p" 2>/dev/null
-}
-
-# Resolve $1 (an absolute path) for a bare-abs read/grep/ls invocation.
-# Echoes the realpathed result on stdout. Exit codes: 3 if not absolute
-# (internal misuse only); 6 if it resolves under /dev /proc /sys (special
-# filesystems / blocking devices) -- a security refusal callers MUST keep
-# hard; 7 for a benign missing path or wrong type (no regular file or
-# directory: FIFO, socket, char/block device) which callers may translate
-# into a successful empty result. The in-repo escape guard in
-# resolve_in_repo() does NOT apply -- this branch deliberately reads
-# outside any repo.
-resolve_bare_abs() {
-  python3 "$CEREBRO_LIB_DIR/python/resolve_bare_abs.py" "$1"
-}
-
-# Map common short rg --type aliases to the canonical rg type name. Unknown
-# inputs are passed through verbatim so rg emits its own diagnostic.
-canonicalise_rg_type() {
-  case "$1" in
-    rs)  printf 'rust\n' ;;
-    tsx) printf 'ts\n' ;;
-    jsx) printf 'js\n' ;;
-    yml) printf 'yaml\n' ;;
-    rb)  printf 'ruby\n' ;;
-    kt)  printf 'kotlin\n' ;;
-    *)   printf '%s\n' "$1" ;;
-  esac
 }
 
 usage() {
   cat <<'EOF'
 usage:
-  cerebro                       # start a native supervisor session
-  cerebro --resume [<id>]        # resume an ID, or the most recent session
-  cerebro list                   # list sessions
-  cerebro jobs                   # rediscover durable child jobs
-  cerebro wait <job-id>          # block on a job completion notification
-  cerebro cancel <job-id>        # stop an authorized job and its descendants
-  cerebro detach --output <path> -- <child-subcommand> [...]
-  cerebro acp [restart]          # editor frontend for Claude
-  cerebro --help
+  cerebro                         start a native supervisor
+  cerebro --resume [<session-id>]  reopen its native conversation
+  cerebro execute [--packet file] read one JSON task packet (stdin by default)
+  cerebro execute --resume <task-id> [--answer "text"]
+  cerebro answer <task-id> "text"  continue a terminal question
+  cerebro steer [<pipe>] "text"    steer a running stage
+  cerebro restart [<pipe>] "text"  retire its conversation, retaining work
+  cerebro jobs | status | list     inspect durable session state
+  cerebro wait <job-id> [--after N --disposition continue|correct|stop --note "reason"]
+  cerebro cancel <job-id>          stop that job and its descendants
+  cerebro models | model-env       inspect native model settings
+  cerebro worktrees | recall       inspect retained work and session history
+  cerebro acp [restart]            Claude editor frontend
 
-CEREBRO_BACKEND selects pi (default), codex or claude. Pi requires version
-0.99.2 or newer and Node 22.19.0 or newer. A session and all its children, including
-reviews, use one backend. Resume restores the recorded backend.
-
-The parent supervises requirements, plans, delegation and delivery gates.
-Ordinary sessions keep a short adjustable plan of possible commits and offer
-Hashimoto diff notes after each authorized commit, without an acceptance wait.
-Select the supervise skill for unattended work within the requested scope.
-Shared engineering, supervise and hashimoto-review skills come from marashiai/skills.
-Repository development happens in native children in the selected checkout.
-Execute reuses it by default; --worktree requests isolation. Guarded Cerebro MCP
-commands accept literal argv and stdin; the parent has no unrestricted mutation
-tools. Review uses fresh read-only context on the same backend.
-CEREBRO_SUPERVISOR_MODEL selects the supervisor;
-CEREBRO_MODEL selects implementation; CEREBRO_REVIEW_MODEL selects
-review (defaulting to CEREBRO_MODEL). Empty selections use the native default;
---model overrides one child call. The optional models-config.json catalog helps
-select models.
-
-Long child commands detach automatically through the command tool and survive
-parent disconnects. Their monitors notify waiters on completion; no child-state
-or log polling is required to wait. A blocked child ends with a question;
-answer <child-id> <answer> resumes that same conversation. A failed resume is
-reported instead of silently creating a fresh child.
-
-Pair execute/apply-review/doc-write for live output and steering.
-Preauthorized autosteering may correct drift. Restart additionally needs
-authority to replace the agent conversation; files, branch and PR are retained.
-Workspace cleanup is a separately authorized action.
-Supervisor steering cannot add user requirements. Paired children have
-a short post-turn steering window and bounded native inactivity handling.
-
-Interactive chats require a real TTY on stdin/stdout; controllers using a real
-PTY work. Session-bound commands are non-interactive. Cerebro does not serialize
-competing mutations against the same repository; sequence them.
-
-Requirements: jq, python3 and the selected native CLI on PATH. Development/PR
-work additionally needs git and gh; browser verification needs native browser
-capability. ACP is unavailable for Pi and Codex; their terminal frontends are supported.
-
-Options use env > $CEREBRO_HOME/config.json > default. CEREBRO_HOME is env-only.
-Supported options include CEREBRO_BACKEND, CEREBRO_SUPERVISOR_MODEL, CEREBRO_MODEL,
-CEREBRO_REVIEW_MODEL, CEREBRO_TIMEOUT, CEREBRO_CHILD_IDLE_TIMEOUT (default 0),
-CEREBRO_CHILD_SESSION_TTL,
-CEREBRO_PI_CMD, CEREBRO_CODEX_CMD, CEREBRO_CLAUDE_CMD,
-CEREBRO_CLAUDE_BASE_URL, CEREBRO_CLAUDE_AUTH_TOKEN, CEREBRO_OVERLAY_CAP,
-CEREBRO_META_HORIZON, CEREBRO_PAIR_IDLE, CEREBRO_PAIR_STALL,
-CEREBRO_PAIR_STALL_BUSY, CEREBRO_PAIR_STALL_RETRIES, CEREBRO_PAIR_STALL_BACKOFF,
-CEREBRO_DEBUG. See docs/USAGE.md for the full table and workflows.
+A task packet contains goal, task, acceptance, repo (absolute), and base (Git
+reference). Optional models.implementor/reviewer override per-role model/effort.
+Omitted models and efforts use native backend defaults. Implementation and tests
+run first; independent review starts automatically after a complete structured implementation handoff.
+Questions, blocked work, unfinished handoffs and failures stop for adjudication.
+Native tools, authentication and configuration remain available in every role.
 EOF
 }
 
@@ -246,38 +105,6 @@ mint_uuid() {
 ts_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 ts_compact() { date -u +%Y%m%dT%H%M%SZ; }
 
-# Build a collision-resistant child-log path under the session's children/
-# dir. We allow concurrent mutating runs (no per-repo lock), so two
-# same-session invocations can start within the same second; a bare
-# <subcmd>-<ts> name would let them share one file and produce truncated or
-# interleaved logs. Keep the human-readable <subcmd>-<ts> prefix but append
-# the PID plus a random token so each invocation gets a distinct file.
-child_log_path() {
-  local subcmd="$1"
-  printf '%s\n' "$CEREBRO_SESSION_DIR/children/${subcmd}-$(ts_compact)-$$-${RANDOM}.jsonl"
-}
-
-# Surface a child's final message to the orchestrator on stdout. A child runs
-# non-interactively, so when it pauses on a genuine blocker it ends with its
-# QUESTION as its closing message rather than completing the work. The mutating
-# children otherwise discard that text (they push commits, not output), so we
-# capture it and print it under a clear marker. The orchestrator reads this to
-# decide whether the child finished or is waiting on an answer (see the
-# "child stops to ask a question" rule in its system prompt).
-#   $1 = file holding the child's final result text   $2 = role label
-#   $3 = optional child provider session id for `cerebro answer`
-surface_child_reply() {
-  local f="$1" role="$2" child_id="${3:-}"
-  [[ -s "$f" ]] || return 0
-  printf -- '----- %s child closing message (read it: a question here means the child PAUSED for an answer) -----\n' "$role"
-  if [[ -n "$child_id" ]]; then
-    printf 'child session: %s\n' "$child_id"
-    printf 'answer with: cerebro answer %s "<answer>"\n\n' "$child_id"
-  fi
-  cat "$f"
-  printf -- '\n----- end %s child closing message -----\n' "$role"
-}
-
 # Append a structured event to the active session's transcript.
 log_event() {
   local what="$1"; shift || true
@@ -313,28 +140,11 @@ build_timeout_cmd() {
   fi
 }
 
-# Materialize shared skills and native backend extras without overwriting user overlays.
+# Materialize the supervisor context without loading development ceremonies.
 materialise_home() {
-  mkdir -p "$CEREBRO_HOME/.agents/skills" "$CEREBRO_HOME/.claude/skills" \
-    "$CEREBRO_HOME/sessions" "$CEREBRO_HOME/overlays" \
-    || die "cannot create $CEREBRO_HOME"
+  mkdir -p "$CEREBRO_HOME/sessions" "$CEREBRO_HOME/.claude" || die "cannot create $CEREBRO_HOME"
+  python3 "$CEREBRO_LIB_DIR/python/retire_skills.py" "$CEREBRO_HOME" || return $?
   write_if_changed "$CEREBRO_HOME/system-prompt.md" "$(cerebro_system_prompt)"
-  local src topic
-  # Retire generated policies so native discovery cannot reload their old gates.
-  for topic in cerebro-execute cerebro-apply-review cerebro-doc-write cerebro-verify \
-      cerebro-audit-gate cerebro-suites cerebro-observer; do
-    rm -rf "$CEREBRO_HOME/.agents/skills/$topic" "$CEREBRO_HOME/.claude/skills/$topic"
-  done
-  for src in "$(cerebro_skills_dir)"/*/SKILL.md; do
-    topic="$(basename "$(dirname "$src")")"
-    mkdir -p "$CEREBRO_HOME/.agents/skills/$topic"
-    write_if_changed "$CEREBRO_HOME/.agents/skills/$topic/SKILL.md" "$(cat "$src")"
-    # Claude and Codex discover the same source through their native roots.
-    if [[ -d "$CEREBRO_HOME/.claude/skills/$topic" && ! -L "$CEREBRO_HOME/.claude/skills/$topic" ]]; then
-      rm -rf "$CEREBRO_HOME/.claude/skills/$topic"
-    fi
-    ln -sfn "../../.agents/skills/$topic" "$CEREBRO_HOME/.claude/skills/$topic"
-  done
   backend_materialise_extras
 }
 
@@ -343,11 +153,5 @@ write_if_changed() {
   if [[ -f "$path" ]] && [[ "$(cat "$path")" == "$content" ]]; then
     return 0
   fi
-  printf '%s' "$content" > "$path"
-}
-
-write_if_missing() {
-  local path="$1" content="$2"
-  [[ -f "$path" ]] && return 0
   printf '%s' "$content" > "$path"
 }

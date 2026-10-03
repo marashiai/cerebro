@@ -1,4 +1,0 @@
-{"type": "session.started", "session_id": "/fixture/pi-error.jsonl"}
-{"type": "message_end", "message": {"role": "assistant", "content": [], "stopReason": "error", "errorMessage": "failed"}}
-{"type": "agent_end", "messages": [], "willRetry": false}
-{"type": "agent_settled"}
