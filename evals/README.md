@@ -2,19 +2,18 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-03-terra-pilot/report.md)
+[Latest published results](results/2026-10-03-happy-path-jev/report.md)
 
-Configuration `9f93b254d298`: **Bare agent 7/8; Cerebro 7/8; Cerebro + Jev 6/8** shared task outcomes; Cerebro − bare **+0.0 percentage points**. 8 matched triplets across 8 distinct cases; 0 incomplete units excluded. Small selected CSV fixtures; descriptive results.
+Configuration `6fd4135f914c`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer + Jev 1/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer + Jev **+0.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
-Models and efforts: baseline `gpt-5.6-terra` (medium); implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
+Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare agent | 7/8 | 42.1 | 0.0702 |
-| Cerebro | 7/8 | 412.4 | 0.5862 |
-| Cerebro + Jev | 6/8 | 337.5 | unknown |
+| Bare supervisor model | 1/1 | 39.1 | 0.0553 |
+| Supervisor + implementor + reviewer + Jev | 1/1 | 110.6 | 0.1393 |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-03-terra-pilot/cohort-02-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-03-happy-path-jev/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
