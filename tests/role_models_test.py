@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 from pi_fixture import seed_session
+from task_lifecycle_test import LifecycleTests
 
 root = Path(__file__).resolve().parent.parent
 
@@ -91,6 +92,45 @@ else:
             binding = json.loads((session / ('tools-' + role + '.json')).read_text())['mcpServers']['cerebro']['env']
             for key, value in settings.items():
                 assert binding['CEREBRO_' + key.upper()] == value, binding
+
+    empty_roles = {'CEREBRO_' + key.upper(): '' for key in settings}
+    for backend in ('pi', 'codex', 'claude'):
+        (session / 'metadata.json').write_text(json.dumps({'role': 'supervisor', 'backend': backend}))
+        result = subprocess.run(['bash', '-c', shell, '_', str(root / 'lib'),
+                                 'backend_' + backend + '_launch_orchestrator', '', ''],
+                                env={**environment, **empty_roles, 'CEREBRO_BACKEND': backend},
+                                cwd=home, text=True, capture_output=True, timeout=10)
+        assert result.returncode == 0, result.stderr
+        argv = json.loads(result.stdout)['argv']
+        assert '--model' not in argv and '--effort' not in argv and '--thinking' not in argv, argv
+        assert not any(item.startswith('model_reasoning_effort=') for item in argv), argv
+        binding = json.loads((session / 'tools-supervisor.json').read_text())['mcpServers']['cerebro']['env']
+        assert all(binding[key] == '' for key in empty_roles), binding
+
+    fixture = LifecycleTests()
+    fixture.setUp()
+    try:
+        (fixture.home / 'config.json').write_text(json.dumps(settings))
+        fixture.env.update(empty_roles)
+        for backend in ('pi', 'codex', 'claude'):
+            fixture.env['CEREBRO_BACKEND'] = backend
+            (fixture.session / 'metadata.json').write_text(json.dumps({'backend': backend}))
+            fixture.packet['task'] = 'Explicit empty environment selects native defaults: ' + backend
+            fixture.log.write_text('')
+            result = fixture.cli('execute', packet=fixture.packet)
+            assert result['review_model_relation'] == 'native defaults unresolved', result
+            assert fixture.stages() == ['execute', 'review']
+            if backend == 'codex':
+                starts = [item['params'] for item in fixture.records() if item.get('method') == 'thread/start']
+                turns = [item['params'] for item in fixture.records() if item.get('method') == 'turn/start']
+                assert all('model' not in item for item in starts), starts
+                assert all('effort' not in item for item in turns), turns
+            else:
+                argvs = [item['argv'] for item in fixture.records() if 'argv' in item]
+                assert all('--model' not in argv and '--effort' not in argv and '--thinking' not in argv
+                           for argv in argvs), argvs
+    finally:
+        fixture.doCleanups()
 
     native_log = Path(environment['TEST_NATIVE_LOG'])
     for backend in ('pi', 'codex', 'claude'):
