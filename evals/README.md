@@ -2,23 +2,28 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-04-lease-queue-unfinished/report.md)
+[Latest published results](results/2026-10-04-lease-queue-proportion/report.md)
 
-Configuration `8faa3267495d`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer 0/1; Supervisor + implementor + reviewer + Jev 1/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-100.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
+Configuration `8faa3267495d`: **Bare supervisor model 3/3; Supervisor + implementor + reviewer 2/3; Supervisor + implementor + reviewer + Jev 1/3** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-33.3 percentage points**. 3 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
 Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare supervisor model | 1/1 | 125.6 | 0.1481 |
-| Supervisor + implementor + reviewer | 0/1 | 301.5 | unknown |
-| Supervisor + implementor + reviewer + Jev | 1/1 | 145.6 | 0.1627 |
+| Bare supervisor model | 3/3 | 175.1 | 0.1495 |
+| Supervisor + implementor + reviewer | 2/3 | 215.1 | unknown |
+| Supervisor + implementor + reviewer + Jev | 1/3 | 277.6 | unknown |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-unfinished/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-proportion/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
-The [unfinished-tool rerun](results/2026-10-04-lease-queue-unfinished/interpretation.md)
+The [three-repetition supervisor-judgment run](results/2026-10-04-lease-queue-proportion/interpretation.md)
+delivered 3/3 bare, 2/3 without Jev and 1/3 with Jev. Supervisors corrected
+contract-literal findings that bare Terra also leaves, and each correction cycle
+risked the 300-second budget. The run also exposed a strict handoff-wording
+check, fixed afterwards, and one Jev provider inconsistency. The
+[unfinished-tool rerun](results/2026-10-04-lease-queue-unfinished/interpretation.md)
 no longer stalled. Cerebro with Jev passed, but Jev did not intervene. Without
 Jev, the supervisor accepted low-impact review findings, and the correction
 cycle timed out after editing the supplied tests. The
