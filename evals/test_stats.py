@@ -191,16 +191,6 @@ class StatisticsTests(unittest.TestCase):
         self.assertTrue(public['error'])
         self.assertFalse(public['correct'])
 
-    def test_review_label_accuracy_stays_separate_from_disposition_accuracy(self):
-        row = trial('without_jev', kind='review', mode='calibration',
-                    expected_arms=['without_jev', 'with_jev'], correct=False,
-                    fields={'validity': True, 'usefulness': True, 'action': False})
-        public = stats.public_trials(document(row))[0]
-        self.assertFalse(public['correct'])
-        self.assertEqual(public['metrics'], {'review_validity_correct': True,
-                                            'review_usefulness_correct': True,
-                                            'review_action_correct': False})
-
     def test_malformed_public_fields_are_rejected(self):
         for change in ({'correct': 1}, {'elapsed_seconds': -1}, {'case': '/private/path'},
                        {'metrics': {'time': float('inf')}}, {'checks': {'claim': 'yes'}},
@@ -208,13 +198,11 @@ class StatisticsTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 stats.summarize(document(trial(**change)))
 
-    def test_protocol_and_calibration_results_do_not_enter_product_aggregates(self):
+    def test_protocol_results_do_not_enter_product_aggregates(self):
         rows = [trial(), trial('supervisor')]
         rows += [trial('protocol', 'guard', mode='protocol', paired=False, expected_arms=['protocol'], correct=False)]
-        rows += [trial(arm, 'review', mode='calibration', kind='review', expected_arms=['without_jev', 'with_jev'])
-                 for arm in ('without_jev', 'with_jev')]
         cohorts = stats.summarize(document(*rows))['cohorts']
-        self.assertEqual(len(cohorts), 3)
+        self.assertEqual(len(cohorts), 2)
         product = next(item for item in cohorts if item['mode'] == 'comparison')
         self.assertEqual(product['matched_units'], 1)
         self.assertEqual(product['all_errors'], 0)
@@ -298,7 +286,7 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(readme.read_text(), 'Untouched documentation.\n')
 
     def test_provenance_contains_validated_reproduction_evidence_only(self):
-        source = {'source_commit': 'a' * 40, 'source_diff_sha256': 'b' * 64, 'corpus_sha256': 'c' * 64,
+        source = {'source_commit': 'a' * 40, 'source_diff_sha256': 'b' * 64,
                   'eval_sources': {'run.py': 'd' * 64, '.gitignore': 'e' * 64}, 'created_at': '2026-10-03T12:00:00+00:00',
                   'native_version': 'codex-cli 0.160.0', 'repetitions': 1, 'seed': 42,
                   'secret_config': '/private/never-copy-this'}

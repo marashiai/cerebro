@@ -163,13 +163,7 @@ class EvalTests(unittest.TestCase):
         self.assertIn('comparison-persisted-job-restart', SMOKE)
         self.assertIn('comparison-legitimate-investigation', SMOKE)
 
-    def test_errors_and_abstentions_cannot_become_correct_labels(self):
-        expected = {'validity': 'unsupported', 'usefulness': 'low_value', 'action': 'dismiss'}
-        self.assertFalse(run.score_decision({}, expected)['correct'])
-        self.assertFalse(run.score_decision({'error': 'timeout'}, expected)['correct'])
-        self.assertFalse(run.score_decision(dict(expected, validity='uncertain'), expected)['correct'])
-        self.assertTrue(run.score_decision(expected, expected)['correct'])
-        self.assertEqual(run.exit_status([{'correct': True, 'jev': {'score': {'correct': False}}}]), 1)
+    def test_errors_cannot_become_correct_outcomes(self):
         self.assertEqual(run.exit_status([{'correct': True, 'error': 'provider timeout'}]), 2)
 
     def test_fixture_grader_checks_behavior_and_preserves_supplied_tests(self):

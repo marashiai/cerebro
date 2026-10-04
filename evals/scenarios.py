@@ -12,8 +12,7 @@ import sys
 
 from fixtures import CSV_BEHAVIOR, INTEGRATION_CHECK, git, grade_episode
 from native import shell_commands
-from runtime import (cleanup, codex, command, environment, file_hashes, setup, write_json)
-from review_check import assess
+from runtime import (cleanup, codex, command, file_hashes, setup, write_json)
 
 
 FIXED = 'import csv\n\ndef parse_row(text):\n    return next(csv.reader([text])) if text else []\n'
@@ -99,7 +98,7 @@ def prepare(name, directory, seed, *, boundaries=BOUNDARIES):
     return repo, repo, requirements, allowed, hints
 
 
-def review_packet(name, repo, session, arm, env, criteria):
+def review_packet(name, session):
     from fixtures import structured_finding
     if name == 'stale-review-recovery':
         reports = [('old-review', [structured_finding('quoted-comma', 'parser.py', 4,
@@ -118,11 +117,7 @@ def review_packet(name, repo, session, arm, env, criteria):
                   'findings': findings, 'criteria': []}
         path = session / 'children' / (label + '.json')
         write_json(path, report)
-        item = {'review_file': str(path), 'review': report}
-        if arm == 'with_jev':
-            with environment(env):
-                item['jev_advisory'] = assess(repo, 'HEAD', path, str(criteria), session)
-        packet.append(item)
+        packet.append({'review_file': str(path), 'review': report})
     return packet
 
 

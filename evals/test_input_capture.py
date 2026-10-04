@@ -9,9 +9,7 @@ from unittest.mock import patch
 
 import comparison
 import lease_fixture
-import run
 import runtime
-from fixtures import seed_episode, seed_repo
 from user_input import snapshot
 
 
@@ -90,64 +88,6 @@ class InputCaptureTests(unittest.TestCase):
                     comparison.trial('comparison-lease-queue-concurrency', directory, seed, arm, settings)
             self.assertEqual(len(originals), len(comparison.ARMS))
             self.assertEqual(len(set(originals)), 1)
-
-    def test_prior_review_assessment_receives_capture_before_advisory_material(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            seed = root / 'seed'
-            seed_episode(seed)
-            directory = root / 'trial'
-            directory.mkdir()
-            assessments = []
-
-            def assess(repo, base, report, criteria, session):
-                inputs = snapshot(session)
-                self.assertEqual(inputs, json.loads(Path(criteria).read_text())['user_inputs'])
-                self.assertNotIn('Prior review evidence', inputs[0]['content'][0]['text'])
-                assessments.append(inputs)
-                return {'summary': 'advisory evidence'}
-
-            settings = {'models': {'implementation': 'worker', 'review': 'reviewer'},
-                        'efforts': {'implementation': None, 'review': None}}
-            with patch('comparison.setup', side_effect=setup_session), patch('comparison.cleanup'), \
-                    patch('scenarios.assess', side_effect=assess), \
-                    patch('comparison.codex', return_value={'answer': {}, 'elapsed_seconds': 1}), \
-                    patch('comparison.grade', return_value={'correct': True, 'metrics': {}}), \
-                    patch('comparison.condition_metrics', return_value={}), patch('comparison.apply_condition_checks'):
-                comparison.trial('comparison-mixed-review-recovery', directory, seed, 'supervisor_jev', settings)
-            self.assertEqual(len(assessments), 1)
-
-    def test_calibration_captures_requirements_before_jev_and_digest_ignores_capture_identity(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            case = run.load_cases()[0]
-            seed = root / 'seed'
-            seed_repo(seed, case['before'])
-            contexts = []
-
-            def assessment(repo, base, report, criteria, session):
-                inputs = snapshot(session)
-                self.assertEqual(inputs[0]['content'][0]['text'], case['requirements'])
-                self.assertEqual(json.loads(Path(criteria).read_text())['user_inputs'], inputs)
-                return {'model': 'configured-jev', 'findings': [case['expected_jev']]}
-
-            def native(directory, env, prompt, settings, **kwargs):
-                packet = json.loads(prompt.split('\n', 1)[1])
-                inputs = packet['review_context']['task_spec']['original_user_inputs']
-                self.assertEqual(inputs, snapshot(Path(env['CEREBRO_SESSION_DIR'])))
-                self.assertEqual(inputs[0]['content'][0]['text'], case['requirements'])
-                contexts.append(inputs)
-                return {'answer': case['expected'], 'elapsed_seconds': 1}
-
-            with patch('run.setup', side_effect=setup_session), patch('runtime.cleanup'), \
-                    patch('run.assess', side_effect=assessment), patch('run.codex', side_effect=native):
-                results = []
-                for arm in run.ARMS:
-                    directory = root / arm
-                    directory.mkdir()
-                    results.append(run.review_trial(case, directory, seed, arm, {}))
-            self.assertNotEqual(contexts[0][0]['id'], contexts[1][0]['id'])
-            self.assertEqual(results[0]['evidence_sha256'], results[1]['evidence_sha256'])
 
 
 if __name__ == '__main__':

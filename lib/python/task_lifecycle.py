@@ -167,8 +167,6 @@ def response(directory, state):
         tools = unfinished_tools(state, role)
         if tools:
             result[name + '_unfinished_tools'] = tools
-    if state.get('assessment'):
-        result['assessment'] = json.loads(Path(state['assessment']).read_text())
     if state.get('error'):
         result['error'] = state['error']
     return result
@@ -311,29 +309,12 @@ def run(args):
             state.pop('attempt', None)
             state['status'] = result['status']
             if result['status'] == 'complete':
-                state['stage'] = 'review' if role == 'execute' else 'assess'
+                state['stage'] = 'review' if role == 'execute' else 'done'
             save(directory, state)
             if result['status'] != 'complete':
                 print(json.dumps(response(directory, state)))
                 return 0
             store_upsert(store, key, {'status': 'done', 'updated_at': _now_iso()})
-        if state['stage'] == 'assess' and os.environ.get('CEREBRO_JEV_ENABLED') == '1':
-            output = state['review_output']
-            assessment = subprocess.run([sys.executable, str(ROOT / 'python' / 'review_check.py'),
-                                         state['workspace']['path'], state['review_base'],
-                                         output, str(directory / 'task.json')])
-            sidecar = Path(output).with_suffix('.assessment.json')
-            if sidecar.is_file():
-                state['assessment'] = str(sidecar)
-            if assessment.returncode:
-                state['status'] = 'failed'
-                state['error'] = 'Jev review assessment failed; original findings retained'
-                save(directory, state)
-                print(json.dumps(response(directory, state)))
-                return assessment.returncode
-        state['stage'] = 'done'
-        state['status'] = 'complete'
-        save(directory, state)
         print(json.dumps(response(directory, state)))
         return 0
 

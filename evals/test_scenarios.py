@@ -65,10 +65,10 @@ class ScenarioTests(unittest.TestCase):
     def test_report_keeps_single_conditions_out_of_missing_pair_counts(self):
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
-            rows = [{'case': 'single', 'kind': 'delivery', 'mode': 'live', 'paired': False,
+            rows = [{'case': 'single', 'kind': 'delivery', 'mode': 'protocol', 'paired': False,
                      'correct': False, 'checks': {'required_review': False}, 'repeat': 0,
-                     'arm': 'without_jev', 'artifacts': str(root / 'single'), 'elapsed_seconds': 1.0,
-                     'expected_arms': ['without_jev'], 'settings': {**run.resolve_config({}),
+                     'arm': 'protocol', 'artifacts': str(root / 'single'), 'elapsed_seconds': 1.0,
+                     'expected_arms': ['protocol'], 'settings': {**run.resolve_config({}),
                          'jev_model': 'jev-latest', 'jev_confidence': .8, 'timeout': 900,
                          'jev_endpoint': 'https://unused.invalid', 'jobs_requested': 1, 'jobs_effective': 1,
                          'timing_mode': 'isolated', 'baseline_roles': {'bare_implementor': 'implementation', 'bare_supervisor': 'supervisor'}}}]
@@ -78,13 +78,13 @@ class ScenarioTests(unittest.TestCase):
             self.assertEqual(result['exit_status'], 1)
             cohort = json.loads((root / 'aggregate.json').read_text())['cohorts'][0]
             self.assertEqual(cohort['incomplete_units'], [])
-            self.assertEqual(cohort['arms']['without_jev']['trials'], 1)
+            self.assertEqual(cohort['arms']['protocol']['trials'], 1)
             self.assertIn('required_review', (root / 'report.md').read_text())
 
     def test_catalogue_has_all_requested_areas_without_duplicate_ids(self):
         entries = run.catalogue()
         self.assertEqual(len(entries), len({entry['id'] for entry in entries}))
-        self.assertEqual({entry['suite'] for entry in entries}, {'comparison', 'reviews', 'protocol'})
+        self.assertEqual({entry['suite'] for entry in entries}, {'comparison', 'protocol'})
         self.assertIn('comparison-persisted-job-restart', {entry['id'] for entry in entries})
         self.assertTrue(all(not entry['paired'] for entry in entries if entry['mode'] == 'protocol'))
 

@@ -11,9 +11,8 @@ from urllib.parse import urlsplit
 
 
 ROLES = ('implementation', 'review', 'supervisor')
-ARMS = ('bare_implementor', 'bare_supervisor', 'implementor_reviewer', 'supervisor', 'supervisor_jev',
-        'without_jev', 'with_jev', 'protocol')
-LEDGER_ROLES = set(ROLES) | {'execute', 'jev-attention', 'jev-review', 'jev-unknown'}
+ARMS = ('bare_implementor', 'bare_supervisor', 'implementor_reviewer', 'supervisor', 'supervisor_jev', 'protocol')
+LEDGER_ROLES = set(ROLES) | {'execute', 'jev-attention', 'jev-unknown'}
 TOKEN_KEYS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens')
 PRICE_KEYS = ('input_per_million', 'cached_input_per_million', 'cache_write_input_per_million', 'output_per_million')
 BOOTSTRAP_MIN_CASES = 10
@@ -176,7 +175,7 @@ def public_trials(document, prices=None):
         if not isinstance(raw, dict):
             raise ValueError('each trial must be an object')
         row = {key: identifier(raw.get(key), key) for key in ('case', 'kind', 'arm', 'mode')}
-        if row['mode'] not in ('comparison', 'live', 'calibration', 'protocol') or row['arm'] not in ARMS:
+        if row['mode'] not in ('comparison', 'protocol') or row['arm'] not in ARMS:
             raise ValueError('unrecognized trial mode or arm')
         if 'capability' in raw:
             row['capability'] = identifier(raw['capability'], 'capability')
@@ -186,8 +185,7 @@ def public_trials(document, prices=None):
                 or len(set(expected)) != len(expected)
                 or any(arm not in ARMS for arm in expected) or row['arm'] not in expected):
             raise ValueError('trial requires distinct expected_arms including its own arm')
-        allowed = set(ARMS[:5]) if row['mode'] == 'comparison' else (
-            {'protocol'} if row['mode'] == 'protocol' else {'without_jev', 'with_jev'})
+        allowed = set(ARMS[:5]) if row['mode'] == 'comparison' else {'protocol'}
         if not set(expected) <= allowed:
             raise ValueError('expected_arms must match the trial mode')
         row['paired'] = len(expected) > 1
@@ -218,19 +216,12 @@ def public_trials(document, prices=None):
                 metrics[key] = value
         row['metrics'] = {identifier(key, 'metric name'): value if isinstance(value, bool)
                           else number(value, 'metric') for key, value in metrics.items()}
-        if row['mode'] == 'calibration':
-            for field in ('validity', 'usefulness', 'proportionality', 'action'):
-                if field in raw.get('fields', {}):
-                    row['metrics']['review_' + field + '_correct'] = boolean(raw['fields'][field], 'review score')
         for source, target in (('protocol_violations', 'protocol_violation_count'),
                                ('transient_unrelated_edits', 'transient_unrelated_edit_count')):
             if source in raw:
                 if not isinstance(raw[source], list):
                     raise ValueError(source + ' must be a list')
                 row['metrics'][target] = len(raw[source])
-        jev = raw.get('jev')
-        if isinstance(jev, dict) and isinstance(jev.get('score'), dict) and 'correct' in jev['score']:
-            row['metrics']['jev_classification_correct'] = boolean(jev['score']['correct'], 'Jev score')
         if row['metrics'].get('attempted_trial') is False:
             row['elapsed_seconds'] = None
         native = raw.get('mechanism', {})

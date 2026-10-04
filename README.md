@@ -5,9 +5,8 @@
 Cerebro runs through your existing **Pi, Codex, or Claude Code** installation.
 The supervisor inspects the repository and makes a concrete plan. One task packet
 starts an implementor that does the coding and tests, then automatically starts
-an independent reviewer. The supervisor adjudicates the implementation evidence,
-original findings, and optional Jev assessment, and either finishes or delegates a
-focused correction.
+an independent reviewer. The supervisor adjudicates the implementation evidence
+and original findings, and either finishes or delegates a focused correction.
 
 All roles keep the backend's normal tools, authentication, configuration, and
 repository instructions. Separate role contexts and controller-owned orchestration

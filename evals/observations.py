@@ -115,15 +115,12 @@ def condition_metrics(directory, session, arm, repo, settings):
     scope_rows = [item for path in (session / 'children').glob('*.scope.jsonl') for item in records(path)]
     classifications = [item for item in scope_rows if isinstance(item.get('classification'), dict)]
     observer_failures = sum(item.get('type') == 'observer_failure' for item in scope_rows)
-    assessments = list((session / 'children').glob('*.assessment.json'))
     monitored = arm == 'supervisor_jev'
     if monitored and observer_failures:
         violations.append('Jev implementation observer failed')
     if monitored and implementations and not classifications:
         violations.append('missing Jev implementation observation')
-    if monitored and reviews and not assessments:
-        violations.append('missing Jev review assessment')
-    if not monitored and (scope_rows or assessments):
+    if not monitored and scope_rows:
         violations.append('unexpected Jev use')
     provider_failures = sum(bool(item.get('error')) for path in session.rglob('*.jev.jsonl')
                             for item in records(path) if item.get('type') == 'response')
@@ -143,6 +140,6 @@ def condition_metrics(directory, session, arm, repo, settings):
                                           for item in requested],
             'jev_observer_failures': observer_failures, 'jev_provider_failures': provider_failures, 'jobs': jobs, 'reviews': len(reviews), 'implementation_attempts': len(implementations),
             'supervisor_source_edits': len(parent_edits), 'ambiguous_source_ownership': len(ambiguous_edits), 'jev_batches': len(classifications),
-            'jev_notices': sum(job['published_notices'] for job in jobs), 'review_assessments': len(assessments),
+            'jev_notices': sum(job['published_notices'] for job in jobs),
             'accepted_steers': sum(item['type'] == 'steer' and item.get('passed', False) for item in seen),
             'parent_calls': calls}

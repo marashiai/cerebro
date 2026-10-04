@@ -195,8 +195,7 @@ def trial(identifier, directory, seed, arm, settings):
                               'user_inputs': user_inputs})
         reports = None
         if name in ('mixed-review-recovery', 'stale-review-recovery'):
-            reports = scenarios.review_packet(name, selected, session,
-                'with_jev' if arm == 'supervisor_jev' else 'without_jev', env, criteria)
+            reports = scenarios.review_packet(name, session)
         if reports:
             task += '\nPrior review evidence, assess against CURRENT source: ' + json.dumps(reports)
         packet_task = (task + '\nIn your implementation closing JSON, additionally include delivery with '
@@ -227,7 +226,7 @@ def trial(identifier, directory, seed, arm, settings):
         else:
             prompt = (task + '\nUse your native tools to inspect and plan, delegate all coding and testing '
                       'with Cerebro execute; it automatically runs independent review. Adjudicate every '
-                      'original finding against the task and current source, plus advisory Jev evidence if present. '
+                      'original finding against the task and current source. '
                       'Submit at most two focused correction packets if justified. Keep the assigned model, '
                       'effort and monitoring conditions. Any native/provider failure must be reported; '
                       'do not change the condition to recover. No separate verify worker. '

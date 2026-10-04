@@ -23,7 +23,7 @@ references live in `session/tasks/<task-id>/task.json`. Native IDs remain in the
 existing locked child store. The packet also materializes a task-local `spec.md`;
 `session/spec.md` is informational. Jev reads authority from the canonical packet in that task.json.
 
-The lifecycle is implementation -> review -> assessment -> done. Incomplete,
+The lifecycle is implementation -> review -> done. Incomplete,
 blocked, question, failed transport, and malformed handoffs preserve the current
 stage and original evidence. Answer resumes the questioned stage. Restart retires
 the native conversation and preserves its diagnosis/workspace for a fresh attempt.
@@ -80,7 +80,5 @@ to session `decisions.jsonl`. The job ID is passed by the detached monitor throu
 `CEREBRO_JOB_STATUS` identifies its notification socket.
 
 Review output is strict JSON with per-finding anchors and criterion evidence.
-Jev preserves that original report and writes a sibling assessment/HTTP trace.
-Assessment retry has its own stage so failure does not cause another native review.
-The final task result returns original implementation, original review, and
-assessment inline for supervisor adjudication.
+The final task result returns the original implementation and original review
+inline for supervisor adjudication.

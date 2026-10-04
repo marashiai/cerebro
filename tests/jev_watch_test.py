@@ -1,4 +1,4 @@
-"""Exercise Jev's typed client, advisory watcher and per-finding review evidence."""
+"""Exercise Jev's typed client and advisory watcher."""
 
 from collections import Counter, deque
 import json
@@ -17,7 +17,6 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'lib' / 'python'))
 from jev import Jev
-from review_check import assess, context
 from scope_watch import HISTORY_CHARS, HISTORY_LIMIT, ScopeWatch, scope_questions
 from wait_detached import completion_socket
 from user_input import record_text, snapshot
@@ -45,37 +44,18 @@ class Classifier(BaseHTTPRequestHandler):
             self.wfile.write(b'{"error":"fixture quota exceeded"}')
             return
         state, questions = body['state'], body['questions']
-        choices = {}
         confidence = {}
-        if 'attention' in questions:
-            activity = state.get('events', []) + state.get('history', [])
-            concern = next((event for event in activity if 'APPARENT_MISTAKE' in event['activity'] or
-                            'BILLING_DRIFT' in event['activity']), None)
-            choices = {'attention': 'possible_issue' if concern else 'quiet',
-                       'reason': ('apparent_mistake' if concern and 'APPARENT_MISTAKE' in concern['activity']
-                                  else 'scope_drift' if concern else 'none'),
-                       'evidence': concern['id'] if concern else 'none'}
-            if self.attention:
-                attention, reason, confidence['attention'] = self.attention
-                oldest = (state.get('history', []) + state.get('events', []))[0]
-                choices = {'attention': attention, 'reason': reason, 'evidence': oldest['id']}
-        else:
-            for name, question in questions.items():
-                if name == 'validity':
-                    choices[name] = ('unsupported' if self.mode == 'mixed' and
-                                     state['finding']['id'] == 'supported' else 'supported')
-                elif name == 'usefulness':
-                    choices[name] = 'useful'
-                elif name == 'proportionality':
-                    choices[name] = 'proportionate'
-                elif name == 'evidence':
-                    choices[name] = next((key for key in question['criteria'] if key != 'none'), 'none')
-                elif name == 'clean_validity':
-                    choices[name] = 'bounded'
-                elif name == 'clean_usefulness':
-                    choices[name] = 'useful'
-                elif name == 'clean_evidence':
-                    choices[name] = 'clean-diff'
+        activity = state.get('events', []) + state.get('history', [])
+        concern = next((event for event in activity if 'APPARENT_MISTAKE' in event['activity'] or
+                        'BILLING_DRIFT' in event['activity']), None)
+        choices = {'attention': 'possible_issue' if concern else 'quiet',
+                   'reason': ('apparent_mistake' if concern and 'APPARENT_MISTAKE' in concern['activity']
+                              else 'scope_drift' if concern else 'none'),
+                   'evidence': concern['id'] if concern else 'none'}
+        if self.attention:
+            attention, reason, confidence['attention'] = self.attention
+            oldest = (state.get('history', []) + state.get('events', []))[0]
+            choices = {'attention': attention, 'reason': reason, 'evidence': oldest['id']}
         answers = {name: {'type': 'choice', 'choice': choices[name],
                           'confidence': confidence.get(name, 0.99),
                           'probabilities': {key: float(key == choices[name]) for key in question['criteria']}}
@@ -135,12 +115,6 @@ class NoticeSocket:
         self.path_obj.unlink(missing_ok=True)
         self.release.set()
         self.thread.join(timeout=1)
-
-
-def finding(identifier, file='parser.py', line=1, problem='Empty input is mishandled.'):
-    return {'id': identifier, 'severity': 'medium', 'file': file, 'line': line,
-            'problem': problem, 'evidence': 'The empty-input branch returns the wrong value.',
-            'requested_change': 'Handle empty input explicitly.'}
 
 
 class JevTests(unittest.TestCase):
@@ -372,77 +346,6 @@ class JevTests(unittest.TestCase):
         self.assertLessEqual(watch.history_chars, HISTORY_CHARS)
         self.assertEqual(watch.history_chars, sum(len(item['activity']) for item in watch.history))
 
-    def test_review_assesses_findings_individually_and_preserves_original_json(self):
-        repo = self.root / 'repo'
-        repo.mkdir()
-        subprocess.run(['git', '-C', str(repo), 'init', '-qb', 'main'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'config', 'user.name', 'Fixture'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'config', 'user.email', 'fixture@localhost'], check=True)
-        source = repo / 'parser.py'
-        source.write_text(''.join(f'line {number}\n' for number in range(1, 81)))
-        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'base'], check=True)
-        base = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
-        lines = source.read_text().splitlines()
-        lines[39] = 'changed line 40'
-        source.write_text('\n'.join(lines) + '\n')
-        report = self.task / 'review.reply'
-        original = json.dumps({'status': 'complete', 'summary': 'Review parser changes.',
-                               'findings': [finding('supported', line=40), finding('missing', 'absent.py', 40)],
-                               'criteria': [{'criterion': 'parser works', 'result': 'passed',
-                                             'evidence': 'Focused source review.'}]})
-        report.write_text(original)
-        criteria = self.task / 'task.json'
-        Classifier.mode = 'mixed'
-        late_input = record_text(self.session, 'Captured during review and outside this evaluated snapshot.',
-                                 source='test-native', native_id='session-a', turn_id='turn-late-review')
-        with patch.dict(os.environ, self.env):
-            assessment = assess(repo, base, report, str(criteria), self.session)
-        self.assertEqual(report.read_text(), original)
-        self.assertEqual(assessment['findings'][0]['validity'], 'unsupported')
-        self.assertEqual(assessment['findings'][1]['validity'], 'uncertain')
-        self.assertEqual(len(Classifier.requests), 2)
-        self.assertEqual(Classifier.requests[0]['state']['finding']['id'], 'supported')
-        self.assertIn('Avoid billing changes', json.dumps(Classifier.requests[0]['state']['task_spec']['original_user_inputs']))
-        self.assertIn('Preserve None and False', json.dumps(Classifier.requests[0]['state']['task_spec']['original_user_inputs']))
-        self.assertEqual(Classifier.requests[0]['state']['task_spec']['supervisor_goal'], 'Summarize parser work.')
-        self.assertNotIn(late_input['id'], json.dumps(Classifier.requests[0]['state']['task_spec']))
-        self.assertEqual(len(Classifier.requests[0]['state']['evidence']), 2)
-        self.assertTrue(Classifier.requests[0]['state']['evidence'][1]['windowed'])
-        self.assertFalse(Classifier.requests[0]['state']['evidence'][1]['truncated'])
-        self.assertLess(len(json.dumps(Classifier.requests[0])), 30000)
-        self.assertNotIn('missing', json.dumps(Classifier.requests[0]['state']))
-        self.assertEqual(assessment['findings'][0]['evidence']['kind'], 'diff')
-        self.assertFalse(assessment['findings'][0]['context_incomplete'])
-        self.assertTrue(assessment['findings'][1]['context_incomplete'])
-        self.assertEqual(report.with_suffix('.assessment.json').stat().st_mode & 0o777, 0o600)
-        trace = report.with_suffix('.jev.jsonl').read_text()
-        self.assertEqual(len(assessment['request_ids']), 2)
-        self.assertNotIn(original[:100], trace)
-        self.assertNotIn('private-fixture-key', trace)
-
-    def test_clean_review_is_bounded_and_not_treated_as_proof_of_no_defects(self):
-        repo = self.root / 'clean'
-        repo.mkdir()
-        subprocess.run(['git', '-C', str(repo), 'init', '-qb', 'main'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'config', 'user.name', 'Fixture'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'config', 'user.email', 'fixture@localhost'], check=True)
-        (repo / 'parser.py').write_text('def parse(value):\n    return value\n')
-        subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
-        subprocess.run(['git', '-C', str(repo), 'commit', '-qm', 'base'], check=True)
-        base = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
-        (repo / 'parser.py').write_text('def parse(value):\n    return [] if value is None else value\n')
-        report = self.task / 'clean.reply'
-        original = json.dumps({'status': 'complete', 'summary': 'No findings in bounded review.',
-                               'findings': [], 'criteria': []})
-        report.write_text(original)
-        with patch.dict(os.environ, self.env):
-            assessment = assess(repo, base, report, str(self.task / 'task.json'), self.session)
-        self.assertEqual(report.read_text(), original)
-        self.assertEqual(assessment['clean_assessment']['validity'], 'bounded')
-        self.assertEqual(assessment['findings'], [])
-        self.assertEqual(assessment['clean_assessment']['evidence']['kind'], 'diff')
-
     def test_packet_headings_cannot_replace_goal_or_acceptance(self):
         goal = 'Original goal\n# Goal\nThis heading is part of the original goal.'
         task = 'Implement requested task\n# Goal\nThis is task prose, not a replacement goal.\n# Acceptance criteria\nTask prose.'
@@ -522,23 +425,6 @@ class JevTests(unittest.TestCase):
                         proc.kill()
                         proc.communicate()
                     marker.unlink(missing_ok=True)
-
-    def test_clean_untracked_code_is_an_explicit_evidence_gap(self):
-        repo = self.root / 'untracked'
-        repo.mkdir()
-        for arguments in (('init', '-qb', 'main'), ('config', 'user.name', 'Fixture'),
-                          ('config', 'user.email', 'fixture@localhost'), ('commit', '--allow-empty', '-qm', 'base')):
-            subprocess.run(['git', '-C', str(repo), *arguments], check=True)
-        (repo / 'new-parser.py').write_text('def parse(value):\n    return value\n')
-        report = self.task / 'untracked.reply'
-        report.write_text(json.dumps({'status': 'complete', 'summary': 'No findings.', 'findings': [], 'criteria': []}))
-        state = context(repo, 'HEAD', report, str(self.task / 'task.json'), self.session)
-        self.assertEqual(state['clean_evidence']['untracked_files'], ['new-parser.py'])
-        self.assertTrue(state['clean_evidence']['untracked_source_omitted'])
-        with patch.dict(os.environ, self.env):
-            assessment = assess(repo, 'HEAD', report, str(self.task / 'task.json'), self.session)
-        self.assertTrue(assessment['context_incomplete'])
-        self.assertEqual(assessment['clean_assessment']['validity'], 'uncertain')
 
 
 if __name__ == '__main__':

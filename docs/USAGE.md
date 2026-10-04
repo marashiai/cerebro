@@ -100,9 +100,7 @@ the canonical task packet’s goal and criteria. Concern notices wake a pending 
 call; healthy execution otherwise remains quiet. A notice requires a cited event,
 a concrete reason, and confidence at or above `jev_confidence`; each event and
 reason wakes the supervisor once. Every classification stays in the child's
-`.scope.jsonl` log. Jev also assesses completed
-review findings individually, retaining the original report and an assessment
-sidecar with trace/evidence. Observer/assessment failures remain explicit.
+`.scope.jsonl` log. Observer failures remain explicit.
 
 Acknowledge a concern without sending its dismissal to the implementor:
 

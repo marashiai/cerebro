@@ -64,11 +64,8 @@ Each command creates a new private output directory:
 # Default smoke: three tasks, five conditions each (15 trials).
 evals/.venv/bin/python evals/run.py --config evals/model-config.example.json --out /tmp/cerebro-smoke-new
 
-# All task comparisons, static review calibration and offline protocol cases.
+# All task comparisons and offline protocol cases.
 evals/.venv/bin/python evals/run.py --suite all --config evals/model-config.example.json --out /tmp/cerebro-all-new
-
-# Static review calibration, with and without advisory Jev assessment.
-evals/.venv/bin/python evals/run.py --suite reviews --config evals/model-config.example.json --out /tmp/cerebro-reviews-new
 
 # Offline native lifecycle contracts; no model settings or credentials needed.
 evals/.venv/bin/python evals/run.py --suite protocol --out /tmp/cerebro-protocol-new
@@ -80,7 +77,6 @@ transition and ownership requirements. Hidden checks exercise behavior beyond
 supplied tests. These are small local fixtures, not broad software-engineering
 benchmarks. `--suite all --list` shows the current catalogue: task comparisons
 cover delivery, truthful blockers, review recovery, scope and workspace reuse;
-static reviews cover supported, false, incomplete, clean and injected claims;
 protocol cases cover completion, answer/resume, failure, interruption, steering,
 cancellation/disconnect ownership and restart.
 
@@ -115,7 +111,7 @@ stage. Repetitions do not add independent task diversity.
 | `bare_supervisor` | supervisor | none | none | off |
 | `implementor_reviewer` | implementation | review role | none | off |
 | `supervisor` | implementation | review role | supervisor role | off |
-| `supervisor_jev` | implementation | review role | supervisor role | watches implementation and assesses findings |
+| `supervisor_jev` | implementation | review role | supervisor role | watches implementation |
 
 Arms share initial requirements, source and prior task evidence. Bare conditions
 make model-strength comparisons explicit. The implementor codes and tests; the
@@ -140,16 +136,13 @@ ID. Precedence is **config defaults < per-case config < CLI overrides**.
 Instead of a config file, supply `--implementation-model`, `--review-model`
 and `--supervisor-model`; corresponding `--implementation-effort`,
 `--review-effort` and `--supervisor-effort` flags are optional. Live task
-comparisons require all three model choices; static reviews require only the
-supervisor model. Omitted efforts preserve native defaults. Names and efforts
-pass through without a catalogue or silent substitution. Requested settings and
-native resolution evidence are recorded separately; aliases may resolve to a
-different native identifier.
+comparisons require all three model choices. Omitted efforts preserve native
+defaults. Names and efforts pass through without a catalogue or silent
+substitution. Requested settings and native resolution evidence are recorded
+separately; aliases may resolve to a different native identifier.
 
 For comparison runs without Jev, select
 `--conditions bare_implementor bare_supervisor implementor_reviewer supervisor`.
-This flag changes task-comparison conditions; static review calibration still
-includes its Jev condition.
 
 `--jobs 1` is the default and measures isolated trial latency. Higher values cap
 concurrent **case/repeat groups**, each in a spawned process. Arms within each
@@ -174,9 +167,8 @@ monitoring, delegation and independent review of delivered source.
 arms; it is not measured for bare arms. A supervisor that codes directly or skips
 review can deliver working code while failing the condition diagnostic.
 `ambiguous_source_ownership` records edits whose supervisor/child ownership
-cannot be established; uncertainty is not successful role separation. Static
-review decisions and Jev classification scores remain separate from task
-outcomes. Failures and unfinished work stay visible.
+cannot be established; uncertainty is not successful role separation. Failures
+and unfinished work stay visible.
 
 Each trial writes a durable `result.json` before coordinator delivery. Keep
 original receipts and run a new experiment rather than editing recorded evidence.

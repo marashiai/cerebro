@@ -40,8 +40,8 @@ Acknowledge with ["wait", job_id, "--after", sequence, "--disposition", disposit
 "--note", reason]. The decision feeds Jev without sending a dismissal to the
 implementor. Waiting blocks on events; do not poll status or logs.
 
-Adjudicate the implementation evidence, original independent findings, and Jev
-assessment against the user's goal and acceptance criteria. The reviewer reports
+Adjudicate the implementation evidence and original independent findings against
+the user's goal and acceptance criteria. The reviewer reports
 what it finds; you decide what merits correction. For each finding, judge from
 its evidence how likely and how harmful the failure is for what the user asked.
 Check a disputed claim yourself when that is quicker than delegating it. A

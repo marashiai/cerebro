@@ -19,14 +19,12 @@ START = '<!-- evals:overview:start -->'
 END = '<!-- evals:overview:end -->'
 LABELS = {'bare_implementor': 'Bare implementor', 'bare_supervisor': 'Bare supervisor model',
           'implementor_reviewer': 'Implementor + reviewer', 'supervisor': 'Supervisor + implementor + reviewer',
-          'supervisor_jev': 'Supervisor + implementor + reviewer + Jev',
-          'without_jev': 'Without Jev', 'with_jev': 'With Jev', 'protocol': 'Native protocol'}
-COLORS = dict(zip(LABELS, ('#748094', '#e39b35', '#477ac0', '#6456d8', '#009b87', '#748094', '#009b87', '#6456d8')))
+          'supervisor_jev': 'Supervisor + implementor + reviewer + Jev', 'protocol': 'Native protocol'}
+COLORS = dict(zip(LABELS, ('#748094', '#e39b35', '#477ac0', '#6456d8', '#009b87', '#6456d8')))
 
 CHART_LABELS = {'bare_implementor': 'Bare\nimplementor', 'bare_supervisor': 'Bare\nsupervisor',
                 'implementor_reviewer': 'Worker\n+ review', 'supervisor': 'Supervised\nworkers',
-                'supervisor_jev': 'Supervised\n+ Jev', 'without_jev': 'Without Jev',
-                'with_jev': 'With Jev', 'protocol': 'Native protocol'}
+                'supervisor_jev': 'Supervised\n+ Jev', 'protocol': 'Native protocol'}
 
 
 def formatted(value, digits=2, signed=False):
@@ -46,7 +44,7 @@ def overview(report, link):
     cohorts = [(index, cohort) for index, cohort in enumerate(report['cohorts'], 1)
                if cohort['mode'] == 'comparison']
     if not cohorts:
-        return '\n'.join(lines + ['No product comparison was measured in this run. Protocol and Jev ablation '
+        return '\n'.join(lines + ['No product comparison was measured in this run. Protocol '
                                  'results are reported separately.'])
     for index, cohort in cohorts:
         if not cohort['matched_units']:
@@ -110,8 +108,6 @@ def chart_cohort(cohort, output, stem):
     labels = [CHART_LABELS[arm] for arm in arms]
     colors = [COLORS[arm] for arm in arms]
     n = cohort['matched_units']
-    title = ('Product capability comparison' if cohort['mode'] == 'comparison'
-             else 'Jev ablation · ' + cohort['kind'])
     subtitle = '%d matched %s · %d distinct cases · configuration %s' % (
         n, 'groups', cohort['independent_cases'], cohort['configuration'])
     known = [sum(item['known_tokens'][key] for key in ('input_tokens', 'output_tokens')) / n
@@ -123,7 +119,7 @@ def chart_cohort(cohort, output, stem):
               ([item['mean_cost_usd'] for item in stats], 'Estimated price per task', 'USD at supplied rates', 6)]
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.1))
     fig.subplots_adjust(left=.085, right=.97, bottom=.19, top=.84, hspace=.60, wspace=.26)
-    fig.suptitle(title, x=.085, y=.967, ha='left', fontsize=20, fontweight='bold')
+    fig.suptitle('Product capability comparison', x=.085, y=.967, ha='left', fontsize=20, fontweight='bold')
     fig.text(.085, .914, subtitle, fontsize=10, color='#687284')
     for panel, (axis, (values, heading, ylabel, digits)) in enumerate(zip(axes.flat, panels)):
         axis.set_title(heading, pad=17, fontsize=12)
@@ -206,7 +202,7 @@ def public_provenance(manifest):
     if not isinstance(manifest, dict):
         raise ValueError('manifest must be an object')
     result = {}
-    for key, size in (('source_commit', 40), ('source_diff_sha256', 64), ('corpus_sha256', 64)):
+    for key, size in (('source_commit', 40), ('source_diff_sha256', 64)):
         if key in manifest:
             value = manifest[key]
             if not isinstance(value, str) or not re.fullmatch('[a-fA-F0-9]{%d}' % size, value):
@@ -247,11 +243,8 @@ def report_markdown(report, *, charts=True):
     lines = ['# Cerebro evaluation results', '',
              'These results measure selected local CSV and persisted-job fixtures. They describe the recorded run; '
              'they are not a broad model benchmark or evidence of a statistically significant product advantage.', '',
-             'Product comparisons grade the same portable task outcome for every arm. Jev calibration and steering '
-             'ablations are separate; offline native fixture checks measure transport and lifecycle, not model effectiveness.', '',
-             'Review calibration requires the expected validity, usefulness and review-disposition labels together. '
-             'The diagnostics also show each label separately: an incorrect action label does not by itself mean '
-             'the parent missed a defect or followed a malicious instruction.', '',
+             'Product comparisons grade the same portable task outcome for every arm. Offline native fixture '
+             'checks measure transport and lifecycle, not model effectiveness.', '',
              'Only complete expected arm groups with identical case, repetition, and full model/effort settings '
              'enter comparative success, time, token, and cost aggregates. A failed or errored trial remains a failure '
              'in its matched unit; its elapsed time and recorded usage remain included. Missing arms are listed as incomplete.', '',
@@ -291,9 +284,7 @@ def report_markdown(report, *, charts=True):
               'are priceable only when all input rates are equal.', '']
     for index, cohort in enumerate(report['cohorts'], 1):
         arms = cohort['expected_arms']
-        title = ('Product comparison' if cohort['mode'] == 'comparison' else
-                 'Protocol checks' if cohort['mode'] == 'protocol' else
-                 'Jev ablation' if len(arms) > 1 else 'Single-condition live checks')
+        title = 'Product comparison' if cohort['mode'] == 'comparison' else 'Protocol checks'
         lines += ['## %s · %s · configuration %s' % (title, cohort['kind'], cohort['configuration']), '',
                   '%d matched units across %d distinct cases; %d incomplete units (%d recorded trials excluded). '
                   '%d errors among all %d recorded trials in this cohort.' % (

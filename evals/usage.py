@@ -76,8 +76,6 @@ def collect(directory, settings):
         questions = item.get('request', {}).get('payload', {}).get('questions', {})
         if 'attention' in questions:
             role = 'jev-attention'
-        elif ('validity' in questions and 'usefulness' in questions) or 'clean_validity' in questions:
-            role = 'jev-review'
         else:
             role = 'jev-unknown'
         response = item.get('response', {})

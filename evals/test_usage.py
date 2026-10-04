@@ -85,22 +85,16 @@ class UsageTests(unittest.TestCase):
             self.assertIsNone(jev['cached_input_tokens'])
             self.assertFalse(measured['usage_complete'])
 
-    def test_jev_role_uses_request_schema_and_missing_requests_remain_unknown(self):
+    def test_jev_responses_without_requests_remain_unknown(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             rows = [
-                {'type': 'request', 'request_id': 'review', 'payload': {
-                    'model': 'jev-alias', 'questions': {'validity': {}, 'usefulness': {}}}},
-                {'type': 'response', 'request_id': 'review', 'body': json.dumps({
-                    'model': 'jev-resolved', 'usage': {'input_tokens': 20, 'output_tokens': 5}})},
                 {'type': 'response', 'request_id': 'orphan', 'body': json.dumps({
                     'model': 'jev-resolved', 'usage': {'input_tokens': 40, 'output_tokens': 10}})},
             ]
             (root / 'trace.jev.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
             measured = collect(root, {'jev_model': 'jev'})
-            review, orphan = measured['usage_ledger']
-            self.assertEqual(review['role'], 'jev-review')
-            self.assertTrue(review['complete'])
+            orphan, = measured['usage_ledger']
             self.assertEqual(orphan['role'], 'jev-unknown')
             self.assertEqual(orphan['input_tokens'], 40)
             self.assertFalse(orphan['complete'])
