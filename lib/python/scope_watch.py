@@ -20,7 +20,8 @@ ROLES = {'execute'}
 HISTORY_LIMIT = 64
 HISTORY_CHARS = 24000
 ACTIVITY_LIMIT = 2400
-CONCRETE_REASONS = {'apparent_mistake', 'unsupported_assumption', 'scope_drift', 'ineffective_repeat'}
+CONCRETE_REASONS = {'apparent_mistake', 'unsupported_assumption', 'skipped_verification', 'scope_drift',
+                    'ineffective_repeat'}
 
 
 def scope_questions(state):
@@ -330,10 +331,12 @@ class ScopeWatch:
                 elif result['attention'] == 'possible_issue' and result['confidence'] < self.confidence:
                     result['attention'] = 'uncertain'
                 # Only a confident, cited concern with a concrete reason wakes the
-                # supervisor, once per event and reason; every classification is logged.
+                # supervisor, once per event, reason and user intent. Supervisor
+                # dispositions and steering never re-open it; every classification is logged.
                 wake = (evidence is not None and result['attention'] != 'quiet'
                         and result['reason'] in CONCRETE_REASONS and result['confidence'] >= self.confidence)
-                signature = (evidence['id'], result['reason']) if wake else None
+                intent = hashlib.sha256(json.dumps(state['original_user_inputs'], sort_keys=True).encode()).hexdigest()
+                signature = (evidence['id'], result['reason'], intent) if wake else None
                 record = {'classification': result, 'evidence': evidence, 'request_id': response['request_id'],
                           'wake': wake and signature not in self.notice_signatures,
                           'context_sha': fingerprint, 'native_id': self.native_id,

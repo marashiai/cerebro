@@ -26,6 +26,7 @@ from user_input import record_text, snapshot
 class Classifier(BaseHTTPRequestHandler):
     requests = []
     mode = 'normal'
+    attention = None
     started = threading.Event()
     release = threading.Event()
 
@@ -54,10 +55,10 @@ class Classifier(BaseHTTPRequestHandler):
                        'reason': ('apparent_mistake' if concern and 'APPARENT_MISTAKE' in concern['activity']
                                   else 'scope_drift' if concern else 'none'),
                        'evidence': concern['id'] if concern else 'none'}
-            if self.mode == 'weak':
-                # Observed live: low-confidence issues citing ordinary reads with no reason.
-                choices = {'attention': 'possible_issue', 'reason': 'none', 'evidence': activity[0]['id']}
-                confidence['attention'] = 0.33
+            if self.attention:
+                attention, reason, confidence['attention'] = self.attention
+                oldest = (state.get('history', []) + state.get('events', []))[0]
+                choices = {'attention': attention, 'reason': reason, 'evidence': oldest['id']}
         else:
             for name, question in questions.items():
                 if name == 'validity':
@@ -158,6 +159,7 @@ class JevTests(unittest.TestCase):
     def setUp(self):
         Classifier.requests = []
         Classifier.mode = 'normal'
+        Classifier.attention = None
         Classifier.started.clear()
         Classifier.release.clear()
         self.temp = tempfile.TemporaryDirectory(prefix='cerebro-jev-test-')
@@ -241,18 +243,55 @@ class JevTests(unittest.TestCase):
         path = self.child_log.with_suffix('.scope.jsonl')
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
-    def test_weak_repeated_concerns_are_logged_without_waking(self):
-        Classifier.mode = 'weak'
+    def classify(self, watch, attention, reason, confidence):
+        Classifier.attention = (attention, reason, confidence)
+        watch.event({'type': 'tool_execution_start', 'command': 'git diff --stat'})
+        watch.turn_done()
+        count = len(self.scope_records()) + 1
+        self.wait_for(lambda: len(self.scope_records()) == count and not watch.busy())
+        return self.scope_records()[-1]
+
+    def test_wake_requires_concrete_reason_and_confidence_once_per_event_reason(self):
         watch = self.start_watch()
         self.addCleanup(watch.close)
-        for command in ('cat AGENTS.md && cat jobs.py', 'python3 -m unittest test_jobs.py'):
-            watch.event({'type': 'tool_execution_start', 'command': command})
-            watch.turn_done()
-            self.wait_for(lambda: len(self.scope_records()) == len(Classifier.requests) and not watch.busy())
-        self.assertEqual(self.socket.notices, [])
-        records = self.scope_records()
-        self.assertEqual([item['classification']['attention'] for item in records], ['uncertain', 'uncertain'])
-        self.assertEqual([item['wake'] for item in records], [False, False])
+        # Observed live: low-confidence issues citing an ordinary read with no reason.
+        watch.event({'type': 'tool_execution_start', 'command': 'cat AGENTS.md && cat jobs.py'})
+        cases = [(('possible_issue', 'none', 0.33), False, 'uncertain'),
+                 (('possible_issue', 'none', 0.99), False, 'possible_issue'),
+                 (('possible_issue', 'apparent_mistake', 0.5), False, 'uncertain'),
+                 (('uncertain', 'insufficient_evidence', 0.95), False, 'uncertain'),
+                 (('uncertain', 'skipped_verification', 0.9), True, 'uncertain'),
+                 (('possible_issue', 'skipped_verification', 0.99), False, 'possible_issue'),
+                 (('possible_issue', 'scope_drift', 0.9), True, 'possible_issue')]
+        for answer, wake, attention in cases:
+            with self.subTest(answer=answer):
+                record = self.classify(watch, *answer)
+                self.assertEqual((record['wake'], record['classification']['attention']), (wake, attention))
+        self.assertEqual([notice['classification']['reason'] for notice in self.socket.notices],
+                         ['skipped_verification', 'scope_drift'])
+
+    def test_new_user_input_can_reraise_an_acknowledged_concern(self):
+        watch = self.start_watch()
+        self.addCleanup(watch.close)
+        watch.event({'type': 'tool_execution_start', 'command': 'edit billing.py'})
+        self.assertTrue(self.classify(watch, 'possible_issue', 'scope_drift', 0.9)['wake'])
+        (self.session / 'decisions.jsonl').write_text(json.dumps(
+            {'job_id': 'job-a', 'sequence': 1, 'disposition': 'continue', 'reason': 'Billing is in scope.'}) + '\n')
+        self.assertFalse(self.classify(watch, 'possible_issue', 'scope_drift', 0.9)['wake'])
+        record_text(self.session, 'Clarification: do not touch billing.', source='test-native',
+                    native_id='session-a', turn_id='turn-clarification')
+        self.user_inputs = snapshot(self.session)
+        self.write_task({'goal': 'Summarize parser work.', 'task': 'Fix and verify parser.',
+                         'acceptance': ['parser works']})
+        self.assertTrue(self.classify(watch, 'possible_issue', 'scope_drift', 0.9)['wake'])
+        self.assertEqual(len(self.socket.notices), 2)
+
+    def test_wake_reasons_are_offered_to_the_classifier(self):
+        from scope_watch import CONCRETE_REASONS
+        offered = scope_questions({})['reason']['criteria']
+        self.assertLessEqual(CONCRETE_REASONS, offered.keys())
+        self.assertNotIn('none', CONCRETE_REASONS)
+        self.assertNotIn('insufficient_evidence', CONCRETE_REASONS)
 
     def test_concrete_concern_wakes_once_per_event_despite_continue(self):
         watch = self.start_watch()
