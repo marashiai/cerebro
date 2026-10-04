@@ -2,25 +2,28 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-04-lease-queue-context/report.md)
+[Latest published results](results/2026-10-04-lease-queue-unfinished/report.md)
 
-Configuration `8faa3267495d`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer 0/1; Supervisor + implementor + reviewer + Jev 0/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-100.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
+Configuration `8faa3267495d`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer 0/1; Supervisor + implementor + reviewer + Jev 1/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-100.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
 Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare supervisor model | 1/1 | 126.1 | 0.1457 |
+| Bare supervisor model | 1/1 | 125.6 | 0.1481 |
 | Supervisor + implementor + reviewer | 0/1 | 301.5 | unknown |
-| Supervisor + implementor + reviewer + Jev | 0/1 | 301.5 | unknown |
+| Supervisor + implementor + reviewer + Jev | 1/1 | 145.6 | 0.1627 |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-context/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-unfinished/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
-The [context-preservation rerun](results/2026-10-04-lease-queue-context/interpretation.md)
-retained the original requirements, and all three saved implementations passed
-the frozen behavioral checks. Both supervised deliveries still timed out on
+The [unfinished-tool rerun](results/2026-10-04-lease-queue-unfinished/interpretation.md)
+no longer stalled. Cerebro with Jev passed, but Jev did not intervene. Without
+Jev, the supervisor accepted low-impact review findings, and the correction
+cycle timed out after editing the supplied tests. The
+[context-preservation rerun](results/2026-10-04-lease-queue-context/interpretation.md)
+retained the original requirements, and both supervised deliveries timed out on
 unfinished reviewer checks. The
 [earlier lease challenge](results/2026-10-04-lease-queue/interpretation.md)
 documents the requirements lost during delegation. The previous

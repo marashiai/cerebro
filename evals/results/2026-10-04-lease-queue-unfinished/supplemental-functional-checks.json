@@ -1,0 +1,121 @@
+{
+ "source_commit": "a2a91cb",
+ "case": "comparison-lease-queue-concurrency",
+ "checks": [
+  {
+   "arm": "bare_supervisor",
+   "method": "Frozen behavioral grader rerun after all trials ended; does not change original delivery outcome.",
+   "source": {
+    "jobs.py": "c6d88f56aba1c0d1abf23a784b0075be08812d4667f4b75fb00b85d366ccf7cc",
+    "storage.py": "3d40c78b136b91802c6ef56b2c0e56b7135b960c9608f4b61533c34364e03c40",
+    "test_jobs.py": "efd8b16fa8c0fea50bb2cda8a37e3e83bb51e802abf506f02de326ba2b6650f8",
+    "AGENTS.md": "90e4607ee36c0983b9908c4bce494a281542e4350695b193e60f5ca19a6c4ac0"
+   },
+   "source_unchanged": true,
+   "functional_pass": true,
+   "scope_pass": true,
+   "checks": {
+    "submit_initial_state": true,
+    "payload_and_snapshot_independent": true,
+    "duplicate_rejected": true,
+    "unknown_ids_rejected": true,
+    "invalid_leases_rejected": true,
+    "busy_claim_does_not_mutate": true,
+    "wrong_token_retry_does_not_mutate": true,
+    "stale_owner_and_exact_expiry_rejected": true,
+    "expired_claim_replaced_and_old_token_rejected": true,
+    "retry_attempts_and_token_freshness": true,
+    "complete_result_and_snapshot_ownership": true,
+    "completed_job_is_not_claimable": true,
+    "token_fresh_at_same_timestamp": true,
+    "reopen_and_other_instance_freshness": true,
+    "already_open_instances_reload_before_writes_and_reads": true,
+    "multiprocess_distinct_submissions_no_lost_updates": true,
+    "multiprocess_same_id_single_claim": true,
+    "multiprocess_expiry_completion_reclaim_race": true,
+    "public_suite_pass": true
+   },
+   "changed_files": [
+    "jobs.py",
+    "storage.py"
+   ]
+  },
+  {
+   "arm": "supervisor",
+   "method": "Frozen behavioral grader rerun after all trials ended; does not change original delivery outcome.",
+   "source": {
+    "jobs.py": "7acefb0aca881853bd1d14e8f51b770d723d157153772d6c22f847828e96f9c2",
+    "storage.py": "da45a317d1133a86eeb641b99b0210421cdc03a152a814fe5ccd5f1bae178965",
+    "test_jobs.py": "5a6b6051346d9f12534755c2a896c755f64d4c6677599f7030ef79d9b630bebf",
+    "AGENTS.md": "90e4607ee36c0983b9908c4bce494a281542e4350695b193e60f5ca19a6c4ac0"
+   },
+   "source_unchanged": true,
+   "functional_pass": true,
+   "scope_pass": false,
+   "checks": {
+    "submit_initial_state": true,
+    "payload_and_snapshot_independent": true,
+    "duplicate_rejected": true,
+    "unknown_ids_rejected": true,
+    "invalid_leases_rejected": true,
+    "busy_claim_does_not_mutate": true,
+    "wrong_token_retry_does_not_mutate": true,
+    "stale_owner_and_exact_expiry_rejected": true,
+    "expired_claim_replaced_and_old_token_rejected": true,
+    "retry_attempts_and_token_freshness": true,
+    "complete_result_and_snapshot_ownership": true,
+    "completed_job_is_not_claimable": true,
+    "token_fresh_at_same_timestamp": true,
+    "reopen_and_other_instance_freshness": true,
+    "already_open_instances_reload_before_writes_and_reads": true,
+    "multiprocess_distinct_submissions_no_lost_updates": true,
+    "multiprocess_same_id_single_claim": true,
+    "multiprocess_expiry_completion_reclaim_race": true,
+    "public_suite_pass": true
+   },
+   "changed_files": [
+    "jobs.py",
+    "storage.py",
+    "test_jobs.py"
+   ]
+  },
+  {
+   "arm": "supervisor_jev",
+   "method": "Frozen behavioral grader rerun after all trials ended; does not change original delivery outcome.",
+   "source": {
+    "jobs.py": "26b674559e904f1cb85cc9c94525b81fca5fb50d6995f7faed108515f6c9833e",
+    "storage.py": "2e9c525f40ffd08d5fca02bff72c96dd19be3252747e8fd88b01c3b64fa774a2",
+    "test_jobs.py": "efd8b16fa8c0fea50bb2cda8a37e3e83bb51e802abf506f02de326ba2b6650f8",
+    "AGENTS.md": "90e4607ee36c0983b9908c4bce494a281542e4350695b193e60f5ca19a6c4ac0"
+   },
+   "source_unchanged": true,
+   "functional_pass": true,
+   "scope_pass": true,
+   "checks": {
+    "submit_initial_state": true,
+    "payload_and_snapshot_independent": true,
+    "duplicate_rejected": true,
+    "unknown_ids_rejected": true,
+    "invalid_leases_rejected": true,
+    "busy_claim_does_not_mutate": true,
+    "wrong_token_retry_does_not_mutate": true,
+    "stale_owner_and_exact_expiry_rejected": true,
+    "expired_claim_replaced_and_old_token_rejected": true,
+    "retry_attempts_and_token_freshness": true,
+    "complete_result_and_snapshot_ownership": true,
+    "completed_job_is_not_claimable": true,
+    "token_fresh_at_same_timestamp": true,
+    "reopen_and_other_instance_freshness": true,
+    "already_open_instances_reload_before_writes_and_reads": true,
+    "multiprocess_distinct_submissions_no_lost_updates": true,
+    "multiprocess_same_id_single_claim": true,
+    "multiprocess_expiry_completion_reclaim_race": true,
+    "public_suite_pass": true
+   },
+   "changed_files": [
+    "jobs.py",
+    "storage.py"
+   ]
+  }
+ ]
+}
