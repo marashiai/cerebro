@@ -206,6 +206,56 @@ class LifecycleTests(unittest.TestCase):
                          ['python3 hanging_check.py'])
         self.assertNotIn('review_unfinished_tools', result)
 
+    def test_correction_reuses_checkout_and_reviews_everything_unreviewed(self):
+        self.packet['worktree'] = True
+        self.update('review', findings=[{'id': 'F1', 'severity': 'low', 'file': 'file', 'line': 1,
+                                         'problem': 'Original finding', 'evidence': 'observed',
+                                         'requested_change': 'Fix it'}])
+        first = self.cli('execute', packet=self.packet)
+        checkout = Path(first['workspace'])
+        (checkout / 'earlier.txt').write_text('earlier work\n')
+        correction = {**self.packet, 'task': 'Fix accepted finding F1 only', 'correction_of': first['task_id']}
+        del correction['worktree']
+        self.update('execute', native_mode='edit')
+        self.update('review', findings=[])
+        result = self.cli('execute', packet=correction)
+        self.assertEqual((result['stage'], result['workspace']), ('done', str(checkout)))
+        prompt = Path(result['review_path']).with_suffix('.prompt').read_text()
+        self.assertIn('Original finding', prompt)
+        before, after = prompt.split('Correction diff: git diff ')[1].split()[:2]
+        changed = subprocess.run(['git', '-C', str(checkout), 'diff', '--name-only', before, after],
+                                 text=True, capture_output=True, check=True).stdout.split()
+        self.assertEqual(changed, ['corrected.txt', 'earlier.txt'])
+        self.assertIn('git diff ' + before + ' ' + after, prompt)
+        follow_up = {**correction, 'task': 'Second correction', 'correction_of': result['task_id']}
+        self.update('execute', native_mode='ok')
+        second = self.cli('execute', packet=follow_up)
+        prompt = Path(second['review_path']).with_suffix('.prompt').read_text()
+        self.assertIn('Correction diff: git diff ' + after + ' ', prompt)
+        self.assertEqual(subprocess.run(['git', '-C', str(checkout), 'status', '--porcelain'], text=True,
+                                        capture_output=True, check=True).stdout.split(),
+                         ['??', 'corrected.txt', '??', 'earlier.txt'])
+        execute_prompt = Path(result['implementation_path']).with_suffix('.prompt').read_text()
+        self.assertNotIn('Correction diff', execute_prompt)
+
+    def test_correction_requires_reviewed_task_and_its_checkout(self):
+        unknown = {**self.packet, 'correction_of': 'missing'}
+        self.assertIn('completed, reviewed task', self.cli('execute', packet=unknown, ok=False).stderr)
+        self.update('execute', status='question')
+        questioned = self.cli('execute', packet={**self.packet, 'task': 'Questioned'})
+        packet = {**self.packet, 'correction_of': questioned['task_id']}
+        self.assertIn('completed, reviewed task', self.cli('execute', packet=packet, ok=False).stderr)
+        self.update('execute', status='complete')
+        first = self.cli('execute', packet=self.packet)
+        for change, message in (({'worktree': True}, 'omit worktree and branch'),
+                                ({'branch': 'other'}, 'omit worktree and branch'),
+                                ({'base': 'HEAD'}, 'keeps its reviewed task repo and base')):
+            packet = {**self.packet, 'correction_of': first['task_id'], **change}
+            self.assertIn(message, self.cli('execute', packet=packet, ok=False).stderr)
+        subprocess.run(['git', '-C', str(self.repo), 'switch', '-qc', 'unrelated'], check=True)
+        packet = {**self.packet, 'correction_of': first['task_id']}
+        self.assertIn('has left branch main', self.cli('execute', packet=packet, ok=False).stderr)
+
     def test_tool_completion_queued_behind_turn_end_is_not_unfinished(self):
         self.update('review', native_mode='joined')
         result = self.cli('execute', packet=self.packet)

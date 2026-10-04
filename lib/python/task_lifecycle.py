@@ -11,7 +11,7 @@ import sys
 import uuid
 
 from child_store_lib import _atomic_write, _now_iso, store_upsert
-from task_workspace import git, prepare, refresh, validate
+from task_workspace import branch_at, git, prepare, refresh, snapshot, validate
 from user_input import snapshot as snapshot_user_inputs
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,7 +23,7 @@ def packet_from(raw):
     packet = json.loads(raw)
     if not isinstance(packet, dict):
         raise ValueError('task packet must be a JSON object')
-    allowed = {'goal', 'task', 'acceptance', 'repo', 'base', 'branch', 'worktree', 'models'}
+    allowed = {'goal', 'task', 'acceptance', 'repo', 'base', 'branch', 'worktree', 'models', 'correction_of'}
     if packet.keys() - allowed:
         raise ValueError('unknown task packet fields: ' + ', '.join(sorted(packet.keys() - allowed)))
     for name in ('goal', 'task', 'repo', 'base'):
@@ -38,6 +38,11 @@ def packet_from(raw):
         raise ValueError('worktree must be true or false')
     if 'branch' in packet and (not isinstance(packet['branch'], str) or not packet['branch']):
         raise ValueError('branch must be a nonempty branch name')
+    if 'correction_of' in packet:
+        if not isinstance(packet['correction_of'], str) or not packet['correction_of'].isalnum():
+            raise ValueError('correction_of must be a task ID')
+        if 'worktree' in packet or 'branch' in packet:
+            raise ValueError('a correction reuses its reviewed task checkout; omit worktree and branch')
     models = packet.get('models', {})
     if not isinstance(models, dict) or models.keys() - {'implementor', 'reviewer'}:
         raise ValueError('models accepts implementor and reviewer settings')
@@ -141,6 +146,19 @@ def unfinished_tools(state, role):
             for tool in json.loads(Path(receipt).read_text())]
 
 
+def reviewed_task(tasks, packet):
+    path = tasks / packet['correction_of'] / 'task.json'
+    prior = json.loads(path.read_text()) if path.is_file() else {}
+    if prior.get('stage') != 'done' or not prior.get('reviewed_tree'):
+        raise ValueError('correction_of must name a completed, reviewed task')
+    if (prior['packet']['repo'], prior['packet']['base']) != (packet['repo'], packet['base']):
+        raise ValueError('a correction keeps its reviewed task repo and base')
+    validate(prior['workspace'])
+    if branch_at(prior['workspace']['path']) != prior['workspace']['branch']:
+        raise ValueError('the reviewed checkout has left branch ' + prior['workspace']['branch'])
+    return prior
+
+
 def save(directory, state):
     state['updated_at'] = _now_iso()
     _atomic_write(str(directory / 'task.json'), state)
@@ -204,6 +222,13 @@ def run(args):
                 raise ValueError('task packet differs from its persisted record')
             packet = state['packet']
             validate(state['workspace'])
+        elif 'correction_of' in packet:
+            prior = reviewed_task(tasks, packet)
+            store_upsert(store, directory.name + '-execute', {'workspace': prior['workspace']})
+            state = {'packet': packet, 'workspace': prior['workspace'], 'review_base': prior['review_base'],
+                     'correction': {'review': prior['review_output'], 'tree': prior['reviewed_tree']},
+                     'user_inputs': user_inputs, 'stage': 'execute', 'status': 'running'}
+            save(directory, state)
         else:
             isolated = str(Path(os.environ['CEREBRO_HOME']) / 'worktrees' / (session.name + '-' + directory.name)) if packet.get('worktree') else ''
             review_base = git(packet['repo'], 'rev-parse', '--verify', packet['base'] + '^{commit}')
@@ -261,6 +286,14 @@ def run(args):
                         if tools:
                             prompt += ('\nImplementation tool calls still running when its turn ended; their results '
                                        'never reached the implementor:\n' + json.dumps(tools) + '\n')
+                        # A later correction diffs from exactly what this review saw.
+                        state['reviewed_tree'] = snapshot(state['workspace']['path'])
+                        if 'correction' in state:
+                            correction = state['correction']
+                            prompt += ('\n' + (ROOT / 'payloads' / 'prompts' / 'correction-review.md').read_text() +
+                                       '\nEarlier review report:\n' + Path(correction['review']).read_text().strip() +
+                                       '\n\nCorrection diff: git diff ' + correction['tree'] + ' ' +
+                                       state['reviewed_tree'] + '\n')
                     if state['status'] == 'restarted':
                         prompt += '\nSupervisor restart diagnosis; inspect retained work and correct this concern:\n' + state.get('error', '') + '\n'
                     if args.answer:

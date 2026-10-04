@@ -1,15 +1,18 @@
 """Select a task checkout without resetting branches or moving existing work."""
 
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 from child_store_lib import store_upsert
 
 
-def git(repo, *args):
-    result = subprocess.run(['git', '-C', str(repo), *args], text=True, capture_output=True)
+def git(repo, *args, env=None):
+    result = subprocess.run(['git', '-C', str(repo), *args], text=True, capture_output=True, env=env)
     if result.returncode:
         raise ValueError(result.stderr.strip() or 'git ' + ' '.join(args) + ' failed')
     return result.stdout.strip()
@@ -86,6 +89,22 @@ def prepare(repo, directory, branch, base, store, key, resume):
                  'created_branch': created_branch}
     store_upsert(store, key, {'workspace': workspace})
     return workspace
+
+
+def snapshot(path):
+    """Write the whole checkout, untracked files included, as a tree object.
+
+    A private copy of the index keeps git's stat cache without touching the
+    real index, refs or files.
+    """
+    with tempfile.TemporaryDirectory() as temporary:
+        index = Path(temporary) / 'index'
+        current = Path(path) / git(path, 'rev-parse', '--git-path', 'index')
+        if current.is_file():
+            shutil.copyfile(current, index)
+        env = {**os.environ, 'GIT_INDEX_FILE': str(index)}
+        git(path, 'add', '-A', env=env)
+        return git(path, 'write-tree', env=env)
 
 
 def refresh(store, key):

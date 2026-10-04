@@ -40,6 +40,9 @@ def complete_codex(text, completed_turn):
     time.sleep(float(os.environ.get('NATIVE_FIXTURE_DELAY', '0')))
     if mode == 'steer':
         time.sleep(0.8)
+    if mode == 'edit':
+        with open('corrected.txt', 'w') as output:
+            output.write('correction\n')
     if mode in ('abandoned', 'joined'):
         notification('item/started', item={'id': 'check-command', 'type': 'commandExecution',
                      'status': 'inProgress', 'command': 'python3 hanging_check.py'})

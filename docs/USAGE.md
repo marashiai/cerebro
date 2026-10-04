@@ -56,7 +56,11 @@ reviewer model when available; same-model choices remain valid and visible.
 The controller runs coding and tests first, then an independent reviewer with
 the original goal, plan, acceptance, pinned review base, and test evidence. It
 returns implementation evidence and the original review inline. A focused
-correction uses a new packet; resubmitting an identical resolved packet returns
+correction uses a new packet with `correction_of` set to the reviewed task ID and
+the same repo and base, without `branch` or `worktree`. It reuses that task's
+checkout on the same branch. Its review covers the accepted findings, every change
+since the earlier review (including effects on code that depends on it) and scope
+since the base. Resubmitting an identical resolved packet returns
 its durable result rather than repeating completed work.
 
 ## Handoffs and recovery
