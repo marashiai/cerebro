@@ -118,7 +118,8 @@ the cited implementor as a steering message before the decision is recorded; the
 implementor reads it after its current tool call. Add `--interrupt` to stop the
 running turn and its tool calls first, so the note starts the next turn at once;
 use it only when the running call is wasted or harmful, and write the note as the
-complete next instruction, because the stopped turn is over. If the implementor has
+complete next instruction, because the stopped turn is over and the interrupt
+supersedes earlier steering the implementor has not yet read. If the implementor has
 finished, `correct` fails and records nothing. For `continue` and `stop`, the note is a reason
 and never reaches the implementor. Every decision is recorded in the session's
 `decisions.jsonl`, scoped to job ID and notice sequence, for Jev's next assessment.
@@ -134,8 +135,7 @@ cerebro cancel <job-id>
 
 Steering is available during normal execution with Jev disabled too. A steer
 reaches the running turn at the implementor's next model step, after its current
-tool call. `--interrupt` is available for Codex and Claude children; Pi children
-refuse it because its abort behavior has not been verified. Cancellation
+tool call. Cancellation
 stops only that job's descendants. A restart retains work; checkout cleanup is a
 separate `cerebro worktrees cleanup` action that preserves work still in use.
 

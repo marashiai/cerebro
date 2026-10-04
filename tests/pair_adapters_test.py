@@ -140,6 +140,25 @@ with contextlib.redirect_stdout(io.StringIO()):
         assert not adapter.event({'id': stop['id'], 'error': {'code': -32600, 'message': 'no active turn'}})
     assert sent[-1]['method'] == 'turn/start'
 
+    # An interrupt in flight while the turn completes normally leaves no stale
+    # state, and an unanswered interrupt does not hold the stage open.
+    adapter, sent = setup()
+    adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
+    adapter.steer('[supervisor] unread steer')
+    steer = sent[-1]
+    adapter.interrupt('[supervisor] urgent')
+    stop = sent[-1]
+    assert stop['method'] == 'turn/interrupt'
+    assert not adapter.event(reply(steer, {'turnId': 'first'}))
+    assert not adapter.event(completed('first'))
+    admission = sent[-1]
+    assert admission['method'] == 'turn/start' and admission['params']['input'][0]['text'] == '[supervisor] urgent'
+    assert not adapter.event(reply(admission, {'turn': {'id': 'second'}}))
+    assert adapter.event(completed('second')), 'an unanswered interrupt held the stage open'
+    assert adapter.event(reply(stop, {})), 'a late interrupt reply reopened a finished stage'
+    adapter.interrupt('[supervisor] second urgent')
+    assert sent[-1]['method'] == 'turn/start', 'an idle child was interrupted'
+
     # An interrupted turn that Cerebro did not request is still a failure.
     adapter, sent = setup()
     adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
@@ -219,6 +238,17 @@ with contextlib.redirect_stdout(io.StringIO()):
     adapter.interrupt('[user] while idle')
     assert sent[-1]['type'] == 'user' and sent[-2]['type'] != 'control_request', 'an idle child was interrupted'
 
+    # An interrupt supersedes input not yet taken, which Claude may discard.
+    sent = []
+    adapter = Claude(sent.append, '')
+    adapter.start('initial task')
+    assert not adapter.event(taken('initial task'))
+    adapter.steer('[supervisor] unread steer')
+    adapter.interrupt('[supervisor] urgent')
+    assert not adapter.event({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True})
+    assert not adapter.event(taken('[supervisor] urgent'))
+    assert adapter.event(result('done')), 'a discarded steer held the stage open'
+
     adapter = Claude(sent.append, '')
     adapter.start('initial task')
     assert not adapter.event(taken('initial task'))
@@ -297,6 +327,28 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-admission-tests-') as tempor
     assert not adapter.event({'type': 'agent_settled'}), 'a buffered prior settlement finished a newly admitted run'
     assert not adapter.event({'type': 'agent_start'})
     assert adapter.event({'type': 'agent_settled'})
+
+    # Interrupt (verified against Pi 0.99.2): input sent before the abort is
+    # acknowledged is discarded with the aborted run, so it waits for the response.
+    adapter, sent, emitted = pi_setup()
+    assert not adapter.event(pi_reply(sent[-1]))
+    assert not adapter.event({'type': 'agent_start'})
+    assert not adapter.event({'type': 'tool_execution_start', 'toolCallId': 'slow', 'toolName': 'bash',
+                              'args': {'command': 'pytest -x'}})
+    adapter.interrupt('[supervisor] stop and fix the failing test')
+    abort = sent[-1]
+    assert abort['type'] == 'abort'
+    assert not adapter.event({'type': 'tool_execution_end', 'toolCallId': 'slow'})
+    assert not adapter.event({'type': 'agent_settled'}), 'the aborted run finished the stage before its replacement'
+    assert sent[-1] is abort, 'input was sent before the abort was acknowledged'
+    assert not adapter.event({'id': abort['id'], 'type': 'response', 'command': 'abort', 'success': True})
+    replacement = sent[-1]
+    assert replacement['type'] == 'prompt' and replacement['message'].startswith('[supervisor] stop')
+    assert not adapter.event(pi_reply(replacement))
+    assert not adapter.event({'type': 'agent_start'})
+    assert adapter.event({'type': 'agent_settled'})
+    adapter.interrupt('[user] while idle')
+    assert sent[-1]['type'] == 'prompt', 'an idle child was aborted'
 
     adapter, sent, emitted = pi_setup()
     try:

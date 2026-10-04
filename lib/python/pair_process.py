@@ -54,7 +54,9 @@ class Claude:
         self.send({'type': 'user', 'uuid': identity, 'message': {'role': 'user', 'content': text}})
 
     def interrupt(self, text):
-        # The interrupted turn ends with an error result; the text starts the next turn.
+        # The interrupted turn ends with an error result; the text starts the next
+        # turn and supersedes input not yet taken, which the interrupt may discard.
+        self.sent &= self.taken
         if self.turn_open:
             self.send({'type': 'control_request', 'request_id': 'cerebro-interrupt-' + str(uuid.uuid4()),
                        'request': {'subtype': 'interrupt'}})
@@ -139,8 +141,9 @@ class Codex:
         self.flush()
 
     def interrupt(self, text):
-        # The interrupted turn completes as interrupted; the text starts the next turn.
-        self.pending.append(text)
+        # The interrupted turn completes as interrupted; the text starts the next
+        # turn and supersedes steering not yet sent.
+        self.pending = [text]
         if self.active_turns and self.interrupting is None:
             self.interrupting = next(iter(self.active_turns))
             self.request('turn/interrupt', {'threadId': self.thread, 'turnId': self.interrupting}, 'interrupt')
@@ -210,11 +213,13 @@ class Codex:
             emit({'type': 'item.completed' if method == 'item/completed' else 'item.started', 'item': normalized})
         elif method == 'turn/completed':
             turn = params['turn']
-            if turn['status'] == 'interrupted' and turn['id'] == self.interrupting:
+            requested = turn['id'] == self.interrupting
+            if requested:
+                self.interrupting = None
+            if turn['status'] == 'interrupted' and requested:
                 # Calls cut off by the requested interrupt are abandoned, not unfinished work.
                 emit({'type': 'turn.interrupted', 'abandoned': [{'id': key, **value} for key, value in self.busy.items()]})
                 self.busy.clear()
-                self.interrupting = None
                 self.completed_turns.add(turn['id'])
                 self.active_turns.discard(turn['id'])
                 self.flush()
@@ -232,7 +237,7 @@ class Codex:
 
     def ended(self):
         return (bool(self.completed_turns) and not self.active_turns and not self.pending
-                and not {'turn', 'steer', 'interrupt'} & set(self.requests.values()))
+                and not {'turn', 'steer'} & set(self.requests.values()))
 
 
 def run():
@@ -333,8 +338,6 @@ def run():
                         Path(receipt + '.restart').write_text(message)
                         return 0
                     if prefix == 'I':
-                        if not hasattr(adapter, 'interrupt'):
-                            raise ValueError(backend + ' children cannot be interrupted')
                         adapter.interrupt(message)
                     elif prefix == 'S':
                         adapter.steer(message)

@@ -43,7 +43,8 @@ implementor has finished, correct fails; decide continue or stop and use a
 correction packet. Add "--interrupt" to a correct decision only when the running
 tool call is wasted or harmful: it stops that call and turn, so the instruction
 starts the next turn at once. Write that note as the complete next instruction,
-including how to continue the delegated task, since the stopped turn is over. Use restart to retire a strayed conversation while retaining
+including how to continue the delegated task, since the stopped turn is over and
+earlier unread steering is superseded. Use restart to retire a strayed conversation while retaining
 its checkout, and cancel only within task authority. Waiting blocks on events;
 do not poll status or logs.
 

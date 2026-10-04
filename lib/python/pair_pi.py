@@ -21,6 +21,7 @@ class Pi:
         self.settled = False
         self.run_number = 0
         self.starting = False
+        self.aborting = False
 
     def request(self, kind, **params):
         self.next_id += 1
@@ -37,8 +38,19 @@ class Pi:
         self.pending.append(text)
         self.flush()
 
+    def interrupt(self, text):
+        # Input sent before Pi acknowledges an abort is discarded with the
+        # aborted run (verified on Pi 0.99.2), so it waits for the response.
+        # Like any interrupt, it supersedes steering not yet sent.
+        self.pending = [text]
+        if self.active_turns and not self.aborting:
+            self.aborting = True
+            self.request('abort')
+        self.flush()
+
     def flush(self):
-        if self.session_file and self.pending and not any(kind == 'prompt' for kind, _ in self.requests.values()):
+        if (self.session_file and self.pending and not self.aborting
+                and not any(kind == 'prompt' for kind, _ in self.requests.values())):
             text = '\n\n'.join(self.pending)
             self.pending.clear()
             self.request('prompt', message=text, streamingBehavior='steer')
@@ -81,6 +93,8 @@ class Pi:
                     raise RuntimeError('Pi handled a child instruction without starting a model run')
                 elif disposition not in ('started', 'queued'):
                     raise RuntimeError('unknown Pi prompt disposition: ' + str(disposition))
+            elif purpose == 'abort':
+                self.aborting = False
             self.flush()
             return self.ended()
         if kind == 'agent_start':

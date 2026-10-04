@@ -22,12 +22,11 @@ steer_fifo_live() {
 cmd_steer() {
   local fifo="" msg="" prefix=S
   if [[ "${1:-}" == --interrupt ]]; then
-    backend_is pi && die "steer: --interrupt is not available for Pi children"
     prefix=I; shift
   fi
   if (( $# == 1 )); then
     msg="$1"
-  elif (( $# >= 2 )); then
+  elif (( $# == 2 )); then
     fifo="$1"; msg="$2"
   else
     die "steer: usage: cerebro steer [--interrupt] [<pipe>] \"<message>\""

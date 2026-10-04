@@ -505,11 +505,18 @@ class LifecycleTests(unittest.TestCase):
                 proc.kill()
                 proc.communicate()
 
-    def test_interrupt_is_refused_for_pi_and_requires_correct(self):
-        self.env['CEREBRO_BACKEND'] = 'pi'
-        (self.session / 'metadata.json').write_text('{"backend":"pi"}')
-        refused = self.cli('steer', '--interrupt', str(self.root / 'any.steer.fifo'), 'Stop', ok=False)
-        self.assertIn('not available for Pi', refused.stderr)
+    def test_correct_interrupt_writes_an_interrupt_and_steer_takes_one_message(self):
+        fifo = self.session / 'children' / 'execute-urgent.steer.fifo'
+        os.mkfifo(fifo)
+        reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, reader)
+        job_id = self.concern_job({'steering_pipe': str(fifo)})
+        self.cli('wait', job_id, '--after', '1', '--disposition', 'correct', '--note', 'Stop the full suite', '--interrupt')
+        self.assertTrue(os.read(reader, 65536).startswith(b'I '))
+        misplaced = self.cli('steer', str(fifo), '--interrupt', 'Stop', ok=False)
+        self.assertIn('usage', misplaced.stderr)
+
+    def test_interrupt_requires_correct_disposition(self):
         rejected = self.cli('wait', '0d5a8f3e-1111-4c2e-9a6b-2b1f9e3c7d10', '--after', '1',
                             '--disposition', 'continue', '--note', 'Fine', '--interrupt', ok=False)
         self.assertIn('--interrupt applies only to --disposition correct', rejected.stderr)
