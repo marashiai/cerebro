@@ -1,5 +1,15 @@
 # Evaluations
 
+## Final result
+
+The project is archived without running the paired bare-vs-Jev comparison
+below. Its precondition failed first: Jev has to recognise the moments where a
+user would step in. `calibration/` replays 89 real corrections from one user's
+Codex sessions, plus 240 moments the user let pass, through Jev's shipped
+context. Neither Jev nor a strong LLM given the same context separated them
+much better than chance: about 0.60 and 0.58 area under the ROC curve on
+held-out cases. The case data stays private; only the tooling is committed.
+
 ## Bare agent vs agent + Jev
 
 `run.py` runs the same native agent on frozen tasks twice per repetition, once
