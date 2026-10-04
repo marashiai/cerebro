@@ -137,6 +137,11 @@ def handoff(path, role, acceptance):
     return result
 
 
+def unfinished_tools(state, role):
+    return [tool for receipt in state.get('unfinished_receipts', {}).get(role, [])
+            for tool in json.loads(Path(receipt).read_text())]
+
+
 def save(directory, state):
     state['updated_at'] = _now_iso()
     _atomic_write(str(directory / 'task.json'), state)
@@ -160,6 +165,9 @@ def response(directory, state):
         if output:
             result[name] = json.loads(Path(output).read_text())
             result[name + '_path'] = output
+        tools = unfinished_tools(state, role)
+        if tools:
+            result[name + '_unfinished_tools'] = tools
     if state.get('assessment'):
         result['assessment'] = json.loads(Path(state['assessment']).read_text())
     if state.get('error'):
@@ -249,6 +257,10 @@ def run(args):
                     if role == 'review':
                         implementation = json.loads(Path(state['execute_output']).read_text())
                         prompt += '\nImplementation test evidence (verify independently):\n' + json.dumps(implementation.get('evidence', [])) + '\n'
+                        tools = unfinished_tools(state, 'execute')
+                        if tools:
+                            prompt += ('\nImplementation tool calls still running when its turn ended; their results '
+                                       'never reached the implementor:\n' + json.dumps(tools) + '\n')
                     if state['status'] == 'restarted':
                         prompt += '\nSupervisor restart diagnosis; inspect retained work and correct this concern:\n' + state.get('error', '') + '\n'
                     if args.answer:
@@ -268,6 +280,11 @@ def run(args):
                 rc = proc.returncode
             if role == 'execute':
                 state['workspace'] = refresh(store, key)
+            unfinished = Path(attempt['log']).with_suffix('.unfinished.json')
+            if unfinished.is_file():
+                receipts = state.setdefault('unfinished_receipts', {}).setdefault(role, [])
+                if str(unfinished) not in receipts:
+                    receipts.append(str(unfinished))
             if rc:
                 restart = Path(attempt['log']).with_suffix('.restart')
                 if restart and restart.is_file():

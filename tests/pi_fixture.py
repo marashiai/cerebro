@@ -130,6 +130,9 @@ def main():
                 return
             time.sleep(config.get('delay', 0))
             mode = config.get('mode', 'ok')
+            if os.environ.get('TASK_FIXTURE_CONFIG'):
+                roles = json.loads(Path(os.environ['TASK_FIXTURE_CONFIG']).read_text())
+                mode = roles.get(os.environ['CEREBRO_CHILD_ROLE'], {}).get('native_mode', mode)
             if mode == 'improve':
                 mode = os.environ.get('IMPROVE_STUB_MODE', 'valid')
                 meta = 'META-LOOP' in text
@@ -153,6 +156,9 @@ def main():
                 time.sleep(0.3)
                 emit({'type': 'agent_start'})
                 result = 'AUTOMATIC_WORK_JOINED'
+            if mode == 'abandoned':
+                emit({'type': 'tool_execution_start', 'toolCallId': 'check-command', 'toolName': 'bash',
+                      'args': {'command': 'python3 hanging_check.py'}})
             if mode == 'worked-failure':
                 emit({'type': 'tool_execution_start', 'toolCallId': 'tool', 'toolName': 'bash',
                       'args': {'command': 'git commit'}})

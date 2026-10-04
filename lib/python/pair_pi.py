@@ -16,7 +16,7 @@ class Pi:
         self.next_id = 0
         self.requests = {}
         self.pending = []
-        self.busy = set()
+        self.busy = {}
         self.active_turns = set()
         self.settled = False
         self.run_number = 0
@@ -82,23 +82,24 @@ class Pi:
                 elif disposition not in ('started', 'queued'):
                     raise RuntimeError('unknown Pi prompt disposition: ' + str(disposition))
             self.flush()
-            return self.finished()
+            return self.ended()
         if kind == 'agent_start':
             self.run_number += 1
             self.starting = False
             self.settled = False
             self.active_turns.add('run')
         elif kind == 'tool_execution_start':
-            self.busy.add(event['toolCallId'])
+            args = event.get('args') or {}
+            self.busy[event['toolCallId']] = {'tool': event.get('toolName'), 'command': args.get('command')}
         elif kind == 'tool_execution_end':
-            self.busy.discard(event['toolCallId'])
+            self.busy.pop(event['toolCallId'], None)
         elif kind == 'agent_settled' and not self.starting:
             self.active_turns.clear()
             self.settled = True
         if kind in ('message_end', 'agent_settled'):
             self.bind()
         self.emit(event)
-        return self.finished()
+        return self.ended()
 
-    def finished(self):
-        return self.settled and not self.starting and not self.active_turns and not self.busy and not self.pending and not self.requests
+    def ended(self):
+        return self.settled and not self.starting and not self.active_turns and not self.pending and not self.requests

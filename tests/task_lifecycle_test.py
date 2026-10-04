@@ -159,6 +159,47 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(result['implementation']['criteria'][0]['result'], 'unverified')
         self.assertEqual(self.stages(), ['execute', 'review'])
 
+    def test_turn_end_with_unfinished_tool_delivers_report_and_receipt(self):
+        self.update('execute', native_mode='abandoned')
+        self.update('review', native_mode='abandoned', findings=[{
+            'id': 'F1', 'severity': 'medium', 'file': 'file', 'line': 1, 'problem': 'Original finding',
+            'evidence': 'Replacement check output', 'requested_change': 'Fix it'}])
+        for backend in ('codex', 'claude', 'pi'):
+            with self.subTest(backend=backend):
+                self.env['CEREBRO_BACKEND'] = backend
+                (self.session / 'metadata.json').write_text(json.dumps({'backend': backend}))
+                self.packet['task'] = 'Abandoned check for ' + backend
+                result = self.cli('execute', packet=self.packet)
+                self.assertEqual((result['stage'], result['status']), ('done', 'complete'))
+                self.assertEqual(result['review']['findings'][0]['problem'], 'Original finding')
+                for name in ('implementation', 'review'):
+                    tools = result[name + '_unfinished_tools']
+                    self.assertEqual([(item['id'], item['command']) for item in tools],
+                                     [('check-command', 'python3 hanging_check.py')])
+                review_prompt = Path(result['review_path']).with_suffix('.prompt').read_text()
+                self.assertIn('never reached the implementor', review_prompt)
+                self.assertIn('python3 hanging_check.py', review_prompt)
+                resumed = self.cli('execute', '--resume', result['task_id'])
+                self.assertEqual(resumed['review_unfinished_tools'], result['review_unfinished_tools'])
+
+    def test_unfinished_tool_from_question_attempt_survives_resume(self):
+        self.update('execute', native_mode='abandoned', status='question')
+        result = self.cli('execute', packet=self.packet)
+        self.assertEqual(result['status'], 'question')
+        self.update('execute', native_mode='ok', status='complete')
+        result = self.cli('answer', result['task_id'], 'Use the requested behavior')
+        self.assertEqual(result['stage'], 'done')
+        self.assertEqual([item['command'] for item in result['implementation_unfinished_tools']],
+                         ['python3 hanging_check.py'])
+        self.assertNotIn('review_unfinished_tools', result)
+
+    def test_tool_completion_queued_behind_turn_end_is_not_unfinished(self):
+        self.update('review', native_mode='joined')
+        result = self.cli('execute', packet=self.packet)
+        self.assertEqual(result['stage'], 'done')
+        self.assertNotIn('review_unfinished_tools', result)
+        self.assertFalse(Path(result['review_path']).with_suffix('.unfinished.json').exists())
+
     def test_same_configured_models_are_visible_without_substitution(self):
         self.env['CEREBRO_REVIEW_MODEL'] = self.env['CEREBRO_MODEL']
         result = self.cli('execute', packet=self.packet)

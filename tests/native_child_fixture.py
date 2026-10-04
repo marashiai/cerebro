@@ -40,19 +40,24 @@ def complete_codex(text, completed_turn):
     time.sleep(float(os.environ.get('NATIVE_FIXTURE_DELAY', '0')))
     if mode == 'steer':
         time.sleep(0.8)
-    if mode == 'background':
-        notification('item/started', item={'id': 'background-command', 'type': 'commandExecution',
-                     'status': 'inProgress', 'command': 'fixture child'})
+    if mode in ('abandoned', 'joined'):
+        notification('item/started', item={'id': 'check-command', 'type': 'commandExecution',
+                     'status': 'inProgress', 'command': 'python3 hanging_check.py'})
     notification('item/completed', item={'id': 'answer', 'type': 'agentMessage', 'text': text})
     with turn_lock:
         turn_active = False
-    notification('turn/completed', turn={'id': completed_turn,
-                 'status': 'failed' if mode == 'failure' else 'completed',
-                 **({'error': {'message': 'fixture failure'}} if mode == 'failure' else {})})
-    if mode == 'background':
-        time.sleep(0.3)
-        notification('item/completed', item={'id': 'background-command', 'type': 'commandExecution',
-                     'status': 'completed', 'command': 'fixture child', 'aggregatedOutput': 'BACKGROUND_JOINED', 'exitCode': 0})
+    completion = {'jsonrpc': '2.0', 'method': 'turn/completed', 'params': {'threadId': thread_id, 'turn': {
+        'id': completed_turn, 'status': 'failed' if mode == 'failure' else 'completed',
+        **({'error': {'message': 'fixture failure'}} if mode == 'failure' else {})}}}
+    if mode == 'joined':
+        # The command's completion is already in the stream behind the turn end.
+        joined = {'jsonrpc': '2.0', 'method': 'item/completed', 'params': {'threadId': thread_id, 'item': {
+            'id': 'check-command', 'type': 'commandExecution', 'status': 'completed',
+            'command': 'python3 hanging_check.py', 'exitCode': 0}}}
+        with write_lock:
+            print(json.dumps(completion) + '\n' + json.dumps(joined), flush=True)
+    else:
+        send(completion)
 
 
 record({'argv': sys.argv[2:], 'isolated': os.environ.get('PLAYWRIGHT_MCP_ISOLATED'), 'role': os.environ.get('CEREBRO_CHILD_ROLE'),
@@ -118,6 +123,10 @@ else:
             record(event)
             if mode == 'steer':
                 time.sleep(0.4)
+            if mode == 'abandoned':
+                send({'type': 'assistant', 'message': {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'check-command', 'name': 'Bash',
+                     'input': {'command': 'python3 hanging_check.py'}}]}, 'session_id': thread_id})
             send({'type': 'result', 'subtype': 'error_during_execution' if mode == 'failure' else 'success',
                   'result': final_text(event['message']['content']), 'session_id': thread_id,
                   **({'is_error': True, 'errors': ['fixture failure']} if mode == 'failure' else {})})

@@ -28,6 +28,9 @@ Complete means a stage finished, never that acceptance passed. Questions,
 blocked work, unfinished work, and failures return without starting review.
 Answer a question with ["answer", task_id, answer]. Resume an interrupted or failed
 stage with ["execute", "--resume", task_id]. Completed stages are retained.
+`implementation_unfinished_tools` or `review_unfinished_tools` lists tool calls
+still running when that stage's native turn ended. Their results never reached
+its report; treat claims that depend on them as unverified.
 
 A running command returns on a Jev concern or completion and survives parent
 disconnects. On a concern, inspect the evidence and decide whether to continue,

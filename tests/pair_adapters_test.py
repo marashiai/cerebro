@@ -63,7 +63,7 @@ with contextlib.redirect_stdout(io.StringIO()):
     # prior-turn event cannot finish the newly admitted turn.
     adapter.steer('[user] continue within the contract')
     admission = sent[-1]
-    assert not adapter.finished()
+    assert not adapter.ended()
     assert not adapter.event(started('second'))
     assert not adapter.event(completed('first'))
     assert not adapter.event(reply(admission, {'turn': {'id': 'second'}}))
@@ -79,13 +79,22 @@ with contextlib.redirect_stdout(io.StringIO()):
     assert not adapter.event(reply(first_admission, {'turn': {'id': 'first'}}))
     assert adapter.event(completed('first'))
 
+    # Long-running work holds an active turn open. A terminal turn ends the
+    # stage while still reporting the calls that never completed.
     adapter, sent = setup()
     adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
     assert not adapter.event({'method': 'item/started', 'params': {'item': {
-        'id': 'background', 'type': 'commandExecution', 'status': 'inProgress'}}})
-    assert not adapter.event(completed('first'))
+        'id': 'check', 'type': 'commandExecution', 'status': 'inProgress', 'command': 'python3 check.py'}}})
+    assert not adapter.event({'method': 'item/commandExecution/outputDelta', 'params': {'itemId': 'check'}})
+    assert adapter.event(completed('first'))
+    assert adapter.busy == {'check': {'tool': 'commandExecution', 'command': 'python3 check.py'}}
     assert adapter.event({'method': 'item/completed', 'params': {'item': {
-        'id': 'background', 'type': 'commandExecution', 'status': 'completed', 'exitCode': 0}}})
+        'id': 'check', 'type': 'commandExecution', 'status': 'completed', 'exitCode': 0}}})
+    assert adapter.busy == {}
+    assert adapter.event({'id': 'refresh', 'method': 'account/chatgptAuthTokens/refresh', 'params': {}}), \
+        'a host request after the turn ended reopened native work'
+    adapter.steer('[supervisor] stop the abandoned check')
+    assert not adapter.ended(), 'steering after an unfinished turn did not reopen native work'
 
     adapter, sent = setup()
     try:
@@ -107,6 +116,13 @@ with contextlib.redirect_stdout(io.StringIO()):
     adapter.steer('[supervisor] enforce the approved contract')
     assert not adapter.event({'type': 'result', 'subtype': 'success', 'result': 'first result'})
     assert adapter.event({'type': 'result', 'subtype': 'success', 'result': 'steered result'})
+
+    adapter = Claude(sent.append, '')
+    adapter.start('initial task')
+    assert not adapter.event({'type': 'assistant', 'message': {'content': [
+        {'type': 'tool_use', 'id': 'check', 'name': 'Bash', 'input': {'command': 'python3 check.py'}}]}})
+    assert adapter.event({'type': 'result', 'subtype': 'success', 'result': 'final report'})
+    assert adapter.busy == {'check': {'tool': 'Bash', 'command': 'python3 check.py'}}
 
 with tempfile.TemporaryDirectory(prefix='cerebro-pi-admission-tests-') as temporary:
     session = Path(temporary) / 'conversation.jsonl'
@@ -145,8 +161,16 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-admission-tests-') as tempor
     assert not adapter.event(pi_reply(sent[-1]))
     assert not adapter.event({'type': 'agent_start'})
     assert not adapter.event({'type': 'agent_end', 'messages': [], 'willRetry': True})
-    assert not adapter.finished(), 'low-level agent_end abandoned automatic native work'
+    assert not adapter.ended(), 'low-level agent_end abandoned automatic native work'
     assert adapter.event({'type': 'agent_settled'})
+
+    adapter, sent, emitted = pi_setup()
+    assert not adapter.event(pi_reply(sent[-1]))
+    assert not adapter.event({'type': 'agent_start'})
+    assert not adapter.event({'type': 'tool_execution_start', 'toolCallId': 'check', 'toolName': 'bash',
+                              'args': {'command': 'python3 check.py'}})
+    assert adapter.event({'type': 'agent_settled'})
+    assert adapter.busy == {'check': {'tool': 'bash', 'command': 'python3 check.py'}}
 
     adapter, sent, emitted = pi_setup()
     admission = sent[-1]
@@ -163,7 +187,7 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-admission-tests-') as tempor
     assert not adapter.event({'type': 'agent_settled'})
     assert adapter.event(pi_reply(admission, 'queued'))
     adapter.steer('[user] continue after the native run settled')
-    assert not adapter.finished()
+    assert not adapter.ended()
     assert not adapter.event(pi_reply(sent[-1]))
     assert not adapter.event({'type': 'agent_settled'}), 'a buffered prior settlement finished a newly admitted run'
     assert not adapter.event({'type': 'agent_start'})

@@ -3,6 +3,10 @@
 The native stdout stream drives completion. No child-log/session-file polling
 or transcript reconciliation is involved; Cerebro owns only the FIFO side
 channel, its authorized restart, and the post-turn steering window.
+
+A terminal native turn ends the stage even when tool calls it started never
+reported completion: the final reply cannot depend on their results. Those
+calls are recorded in an `.unfinished.json` receipt beside the child log.
 """
 
 import base64
@@ -15,6 +19,7 @@ import subprocess
 import sys
 import time
 
+from child_store_lib import _atomic_write
 from scope_watch import watch_child
 
 
@@ -31,7 +36,7 @@ class Claude:
     def __init__(self, send, resume):
         self.send = send
         self.outstanding = 0
-        self.busy = set()
+        self.busy = {}
 
     def start(self, prompt):
         self.steer(prompt)
@@ -47,13 +52,17 @@ class Claude:
             if not isinstance(block, dict):
                 continue
             if block.get('type') == 'tool_use':
-                self.busy.add(block['id'])
+                tool_input = block.get('input') or {}
+                self.busy[block['id']] = {'tool': block.get('name'),
+                                          'command': tool_input.get('command') or tool_input.get('description')}
             elif block.get('type') == 'tool_result':
-                self.busy.discard(block['tool_use_id'])
+                self.busy.pop(block['tool_use_id'], None)
         if kind == 'result':
             self.outstanding -= 1
-            return self.outstanding == 0
-        return False
+        return self.ended()
+
+    def ended(self):
+        return self.outstanding == 0
 
 
 class Codex:
@@ -68,7 +77,7 @@ class Codex:
         self.requests = {}
         self.thread = None
         self.pending = []
-        self.busy = set()
+        self.busy = {}
         self.active_turns = set()
         self.completed_turns = set()
 
@@ -116,7 +125,7 @@ class Codex:
                 turn_id = result['turn']['id']
                 if turn_id not in self.completed_turns:
                     self.active_turns.add(turn_id)
-            return self.finished()
+            return self.ended()
         method = event.get('method', '')
         params = event.get('params') or {}
         if 'id' in event:
@@ -124,7 +133,7 @@ class Codex:
             # requests rather than treating them as authorization.
             self.send({'jsonrpc': '2.0', 'id': event['id'],
                        'error': {'code': -32601, 'message': 'Unexpected host request'}})
-            return False
+            return self.ended()
         if method == 'turn/started':
             self.active_turns.add(params['turn']['id'])
             emit({'type': 'turn.started'})
@@ -133,9 +142,9 @@ class Codex:
             kind = item['type']
             if kind in ('commandExecution', 'mcpToolCall', 'fileChange'):
                 if method == 'item/started':
-                    self.busy.add(item['id'])
+                    self.busy[item['id']] = {'tool': kind, 'command': item.get('command') or item.get('tool')}
                 else:
-                    self.busy.discard(item['id'])
+                    self.busy.pop(item['id'], None)
             normalized = {'id': item['id'], 'type': {
                 'agentMessage': 'agent_message', 'commandExecution': 'command_execution',
                 'fileChange': 'file_change', 'mcpToolCall': 'mcp_tool_call',
@@ -152,10 +161,10 @@ class Codex:
             self.active_turns.discard(turn['id'])
         else:
             emit({'type': 'progress', 'event': event})
-        return self.finished()
+        return self.ended()
 
-    def finished(self):
-        return bool(self.completed_turns) and not self.active_turns and not self.busy and not self.pending and 'turn' not in self.requests.values()
+    def ended(self):
+        return bool(self.completed_turns) and not self.active_turns and not self.pending and 'turn' not in self.requests.values()
 
 
 def run():
@@ -196,6 +205,15 @@ def run():
     stall_busy = float(os.environ.get('CEREBRO_PAIR_STALL_BUSY', '450'))
     output_buffer = b''
     fifo_buffer = b''
+    receipt = child_log[:-6] if child_log.endswith('.jsonl') else child_log
+
+    def record_unfinished():
+        # Native turn completion does not prove these calls finished.
+        if adapter.busy:
+            tools = [{'id': key, **value} for key, value in adapter.busy.items()]
+            _atomic_write(receipt + '.unfinished.json', tools)
+            print(f'cerebro pair: native turn ended with {len(tools)} unfinished tool call(s)', file=sys.stderr)
+
     last_activity = time.monotonic()
     idle_deadline = None
     native_exit = None
@@ -210,6 +228,8 @@ def run():
             if watcher:
                 watcher.check()
             if native_exit is not None and not (watcher and watcher.busy()):
+                if not native_exit:
+                    record_unfinished()
                 return native_exit
             now = time.monotonic()
             deadline = idle_deadline
@@ -229,10 +249,11 @@ def run():
                 watcher.check()
             if not ready:
                 if idle_deadline is not None:
+                    record_unfinished()
                     return 0
                 limit = stall_busy if adapter.busy else stall
                 print(f'cerebro pair: child stalled -- no native events for {limit:g}s', file=sys.stderr)
-                Path((child_log[:-6] if child_log.endswith('.jsonl') else child_log) + '.stalled').touch()
+                Path(receipt + '.stalled').touch()
                 return 5
             if fd in ready:
                 fifo_buffer += os.read(fd, 65536)
@@ -241,7 +262,7 @@ def run():
                     prefix, encoded = line.decode().split(' ', 1)
                     message = base64.b64decode(encoded).decode()
                     if prefix == 'R':
-                        Path((child_log[:-6] if child_log.endswith('.jsonl') else child_log) + '.restart').write_text(message)
+                        Path(receipt + '.restart').write_text(message)
                         return 0
                     if prefix != 'S':
                         raise ValueError('invalid steering prefix')
@@ -269,12 +290,12 @@ def run():
                         continue
                     event = json.loads(line)
                     last_activity = time.monotonic()
-                    if adapter.event(event):
+                    if not adapter.event(event):
+                        idle_deadline = None
+                    elif idle_deadline is None:
                         if watcher:
                             watcher.turn_done()
                         idle_deadline = last_activity + idle_grace
-                    elif adapter.busy or (backend in ('codex', 'pi') and adapter.active_turns):
-                        idle_deadline = None
     finally:
         if watcher:
             watcher.close()

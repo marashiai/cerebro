@@ -68,6 +68,11 @@ concrete evidence. Implementation additionally supplies test evidence; review
 supplies individually anchored findings. Original messages and native event
 logs remain available even when a handoff is malformed.
 
+A stage ends when its native turn ends, even if a tool call it started never
+reported completion. Those calls are retained in an `.unfinished.json` receipt
+beside the child log and returned as `implementation_unfinished_tools` or
+`review_unfinished_tools`; their results never reached the stage's report.
+
 Implementation statuses question, blocked, unfinished, and failed stop before
 review. A question includes its requested decision. Continue it with:
 
