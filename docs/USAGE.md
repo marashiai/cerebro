@@ -69,7 +69,10 @@ Children return a final JSON object with `status`, `summary`, and criterion
 results. `complete` means the stage finished, never that every acceptance
 criterion passed. Criterion results are passed, failed, or unverified, with
 concrete evidence. Implementation additionally supplies test evidence; review
-supplies individually anchored findings. Original messages and native event
+supplies individually anchored findings, each with a basis: `requirement` (it
+quotes the stated requirement it violates) or `robustness` (a concern beyond the
+stated requirements). The supervisor corrects confirmed requirement findings and,
+by default, records robustness findings as known limitations. Original messages and native event
 logs remain available even when a handoff is malformed.
 
 A stage ends when its native turn ends, even if a tool call it started never

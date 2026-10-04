@@ -52,7 +52,11 @@ Adjudicate the implementation evidence and original independent findings against
 the user's goal and acceptance criteria. The reviewer reports
 what it finds; you decide what merits correction. For each finding, judge from
 its evidence how likely and how harmful the failure is for what the user asked.
-Check a disputed claim yourself when that is quicker than delegating it. A
+Check a disputed claim yourself when that is quicker than delegating it. Each
+finding states its basis. Correct a "requirement" finding once you confirm that
+the quoted requirement says what the finding claims; a misread requirement is
+not a defect. Record a "robustness" finding as a known limitation unless the user
+asked for that robustness or its failure is likely and severe for this user. A
 correction costs another implementation and independent review, and can introduce
 new defects, so start one only when the accepted findings justify that cost.
 Record the rest as accepted limitations with your reason. A correction packet

@@ -135,6 +135,11 @@ def handoff(path, role, acceptance):
                         raise ValueError('each finding requires ' + field)
                 if finding.get('severity') not in ('high', 'medium', 'low') or not isinstance(finding.get('line'), int) or isinstance(finding['line'], bool) or finding['line'] < 1:
                     raise ValueError('each finding requires severity and a positive line number')
+                if finding.get('basis') not in ('requirement', 'robustness'):
+                    raise ValueError('each finding requires basis requirement or robustness')
+                if finding['basis'] == 'requirement' and (not isinstance(finding.get('requirement'), str)
+                                                          or not finding['requirement'].strip()):
+                    raise ValueError('a requirement finding must quote the stated requirement')
                 if finding['id'] in ids:
                     raise ValueError('finding IDs must be unique')
                 ids.add(finding['id'])

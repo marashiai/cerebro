@@ -167,6 +167,26 @@ class LifecycleTests(unittest.TestCase):
         self.cli('execute', '--resume', result['task_id'])
         self.assertEqual(self.stages(), ['execute', 'review', 'review'])
 
+    def test_review_findings_state_their_basis(self):
+        from task_lifecycle import handoff
+        finding = {'id': 'F1', 'severity': 'low', 'file': 'file', 'line': 1, 'problem': 'p',
+                   'evidence': 'e', 'requested_change': 'c'}
+        report = {'status': 'complete', 'summary': 's', 'criteria': [
+            {'criterion': 'Original acceptance', 'result': 'passed', 'evidence': 'e'}]}
+        path = self.root / 'review.reply'
+        for extra, error in (({}, 'requires basis'), ({'basis': 'requirement'}, 'quote the stated requirement'),
+                             ({'basis': 'requirement', 'requirement': ' '}, 'quote the stated requirement'),
+                             ({'basis': 'robustness'}, None),
+                             ({'basis': 'requirement', 'requirement': 'Original acceptance'}, None)):
+            with self.subTest(extra=extra):
+                path.write_text(json.dumps({**report, 'findings': [{**finding, **extra}]}))
+                if error:
+                    with self.assertRaisesRegex(ValueError, error):
+                        handoff(path, 'review', ['Original acceptance'])
+                else:
+                    self.assertEqual(handoff(path, 'review', ['Original acceptance'])['findings'][0]['basis'],
+                                     extra['basis'])
+
     def test_unverified_criteria_do_not_become_passed(self):
         self.update('execute', criterion_result='unverified')
         result = self.cli('execute', packet=self.packet)
@@ -176,7 +196,7 @@ class LifecycleTests(unittest.TestCase):
     def test_turn_end_with_unfinished_tool_delivers_report_and_receipt(self):
         self.update('execute', native_mode='abandoned')
         self.update('review', native_mode='abandoned', findings=[{
-            'id': 'F1', 'severity': 'medium', 'file': 'file', 'line': 1, 'problem': 'Original finding',
+            'id': 'F1', 'severity': 'medium', 'basis': 'robustness', 'file': 'file', 'line': 1, 'problem': 'Original finding',
             'evidence': 'Replacement check output', 'requested_change': 'Fix it'}])
         for backend in ('codex', 'claude', 'pi'):
             with self.subTest(backend=backend):
@@ -209,7 +229,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_correction_reuses_checkout_and_reviews_everything_unreviewed(self):
         self.packet['worktree'] = True
-        self.update('review', findings=[{'id': 'F1', 'severity': 'low', 'file': 'file', 'line': 1,
+        self.update('review', findings=[{'id': 'F1', 'severity': 'low', 'basis': 'requirement', 'requirement': 'Original acceptance', 'file': 'file', 'line': 1,
                                          'problem': 'Original finding', 'evidence': 'observed',
                                          'requested_change': 'Fix it'}])
         first = self.cli('execute', packet=self.packet)

@@ -10,10 +10,15 @@ requirements that it omits. Independently assess the implementation against
 the original inputs as well as the supervisor goal, task, and acceptance
 criteria.
 Report concrete defects and verification gaps with proportionate corrections.
+Give each finding a basis. "requirement" means the implementation violates a
+stated requirement in the original inputs, supervisor task or acceptance
+criteria; quote that requirement exactly. "robustness" means a concern beyond
+the stated requirements, such as an unspecified input range or hardening.
 
 End with a single JSON object (no Markdown fences):
 {"status":"complete|question|blocked|unfinished|failed","summary":"...",
- "findings":[{"id":"F1","severity":"high|medium|low","file":"path","line":1,
+ "findings":[{"id":"F1","severity":"high|medium|low","basis":"requirement|robustness",
+ "requirement":"exact stated requirement, for basis requirement","file":"path","line":1,
  "problem":"concrete trigger and impact","evidence":"observed evidence",
  "requested_change":"smallest proper correction"}],
  "criteria":[{"criterion":"exact acceptance text","result":"passed|failed|unverified","evidence":"concrete evidence or gap"}],
