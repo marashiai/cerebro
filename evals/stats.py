@@ -244,7 +244,10 @@ def wilson(successes, total):
     denominator = 1 + z * z / total
     center = (rate + z * z / (2 * total)) / denominator
     margin = z * math.sqrt(rate * (1 - rate) / total + z * z / (4 * total * total)) / denominator
-    return [max(0, center - margin), min(1, center + margin)]
+    # The bounds are exact at the extremes; floating point would leave the
+    # observed rate just outside its own interval.
+    return [0.0 if successes == 0 else max(0, center - margin),
+            1.0 if successes == total else min(1, center + margin)]
 
 
 def arm_summary(rows):

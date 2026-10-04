@@ -136,6 +136,14 @@ class StatisticsTests(unittest.TestCase):
         self.assertAlmostEqual(high, 1)
         self.assertIsNone(stats.wilson(0, 0))
 
+    def test_wilson_bounds_contain_the_observed_rate_exactly(self):
+        for total in range(1, 13):
+            for successes in range(total + 1):
+                low, high = stats.wilson(successes, total)
+                self.assertLessEqual(low, successes / total)
+                self.assertGreaterEqual(high, successes / total)
+        self.assertEqual(stats.wilson(0, 6)[0], 0.0)
+
     def test_missing_usage_and_cost_remain_unknown_with_known_partial_tokens(self):
         incomplete = trial('supervisor', usage_complete=False)
         incomplete['usage_ledger'].append({'provider': 'openai', 'role': 'execute', 'model': 'test-model',
