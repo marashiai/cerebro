@@ -71,8 +71,9 @@ cmd_wait() {
   require_session
   command -v python3 >/dev/null 2>&1 || die "wait: missing required command on PATH: python3"
   [[ $# -ge 1 ]] || die "usage: cerebro wait <job-id|absolute-output.status> [--after <sequence>]"
-  local target="$1" after=0 note="" disposition=""; shift
+  local target="$1" after=0 note="" disposition="" interrupt=""; shift
   while [[ $# -gt 0 ]]; do
+    [[ "$1" == --interrupt ]] && { interrupt=1; shift; continue; }
     [[ $# -ge 2 && -n "$2" ]] || die "wait: missing value for $1"
     case "$1" in
       --after) after="${2:-}"; shift 2 ;;
@@ -82,6 +83,7 @@ cmd_wait() {
     esac
   done
   [[ "$after" =~ ^[0-9]+$ ]] || die "wait: --after must be a nonnegative sequence"
+  [[ -z "$interrupt" || "$disposition" == correct ]] || die "wait: --interrupt applies only to --disposition correct"
 
   local status job_file=""
   if [[ "$target" == /* ]]; then
@@ -116,7 +118,7 @@ cmd_wait() {
     pipe="$(jq -r --argjson sequence "$after" \
       '.notices[] | select(.sequence == $sequence) | .notice.steering_pipe // empty' "$updates_path")"
     [[ -n "$pipe" ]] || die "wait: notice $after has no live child to correct; decide continue or stop and use a correction packet"
-    cmd_steer "$pipe" "$note"
+    cmd_steer ${interrupt:+--interrupt} "$pipe" "$note"
   fi
   python3 "$CEREBRO_LIB_DIR/python/wait_detached.py" \
     "${args[@]}"

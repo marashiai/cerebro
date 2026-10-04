@@ -485,6 +485,35 @@ class LifecycleTests(unittest.TestCase):
                 proc.kill()
                 proc.communicate()
 
+    def test_interrupt_stops_the_running_turn_and_starts_the_message(self):
+        proc = self.start_task(NATIVE_FIXTURE_MODE='steer')
+        try:
+            self.wait_until(lambda: self.log.exists() and any(item.get('method') == 'turn/start' for item in self.records()), proc)
+            state = self.running_task()
+            fifo = Path(state['attempt']['log']).with_suffix('.steer.fifo')
+            self.cli('steer', '--interrupt', str(fifo), 'Stop and keep the original plan focused')
+            stdout, stderr = proc.communicate(timeout=10)
+            self.assertEqual(proc.returncode, 0, stderr)
+            self.assertEqual(json.loads(stdout)['stage'], 'done')
+            methods = [item.get('method') for item in self.records() if item.get('method', '').startswith('turn/')]
+            self.assertEqual(methods, ['turn/start', 'turn/interrupt', 'turn/start', 'turn/start'])
+            turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
+            self.assertIn('Stop and keep the original plan focused', turns[1])
+            self.assertIn('(interrupt)', fifo.with_name(fifo.name.replace('.steer.fifo', '.steering.md')).read_text())
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+
+    def test_interrupt_is_refused_for_pi_and_requires_correct(self):
+        self.env['CEREBRO_BACKEND'] = 'pi'
+        (self.session / 'metadata.json').write_text('{"backend":"pi"}')
+        refused = self.cli('steer', '--interrupt', str(self.root / 'any.steer.fifo'), 'Stop', ok=False)
+        self.assertIn('not available for Pi', refused.stderr)
+        rejected = self.cli('wait', '0d5a8f3e-1111-4c2e-9a6b-2b1f9e3c7d10', '--after', '1',
+                            '--disposition', 'continue', '--note', 'Fine', '--interrupt', ok=False)
+        self.assertIn('--interrupt applies only to --disposition correct', rejected.stderr)
+
     def test_explicit_empty_reviewer_keeps_native_defaults(self):
         for backend in ('codex', 'claude', 'pi'):
             self.env['CEREBRO_BACKEND'] = backend

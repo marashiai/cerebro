@@ -82,11 +82,12 @@ def handle_claude(ev):
                 emit_tool_summary(f"{clr}  {name}: {target}\n")
         return
     if t == "result":
+        # Only the last turn's result decides the stage; an interrupted turn
+        # reports an error result before the turn that replaces it.
         result_subtype = ev.get("subtype")
         result_text = ev.get("result")
-        if result_subtype and result_subtype != "success":
-            saw_error = True
-            error_msg = f"result subtype={result_subtype}"
+        saw_error = bool(result_subtype and result_subtype != "success")
+        error_msg = f"result subtype={result_subtype}"
 
 
 def handle_pi(ev):

@@ -112,6 +112,44 @@ with contextlib.redirect_stdout(io.StringIO()):
     adapter.steer('[supervisor] stop the abandoned check')
     assert not adapter.ended(), 'steering after an unfinished turn did not reopen native work'
 
+    # Interrupt stops the running turn; its abandoned calls are not reported as
+    # unfinished, and the input starts the next turn only after the stop.
+    adapter, sent = setup()
+    adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
+    assert not adapter.event({'method': 'item/started', 'params': {'item': {
+        'id': 'slow', 'type': 'commandExecution', 'status': 'inProgress', 'command': 'pytest -x'}}})
+    adapter.interrupt('[supervisor] stop and fix the failing test')
+    stop = sent[-1]
+    assert stop['method'] == 'turn/interrupt' and stop['params']['turnId'] == 'first'
+    assert not adapter.event(reply(stop, {}))
+    assert sent[-1] is stop, 'input was steered into the turn being interrupted'
+    assert not adapter.event({'method': 'turn/completed', 'params': {'turn': {'id': 'first', 'status': 'interrupted'}}})
+    admission = sent[-1]
+    assert admission['method'] == 'turn/start' and admission['params']['input'][0]['text'].startswith('[supervisor] stop')
+    assert adapter.busy == {}
+    assert not adapter.event(reply(admission, {'turn': {'id': 'second'}}))
+    assert adapter.event(completed('second'))
+
+    # A turn that completes before the interrupt arrives keeps the input for the next turn.
+    adapter, sent = setup()
+    adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
+    adapter.interrupt('[supervisor] late interrupt')
+    stop = sent[-1]
+    assert not adapter.event(completed('first'))
+    with contextlib.redirect_stderr(io.StringIO()):
+        assert not adapter.event({'id': stop['id'], 'error': {'code': -32600, 'message': 'no active turn'}})
+    assert sent[-1]['method'] == 'turn/start'
+
+    # An interrupted turn that Cerebro did not request is still a failure.
+    adapter, sent = setup()
+    adapter.event(reply(sent[-1], {'turn': {'id': 'first'}}))
+    try:
+        adapter.event({'method': 'turn/completed', 'params': {'turn': {'id': 'first', 'status': 'interrupted'}}})
+    except RuntimeError as error:
+        assert 'interrupted' in str(error)
+    else:
+        raise AssertionError('an unrequested interruption was accepted as completion')
+
     adapter, sent = setup()
     try:
         adapter.event({'id': sent[-1]['id'], 'error': {'code': -32602, 'message': 'admission rejected'}})
@@ -148,6 +186,21 @@ with contextlib.redirect_stdout(io.StringIO()):
     assert not adapter.event(result('first result')), 'a result finished the stage before pending input was taken'
     assert not adapter.event(taken('[supervisor] sent as the turn finishes'))
     assert adapter.event(result('steered result'))
+
+    # Interrupt (verified against Claude Code 2.1.289): the running turn ends with
+    # an error result, then the new input runs as its own turn.
+    sent = []
+    adapter = Claude(sent.append, '')
+    adapter.start('initial task')
+    assert not adapter.event(taken('initial task'))
+    adapter.interrupt('[supervisor] stop and fix the failing test')
+    assert sent[-2]['type'] == 'control_request' and sent[-2]['request']['subtype'] == 'interrupt'
+    assert sent[-1]['message']['content'].startswith('[supervisor] stop')
+    assert not adapter.event({'type': 'result', 'subtype': 'error_during_execution', 'is_error': True})
+    assert not adapter.event(taken('[supervisor] stop and fix the failing test'))
+    assert adapter.event(result('fixed'))
+    adapter.interrupt('[user] while idle')
+    assert sent[-1]['type'] == 'user' and sent[-2]['type'] != 'control_request', 'an idle child was interrupted'
 
     adapter = Claude(sent.append, '')
     adapter.start('initial task')
@@ -256,5 +309,23 @@ with tempfile.TemporaryDirectory(prefix='cerebro-pi-admission-tests-') as tempor
         assert 'another session file' in str(error)
     else:
         raise AssertionError('Pi silently resumed another native conversation')
+
+# Only the final result decides a Claude stage: an interrupted turn's error
+# result is followed by the turn that replaces it.
+import subprocess
+PARSER = Path(__file__).resolve().parent.parent / 'lib' / 'python' / 'parse_stream.py'
+with tempfile.TemporaryDirectory(prefix='cerebro-parse-tests-') as temporary:
+    for results, code in (((('error_during_execution', None), ('success', 'fixed')), 0),
+                          ((('success', 'first'), ('error_during_execution', None)), 4)):
+        reply_path = Path(temporary) / 'reply'
+        reply_path.unlink(missing_ok=True)
+        stream = [{'type': 'system', 'subtype': 'init', 'session_id': 's'}]
+        stream += [{'type': 'result', 'subtype': subtype, 'result': text} for subtype, text in results]
+        parsed = subprocess.run([sys.executable, str(PARSER), str(reply_path), '', '', '', 'claude'],
+                                input=''.join(json.dumps(item) + '\n' for item in stream),
+                                text=True, capture_output=True)
+        assert parsed.returncode == code, (results, parsed.returncode, parsed.stderr)
+        if code == 0:
+            assert reply_path.read_text() == 'fixed'
 
 print('all checks passed')

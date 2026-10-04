@@ -33,10 +33,10 @@ usage:
   cerebro execute [--packet file] read one JSON task packet (stdin by default)
   cerebro execute --resume <task-id> [--answer "text"]
   cerebro answer <task-id> "text"  continue a terminal question
-  cerebro steer [<pipe>] "text"    steer a running stage
+  cerebro steer [--interrupt] [<pipe>] "text"    steer a running stage
   cerebro restart [<pipe>] "text"  retire its conversation, retaining work
   cerebro jobs | status | list     inspect durable session state
-  cerebro wait <job-id> [--after N --disposition continue|correct|stop --note "reason"]
+  cerebro wait <job-id> [--after N --disposition continue|correct|stop --note "text" [--interrupt]]
   cerebro cancel <job-id>          stop that job and its descendants
   cerebro models | model-env       inspect native model settings
   cerebro worktrees | recall       inspect retained work and session history

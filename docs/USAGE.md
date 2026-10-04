@@ -115,8 +115,11 @@ cerebro wait <job-id> --after 2 --disposition correct --note "Fix the failing re
 
 Disposition is continue, correct, or stop. For `correct`, the note is delivered to
 the cited implementor as a steering message before the decision is recorded; the
-implementor reads it after its current tool call. If the implementor has finished,
-`correct` fails and records nothing. For `continue` and `stop`, the note is a reason
+implementor reads it after its current tool call. Add `--interrupt` to stop the
+running turn and its tool calls first, so the note starts the next turn at once;
+use it only when the running call is wasted or harmful, and write the note as the
+complete next instruction, because the stopped turn is over. If the implementor has
+finished, `correct` fails and records nothing. For `continue` and `stop`, the note is a reason
 and never reaches the implementor. Every decision is recorded in the session's
 `decisions.jsonl`, scoped to job ID and notice sequence, for Jev's next assessment.
 The wait blocks until the next notice or completion. It does not poll status.
@@ -124,11 +127,15 @@ Steer, restart or cancel directly at any time:
 
 ```bash
 cerebro steer [<pipe>] "Use the existing login helper and rerun its tests"
+cerebro steer --interrupt [<pipe>] "Stop this full-suite run; test only the parser module"
 cerebro restart [<pipe>] "Inspect retained changes and replace the incorrect approach"
 cerebro cancel <job-id>
 ```
 
-Steering is available during normal execution with Jev disabled too. Cancellation
+Steering is available during normal execution with Jev disabled too. A steer
+reaches the running turn at the implementor's next model step, after its current
+tool call. `--interrupt` is available for Codex and Claude children; Pi children
+refuse it because its abort behavior has not been verified. Cancellation
 stops only that job's descendants. A restart retains work; checkout cleanup is a
 separate `cerebro worktrees cleanup` action that preserves work still in use.
 

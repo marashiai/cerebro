@@ -19,6 +19,7 @@ turn_id = None
 turn_active = False
 turn_sequence = 0
 turn_lock = threading.Lock()
+interrupted_turns = set()
 
 
 def record(event):
@@ -40,6 +41,8 @@ def complete_codex(text, completed_turn):
     time.sleep(float(os.environ.get('NATIVE_FIXTURE_DELAY', '0')))
     if mode == 'steer':
         time.sleep(0.8)
+    if completed_turn in interrupted_turns:
+        return
     if mode == 'edit':
         with open('corrected.txt', 'w') as output:
             output.write('correction\n')
@@ -86,7 +89,7 @@ if backend == 'codex':
         params = event.get('params', {})
         if method == 'initialized':
             continue
-        if method not in ('initialize', 'thread/start', 'thread/resume', 'turn/start', 'turn/steer'):
+        if method not in ('initialize', 'thread/start', 'thread/resume', 'turn/start', 'turn/steer', 'turn/interrupt'):
             raise SystemExit('unexpected native app-server method: ' + str(method))
         result = {}
         new_turn = False
@@ -96,6 +99,18 @@ if backend == 'codex':
                 continue
             thread_id = params.get('threadId', thread_id)
             result = {'thread': {'id': thread_id}}
+        elif method == 'turn/interrupt':
+            with turn_lock:
+                interrupted = turn_active and params.get('turnId') == turn_id
+                if interrupted:
+                    turn_active = False
+                    interrupted_turns.add(turn_id)
+            if not interrupted:
+                send({'jsonrpc': '2.0', 'id': event['id'], 'error': {'code': -32600, 'message': 'no active turn'}})
+                continue
+            send({'jsonrpc': '2.0', 'id': event['id'], 'result': {}})
+            notification('turn/completed', turn={'id': turn_id, 'status': 'interrupted'})
+            continue
         elif method == 'turn/steer':
             # Like Codex: input joins the named turn only while it is active.
             with turn_lock:

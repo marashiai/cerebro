@@ -11,21 +11,26 @@ steer_fifo_live() {
   python3 "$CEREBRO_LIB_DIR/python/fifo_live.py" "$1" 2>/dev/null
 }
 
-# ----- subcommand: cerebro steer [<pipe>] "<message>" ----------------------
+# ----- subcommand: cerebro steer [--interrupt] [<pipe>] "<message>" --------
 # One-shot steering: inject a single instruction into a live task stage and
 # return at once (no attach, no lock). With ONE argument that argument is the
 # message and the live paired session is found automatically (the common case);
 # with TWO, the first is the <pipe> path from the child's PAIR MODE banner (to
 # pick one when several run at once) and the second is the message. The message
-# becomes the child's next user turn. Runs from any directory.
+# reaches the running turn at its next model step; --interrupt first stops the
+# running turn and its tool calls so the message starts the next turn at once.
 cmd_steer() {
-  local fifo="" msg=""
+  local fifo="" msg="" prefix=S
+  if [[ "${1:-}" == --interrupt ]]; then
+    backend_is pi && die "steer: --interrupt is not available for Pi children"
+    prefix=I; shift
+  fi
   if (( $# == 1 )); then
     msg="$1"
   elif (( $# >= 2 )); then
     fifo="$1"; msg="$2"
   else
-    die "steer: usage: cerebro steer [<pipe>] \"<message>\""
+    die "steer: usage: cerebro steer [--interrupt] [<pipe>] \"<message>\""
   fi
   [[ -n "$msg" ]] || die "steer: empty steering message"
   case "${CEREBRO_ROLE:-user}" in
@@ -34,6 +39,6 @@ cmd_steer() {
   esac
   pair_resolve_live_fifo "$fifo" steer
   fifo="$PAIR_RESOLVED_FIFO"
-  python3 "$CEREBRO_LIB_DIR/python/steer_send.py" "$fifo" "$msg" || die "steer: could not deliver (the child may have finished)"
+  python3 "$CEREBRO_LIB_DIR/python/steer_send.py" "$fifo" "$msg" "$prefix" || die "steer: could not deliver (the child may have finished)"
   say "cerebro: steered $(basename "${fifo%.steer.fifo}")"
 }

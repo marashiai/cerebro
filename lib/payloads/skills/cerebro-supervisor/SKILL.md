@@ -40,7 +40,10 @@ instruction: it is delivered to the cited implementor, which reads it after its
 current tool call, before the decision is recorded. For continue or stop, the
 note is your reason; it informs Jev and never reaches the implementor. If the
 implementor has finished, correct fails; decide continue or stop and use a
-correction packet. Use restart to retire a strayed conversation while retaining
+correction packet. Add "--interrupt" to a correct decision only when the running
+tool call is wasted or harmful: it stops that call and turn, so the instruction
+starts the next turn at once. Write that note as the complete next instruction,
+including how to continue the delegated task, since the stopped turn is over. Use restart to retire a strayed conversation while retaining
 its checkout, and cancel only within task authority. Waiting blocks on events;
 do not poll status or logs.
 

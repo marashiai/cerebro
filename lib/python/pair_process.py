@@ -50,6 +50,13 @@ class Claude:
         self.send({'type': 'user', 'message': {'role': 'user', 'content': text}})
         self.sent += 1
 
+    def interrupt(self, text):
+        # The interrupted turn ends with an error result; the text starts the next turn.
+        if self.turn_open:
+            self.send({'type': 'control_request', 'request_id': 'cerebro-interrupt-' + str(self.sent),
+                       'request': {'subtype': 'interrupt'}})
+        self.steer(text)
+
     def event(self, event):
         emit(event)
         kind = event.get('type')
@@ -91,6 +98,7 @@ class Codex:
         self.completed_turns = set()
         self.steering = None
         self.unsteerable = set()
+        self.interrupting = None
 
     def request(self, method, params, purpose):
         self.next_id += 1
@@ -106,7 +114,7 @@ class Codex:
         if not self.thread or not self.pending or {'turn', 'steer'} & set(self.requests.values()):
             return
         steerable = self.active_turns - self.unsteerable
-        if self.active_turns and not steerable:
+        if self.active_turns and not steerable or self.interrupting in self.active_turns:
             return
         text = '\n\n'.join(self.pending)
         self.pending.clear()
@@ -125,6 +133,14 @@ class Codex:
         self.pending.append(text)
         self.flush()
 
+    def interrupt(self, text):
+        # The interrupted turn completes as interrupted; the text starts the next turn.
+        self.pending.append(text)
+        if self.active_turns and self.interrupting is None:
+            self.interrupting = next(iter(self.active_turns))
+            self.request('turn/interrupt', {'threadId': self.thread, 'turnId': self.interrupting}, 'interrupt')
+        self.flush()
+
     def event(self, event):
         if 'id' in event and 'method' not in event:
             purpose = self.requests.pop(event['id'], None)
@@ -135,6 +151,12 @@ class Codex:
                 self.pending.insert(0, text)
                 print('cerebro pair: steer rejected by turn ' + turn + '; queued for the next turn: '
                       + json.dumps(event['error']), file=sys.stderr)
+                self.flush()
+                return self.ended()
+            if 'error' in event and purpose == 'interrupt':
+                # The turn ended first; the input starts the next turn.
+                print('cerebro pair: interrupt rejected; ' + json.dumps(event['error']), file=sys.stderr)
+                self.interrupting = None
                 self.flush()
                 return self.ended()
             if 'error' in event:
@@ -183,6 +205,15 @@ class Codex:
             emit({'type': 'item.completed' if method == 'item/completed' else 'item.started', 'item': normalized})
         elif method == 'turn/completed':
             turn = params['turn']
+            if turn['status'] == 'interrupted' and turn['id'] == self.interrupting:
+                # Calls cut off by the requested interrupt are abandoned, not unfinished work.
+                emit({'type': 'turn.interrupted', 'abandoned': [{'id': key, **value} for key, value in self.busy.items()]})
+                self.busy.clear()
+                self.interrupting = None
+                self.completed_turns.add(turn['id'])
+                self.active_turns.discard(turn['id'])
+                self.flush()
+                return self.ended()
             if turn['status'] != 'completed':
                 emit({'type': 'turn.failed', 'error': turn.get('error') or {'message': turn['status']}})
                 raise RuntimeError('Codex turn ' + turn['status'])
@@ -196,7 +227,7 @@ class Codex:
 
     def ended(self):
         return (bool(self.completed_turns) and not self.active_turns and not self.pending
-                and not {'turn', 'steer'} & set(self.requests.values()))
+                and not {'turn', 'steer', 'interrupt'} & set(self.requests.values()))
 
 
 def run():
@@ -296,13 +327,18 @@ def run():
                     if prefix == 'R':
                         Path(receipt + '.restart').write_text(message)
                         return 0
-                    if prefix != 'S':
+                    if prefix == 'I':
+                        if not hasattr(adapter, 'interrupt'):
+                            raise ValueError(backend + ' children cannot be interrupted')
+                        adapter.interrupt(message)
+                    elif prefix == 'S':
+                        adapter.steer(message)
+                    else:
                         raise ValueError('invalid steering prefix')
-                    adapter.steer(message)
                     if watcher:
                         watcher.steered(message)
                     with open(steer_path, 'a') as record:
-                        record.write('- ' + message.replace('\n', '\n  ') + '\n')
+                        record.write('- ' + ('(interrupt) ' if prefix == 'I' else '') + message.replace('\n', '\n  ') + '\n')
                     idle_deadline = None
                     last_activity = time.monotonic()
             if native_exit is None and proc.stdout.fileno() in ready:

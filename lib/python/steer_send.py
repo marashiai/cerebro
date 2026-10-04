@@ -1,7 +1,8 @@
 # One-shot inject for `cerebro steer` / `cerebro restart`. argv is
 # <fifo> <message> [prefix]. It writes a single "<prefix> <base64>" line to the
-# child's pipe and returns. The default prefix `S` is a steer (forwarded as the
-# child's next user turn); prefix `R` is a restart (the pump reaps the child and
+# child's pipe and returns. The default prefix `S` is a steer (it reaches the
+# running turn at its next model step); `I` interrupts the running turn first so
+# the message starts the next turn; `R` is a restart (the pump reaps the child and
 # marks it for a clean-slate relaunch).
 
 import base64, os, sys
