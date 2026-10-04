@@ -7,7 +7,8 @@
 > Current agents rarely hallucinate and rarely need that kind of steering or
 > up-front planning. The original purpose is gone, so the project is archived.
 >
-> The evaluations agree:
+> These evaluation results show that the project has served its purpose and is no
+> longer useful: a single current agent does as well, faster and cheaper.
 >
 > - [Second hard-task proof](evals/results/2026-10-04-hard-proof-2/interpretation.md)
 >   and [first hard-task proof](evals/results/2026-10-04-hard-proof/interpretation.md):
