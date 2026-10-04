@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from runtime import ROOT, environment, redact, setup, codex, write_json
+from runtime import ROOT, capture_task_input, environment, redact, setup, codex, write_json
 from model_config import add_arguments, cli_overrides, load_config, resolve_config
 from fixtures import git, seed_episode, seed_repo
 from usage import collect as collect_usage
@@ -74,14 +74,19 @@ def review_trial(case, directory, seed, arm, settings):
     report = session / 'children' / 'review.json'
     write_json(report, case['review'])
     criteria = session / 'task.json'
-    write_json(criteria, {'packet': {'goal': case['requirements'], 'task': 'Assess the supplied static review.',
-                                    'acceptance': [case['requirements']]}})
     try:
+        user_inputs = capture_task_input(env, case['requirements'])
+        write_json(criteria, {'packet': {'goal': case['requirements'], 'task': 'Assess the supplied static review.',
+                                        'acceptance': [case['requirements']]}, 'user_inputs': user_inputs})
         state = context(repo, 'HEAD', report, str(criteria), session)
         state.pop('repo')
         state['raw_report'].pop('path')
         packet = {'review_context': state}
-        result = {'evidence_sha256': hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()}
+        digest_state = json.loads(json.dumps(state))
+        digest_state['task_spec']['original_user_inputs'] = [
+            {key: entry[key] for key in ('source', 'content')}
+            for entry in digest_state['task_spec']['original_user_inputs']]
+        result = {'evidence_sha256': hashlib.sha256(json.dumps(digest_state, sort_keys=True).encode()).hexdigest()}
         if arm == 'with_jev':
             with environment(env):
                 assessment = assess(repo, 'HEAD', report, str(criteria), session)

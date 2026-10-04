@@ -5,12 +5,15 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'lib/python'))
+from user_input import record_text
 
 
 class WorkspaceTests(unittest.TestCase):
@@ -33,6 +36,8 @@ class WorkspaceTests(unittest.TestCase):
         (self.session / 'plans').mkdir()
         (self.session / 'metadata.json').write_text('{"backend":"codex"}')
         (self.session / 'transcript.jsonl').touch()
+        record_text(self.session, 'Continue the requested work and preserve the selected checkout.',
+                    source='fixture')
         self.log = self.directory / 'native.jsonl'
         executable = self.directory / 'codex'
         executable.write_text('#!/bin/sh\nexec python3 ' + shlex.quote(str(ROOT / 'tests/native_child_fixture.py')) + ' codex "$@"\n')

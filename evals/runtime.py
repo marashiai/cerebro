@@ -17,6 +17,7 @@ LIB = ROOT / 'lib'
 CLI = ROOT / 'bin' / 'cerebro'
 sys.path.insert(0, str(LIB / 'python'))
 from codex_launch import supervisor_options, toml
+from user_input import record_text, snapshot
 
 ROLE_GROUPS = {'execute': 'implementation', 'review': 'review', 'supervisor': 'supervisor',
                'implementation': 'implementation'}
@@ -38,6 +39,12 @@ def write_json(path, value):
     temporary = path.with_name('.' + path.name + '.tmp')
     temporary.write_text(json.dumps(value, indent=2) + '\n')
     temporary.replace(path)
+
+
+def capture_task_input(env, text):
+    session = Path(env['CEREBRO_SESSION_DIR'])
+    record_text(session, text, source='eval')
+    return snapshot(session)
 
 
 def file_hashes(repo):
@@ -102,6 +109,7 @@ def setup(directory, settings, watch):
     env['CODEX_HOME'] = str(native_home)
     env.update(CEREBRO_HOME=str(directory / 'home'), CEREBRO_SESSION_DIR=str(session),
                CEREBRO_SESSION_ID='eval', CEREBRO_BACKEND='codex', CEREBRO_LIB_DIR=str(LIB),
+               CEREBRO_INPUT_OWNER='external',
                CEREBRO_CODEX_CMD=str(native), CEREBRO_MODEL=settings['models']['implementation'] or '',
                CEREBRO_REVIEW_MODEL=settings['models']['review'] or '', CEREBRO_SUPERVISOR_MODEL=settings['models']['supervisor'] or '',
                CEREBRO_IMPLEMENTOR_EFFORT=settings['efforts']['implementation'] or '',
@@ -123,6 +131,7 @@ def setup(directory, settings, watch):
 
 
 def codex(directory, env, prompt, settings, *, schema=None, supervisor=False):
+    snapshot(Path(env['CEREBRO_SESSION_DIR']))
     import baseline
     options = []
     if supervisor:
@@ -136,6 +145,8 @@ def codex(directory, env, prompt, settings, *, schema=None, supervisor=False):
 
 
 def command(directory, env, argv, timeout, *, prefix='delegation', stdin=''):
+    if argv and argv[0] == 'execute':
+        snapshot(Path(env['CEREBRO_SESSION_DIR']))
     request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                'params': {'name': 'command', 'arguments': {'argv': argv, 'stdin': stdin}}}
     process([sys.executable, str(LIB / 'python/command_server.py'), 'supervisor', str(CLI)],

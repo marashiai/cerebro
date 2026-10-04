@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "__CEREBRO_HOOK_PATH__"
+            "command": ""
           }
         ]
       }

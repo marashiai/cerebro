@@ -7,7 +7,7 @@ import baseline
 import scenarios
 from fixtures import git, grade_episode
 from observations import condition_metrics, evidence
-from runtime import cleanup, codex, command, file_hashes, setup
+from runtime import capture_task_input, cleanup, codex, command, file_hashes, setup
 import job_fixture
 import lease_fixture
 
@@ -185,16 +185,18 @@ def trial(identifier, directory, seed, arm, settings):
     env, session = setup(directory, settings, arm == 'supervisor_jev')
     criteria = session / 'task.json'
     from runtime import write_json
-    write_json(criteria, {'packet': {'goal': requirements, 'task': hints, 'acceptance': [requirements]}})
     try:
-        reports = None
-        if name in ('mixed-review-recovery', 'stale-review-recovery'):
-            reports = scenarios.review_packet(name, selected, session,
-                'with_jev' if arm == 'supervisor_jev' else 'without_jev', env, criteria)
         task = ('Complete the authorized task in ' + str(repo) + '\nTask directory: ' + str(directory)
                 + '\nRequirements: ' + requirements + '\nWorkspace context: ' + hints)
         if selected is not None and selected != repo:
             task += '\nSelected task checkout: ' + str(selected)
+        user_inputs = capture_task_input(env, task)
+        write_json(criteria, {'packet': {'goal': requirements, 'task': hints, 'acceptance': [requirements]},
+                              'user_inputs': user_inputs})
+        reports = None
+        if name in ('mixed-review-recovery', 'stale-review-recovery'):
+            reports = scenarios.review_packet(name, selected, session,
+                'with_jev' if arm == 'supervisor_jev' else 'without_jev', env, criteria)
         if reports:
             task += '\nPrior review evidence, assess against CURRENT source: ' + json.dumps(reports)
         packet_task = (task + '\nIn your implementation closing JSON, additionally include delivery with '

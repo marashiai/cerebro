@@ -15,6 +15,13 @@ sets implementor/reviewer model and effort overrides; role config supplies the
 defaults. Choose a review model different from the implementor when configured models allow it.
 Omitted model and effort settings preserve the native backend defaults.
 
+The controller captures actual user inputs separately and passes them directly
+to both stages. Keep the packet focused on the current plan, but do not treat
+its summary or acceptance list as a replacement for the original requests. The
+implementor and reviewer must evaluate original requirements even when the plan
+omits them; later actual user clarifications supersede earlier requests while
+earlier requests remain context.
+
 The controller runs the implementor and then automatically starts an independent
 review when the implementation stage returns a complete structured handoff.
 Complete means a stage finished, never that acceptance passed. Questions,
@@ -34,5 +41,8 @@ Adjudicate the implementation evidence, original independent findings, and Jev
 assessment against the user's goal and acceptance criteria. Address real findings
 with a focused correction packet; keep original acceptance where still relevant.
 Finish only when the evidence supports the goal, stating remaining limitations.
+If a task response includes `pending_user_input_ids`, those captured inputs arrived
+after the current child-stage snapshot. Decide whether they change the requested
+outcome and start a focused task when needed before claiming they were satisfied.
 No mandatory verifier, documentation agent, learning loop, or review ceremony.
 Use status/jobs to recover durable tasks and logs after reconnecting.

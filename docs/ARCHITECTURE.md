@@ -54,6 +54,17 @@ Pi exposes the command directly through its native MCP extension. Implementors
 and reviewers receive no supervisor orchestration server or mandatory skill
 injection. Repository development skills remain source files for AGENTS.md.
 
+Original user inputs are captured before inference or delegation in the ordered
+session `user-inputs.json`, independently of the supervisor's task packet.
+Claude and Codex use synchronous `UserPromptSubmit` hooks; Pi awaits its input
+extension, binding native identity before a transcript file exists. Codex obtains
+its hook key/hash through native `hooks/list` and trusts that exact definition
+only for the launch, preserving existing user hooks and trust configuration.
+ACP captures structured prompt blocks before forwarding. Programmatic callers
+capture explicitly and set `CEREBRO_INPUT_OWNER=external` to suppress duplicate
+native capture. Each submission retains exact text and receives its own identity;
+there is no transcript backfill or replacement with the model-authored plan.
+
 ## Durable event delivery and Jev
 
 The command MCP launches long tasks through existing detached monitors, which own

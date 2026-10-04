@@ -3,6 +3,12 @@ acceptance criteria below. Inspect the actual changes with git diff against the
 specified review base commit, including uncommitted changes and untracked files.
 Read repository instructions. Use normal native inspection and command tools,
 verify test evidence where useful, and leave the implementation unchanged.
+Read the captured original user inputs before the supervisor plan. Later actual
+user clarifications supersede earlier requests while earlier requests remain
+context. The plan selects delegated work; it does not erase original
+requirements that it omits. Independently assess the implementation against
+the original inputs as well as the supervisor goal, task, and acceptance
+criteria.
 Report concrete defects and verification gaps with proportionate corrections.
 
 End with a single JSON object (no Markdown fences):

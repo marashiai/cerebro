@@ -12,6 +12,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = str(ROOT / 'bin/cerebro')
+sys.path.insert(0, str(ROOT / 'lib' / 'python'))
+from user_input import record, record_text, snapshot
 
 
 class LifecycleTests(unittest.TestCase):
@@ -32,6 +34,8 @@ class LifecycleTests(unittest.TestCase):
         (self.session / 'children').mkdir(parents=True)
         (self.session / 'metadata.json').write_text('{"backend":"codex"}')
         (self.session / 'transcript.jsonl').touch()
+        record_text(self.session, 'Original user goal. Preserve None distinctly from False.',
+                    source='codex', native_id='NATIVE-USER', turn_id='TURN-USER')
         self.config = self.root / 'config.json'
         self.settings = {'acceptance': ['Original acceptance'], 'execute': {}, 'review': {}}
         self.config.write_text(json.dumps(self.settings))
@@ -90,6 +94,7 @@ class LifecycleTests(unittest.TestCase):
                 for prompt in turns:
                     self.assertIn('Original user goal', prompt)
                     self.assertIn('Original acceptance', prompt)
+                    self.assertIn('Preserve None distinctly from False', prompt)
                 self.assertNotIn('execute finished', turns[1])
                 self.assertEqual((self.session / 'spec.md').read_text(), (self.session / 'tasks' / result['task_id'] / 'spec.md').read_text())
                 self.cli('execute', '--resume', result['task_id'])
@@ -102,12 +107,21 @@ class LifecycleTests(unittest.TestCase):
         result = self.cli('execute', packet=self.packet)
         self.assertEqual(self.stages(), ['execute'])
         self.assertEqual(result['status'], 'question')
+        first_prompt = next((self.session / 'children').glob('execute-*.prompt'))
+        first_prompt_text = first_prompt.read_text()
+        record_text(self.session, 'Clarification: keep None and False distinct in stored values.',
+                    source='codex', native_id='NATIVE-USER', turn_id='TURN-CLARIFICATION')
         self.update('execute', status='complete')
         self.cli('answer', result['task_id'], 'Use the requested behavior')
         self.assertEqual(self.stages(), ['execute', 'execute', 'review'])
         resume = [item for item in self.records() if item.get('method') == 'thread/resume']
         self.assertEqual(len(resume), 1)
         self.assertEqual(resume[0]['params']['threadId'], 'NATIVE-CHILD-1')
+        turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
+        self.assertIn('Clarification: keep None and False distinct', turns[1])
+        self.assertEqual(first_prompt.read_text(), first_prompt_text)
+        resumed_prompts = [path for path in first_prompt.parent.glob('execute-*.prompt') if path != first_prompt]
+        self.assertTrue(any('Clarification: keep None and False' in path.read_text() for path in resumed_prompts))
         self.cli('execute', '--resume', result['task_id'])
         self.assertEqual(len(self.stages()), 3)
 
@@ -290,8 +304,13 @@ class LifecycleTests(unittest.TestCase):
             os.kill(proc.pid, signal.SIGKILL)
             proc.communicate(timeout=5)
             task_id = next((self.session / 'tasks').iterdir()).name
-            self.cli('execute', '--resume', task_id)
+            late = record_text(self.session, 'After review receipt: a new user requirement.',
+                               source='codex', native_id='NATIVE-USER', turn_id='TURN-AFTER-REVIEW-RECEIPT')
+            result = self.cli('execute', '--resume', task_id)
             self.assertEqual(self.stages(), ['execute', 'review'])
+            self.assertIn(late['id'], result['pending_user_input_ids'])
+            saved = json.loads((self.session / 'tasks' / task_id / 'task.json').read_text())
+            self.assertNotIn(late['id'], [item['id'] for item in saved['user_inputs']])
         finally:
             if proc.poll() is None:
                 os.kill(proc.pid, signal.SIGKILL)
@@ -396,6 +415,97 @@ class LifecycleTests(unittest.TestCase):
             result = subprocess.run([CLI, 'wait', '123', flag], env=self.env, text=True, capture_output=True, timeout=2)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('missing value', result.stderr)
+
+    def test_user_input_is_ordered_exact_and_preserves_same_turn_messages(self):
+        first = snapshot(self.session)[0]
+        duplicate = record_text(self.session, 'Original user goal. Preserve None distinctly from False.',
+                                source='codex', native_id='NATIVE-USER', turn_id='TURN-USER')
+        self.assertNotEqual(first['id'], duplicate['id'])
+        intentional_repeat = record_text(self.session, 'Original user goal. Preserve None distinctly from False.',
+                                         source='codex', native_id='NATIVE-USER', turn_id='TURN-USER')
+        self.assertNotEqual(duplicate['id'], intentional_repeat['id'])
+        record_text(self.session, '  same text  ', source='codex', native_id='NATIVE-USER', turn_id='TURN-2')
+        repeated = record_text(self.session, '  same text  ', source='codex', native_id='NATIVE-USER', turn_id='TURN-3')
+        entries = snapshot(self.session)
+        self.assertEqual(entries[-2]['content'][0]['text'], '  same text  ')
+        self.assertNotEqual(entries[-2]['id'], repeated['id'])
+        same_turn = record_text(self.session, 'A second message in one active turn.',
+                                source='codex', native_id='NATIVE-USER', turn_id='TURN-USER')
+        self.assertEqual(same_turn['turn_id'], first['turn_id'])
+        self.assertEqual(snapshot(self.session)[-1]['content'][0]['text'], 'A second message in one active turn.')
+        with self.assertRaisesRegex(ValueError, 'non-whitespace'):
+            record_text(self.session, ' \n ', source='codex', native_id='NATIVE-USER', turn_id='TURN-BLANK')
+        attachment = record(self.session, [{'type': 'resource', 'resource': {'uri': 'resource://input/1'}}],
+                            source='acp', native_id='NATIVE-ACP', turn_id='TURN-4')
+        self.assertEqual(attachment['content'][0]['resource']['uri'], 'resource://input/1')
+
+    def test_new_original_input_changes_task_identity_even_when_plan_is_unchanged(self):
+        first = self.cli('execute', packet=self.packet)
+        record_text(self.session, 'An additional user requirement omitted from the plan.',
+                    source='codex', native_id='NATIVE-USER', turn_id='TURN-AMENDMENT')
+        second = self.cli('execute', packet=self.packet)
+        self.assertNotEqual(first['task_id'], second['task_id'])
+        turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
+        self.assertIn('An additional user requirement omitted from the plan.', turns[2])
+
+    def test_input_captured_during_implementation_reaches_new_review_stage(self):
+        proc = self.start_task(NATIVE_FIXTURE_DELAY='0.6')
+        try:
+            self.wait_until(lambda: self.log.exists() and
+                            any(item.get('method') == 'turn/start' for item in self.records()), proc)
+            record_text(self.session, 'During execution: keep absent values separate from false values.',
+                        source='codex', native_id='NATIVE-USER', turn_id='TURN-DURING-EXECUTE')
+            stdout, stderr = proc.communicate(timeout=10)
+            self.assertEqual(proc.returncode, 0, stderr)
+            result = json.loads(stdout)
+            self.assertEqual(result['stage'], 'done')
+            turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
+            self.assertIn('During execution: keep absent values separate', turns[1])
+            state = json.loads((self.session / 'tasks' / result['task_id'] / 'task.json').read_text())
+            self.assertEqual(state['user_inputs'][-1]['turn_id'], 'TURN-DURING-EXECUTE')
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+
+    def test_completed_resume_does_not_change_evaluated_input_snapshot(self):
+        result = self.cli('execute', packet=self.packet)
+        path = self.session / 'tasks' / result['task_id'] / 'task.json'
+        original = json.loads(path.read_text())['user_inputs']
+        record_text(self.session, 'A later session input belongs to a new task.',
+                    source='codex', native_id='NATIVE-USER', turn_id='TURN-LATER')
+        resumed = self.cli('execute', '--resume', result['task_id'])
+        self.assertEqual(resumed['user_input_ids'], [item['id'] for item in original])
+        self.assertEqual(json.loads(path.read_text())['user_inputs'], original)
+
+    def test_input_during_review_is_pending_and_does_not_rewrite_evaluated_snapshot(self):
+        proc = self.start_task(NATIVE_FIXTURE_DELAY='0.6')
+        try:
+            self.wait_until(lambda: self.log.exists() and
+                            sum(item.get('method') == 'turn/start' for item in self.records()) == 2, proc)
+            task_file = max((self.session / 'tasks').glob('*/task.json'), key=lambda path: path.stat().st_mtime_ns)
+            reviewed_inputs = json.loads(task_file.read_text())['user_inputs']
+            late = record_text(self.session, 'During review: add a meaningful omitted requirement.',
+                               source='codex', native_id='NATIVE-USER', turn_id='TURN-DURING-REVIEW')
+            stdout, stderr = proc.communicate(timeout=10)
+            self.assertEqual(proc.returncode, 0, stderr)
+            result = json.loads(stdout)
+            self.assertIn(late['id'], result['pending_user_input_ids'])
+            self.assertEqual(result['user_input_ids'], [item['id'] for item in reviewed_inputs])
+            self.assertEqual(json.loads(task_file.read_text())['user_inputs'], reviewed_inputs)
+            review_prompt = [item['params']['input'][0]['text'] for item in self.records()
+                             if item.get('method') == 'turn/start'][1]
+            self.assertNotIn('During review: add a meaningful omitted requirement.', review_prompt)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+
+    def test_missing_original_input_capture_fails_before_launch(self):
+        (self.session / 'user-inputs.json').unlink()
+        result = self.cli('execute', packet=self.packet, ok=False)
+        self.assertIn('no original user input has been captured', result.stderr)
+        self.assertFalse(self.log.exists())
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ import uuid
 
 from child_store_lib import _atomic_write, _now_iso, store_upsert
 from task_workspace import git, prepare, refresh, validate
+from user_input import snapshot as snapshot_user_inputs
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT.parent / 'bin' / 'cerebro'
@@ -56,8 +57,48 @@ def packet_from(raw):
     return packet
 
 
-def spec(packet):
-    return '# Goal\n\n' + packet['goal'] + '\n\n# Task and plan\n\n' + packet['task'] + '\n\n# Acceptance criteria\n\n' + '\n'.join('- ' + item for item in packet['acceptance']) + '\n'
+def user_input_spec(user_inputs):
+    rendered = []
+    for item in user_inputs:
+        content = []
+        for block in item['content']:
+            if block.get('type') == 'text' and isinstance(block.get('text'), str):
+                content.append(block['text'])
+            else:
+                content.append(json.dumps(block, ensure_ascii=False, indent=2))
+        rendered.append('## Captured input ' + item['id'] + '\n\n' + '\n'.join(content))
+    return ('# Original user inputs\n\nInputs are ordered by capture time. The latest actual user clarification '
+            'supersedes earlier requests; earlier requests remain context. The current supervisor plan selects '
+            'delegated work, and these original inputs remain requirements even when the plan omits them.\n\n' +
+            '\n\n'.join(rendered) + '\n\n')
+
+
+def spec(packet, user_inputs):
+    return (user_input_spec(user_inputs) + '# Supervisor goal\n\n' + packet['goal'] +
+            '\n\n# Supervisor task and plan\n\n' + packet['task'] +
+            '\n\n# Supervisor acceptance criteria\n\n' +
+            '\n'.join('- ' + item for item in packet['acceptance']) + '\n')
+
+
+def merge_user_inputs(saved, captured):
+    merged = list(saved)
+    known = {item['id'] for item in saved}
+    merged.extend(item for item in captured if item['id'] not in known)
+    return merged
+
+
+def refresh_user_inputs(session, directory, state):
+    path = session / 'user-inputs.json'
+    if not path.is_file():
+        return
+    merged = merge_user_inputs(state['user_inputs'], snapshot_user_inputs(session))
+    if [item['id'] for item in merged] == [item['id'] for item in state['user_inputs']]:
+        return
+    state['user_inputs'] = merged
+    save(directory, state)
+    rendered = spec(state['packet'], merged)
+    (directory / 'spec.md').write_text(rendered)
+    (session / 'spec.md').write_text(rendered)
 
 
 def handoff(path, role, acceptance):
@@ -103,7 +144,13 @@ def save(directory, state):
 
 def response(directory, state):
     result = {'task_id': directory.name, 'stage': state['stage'], 'status': state.get('status', 'running'),
-              'workspace': state['workspace']['path'], 'packet': state['packet']}
+              'workspace': state['workspace']['path'], 'packet': state['packet'],
+              'user_input_ids': [item['id'] for item in state['user_inputs']],
+              'user_input_count': len(state['user_inputs'])}
+    captured_path = directory.parent.parent / 'user-inputs.json'
+    captured = snapshot_user_inputs(captured_path.parent) if captured_path.is_file() else []
+    captured_ids = {item['id'] for item in state['user_inputs']}
+    result['pending_user_input_ids'] = [item['id'] for item in captured if item['id'] not in captured_ids]
     models = state['packet']['models']
     implementation_model, review_model = models['implementor']['model'], models['reviewer']['model']
     result['review_model_relation'] = ('native defaults unresolved' if not implementation_model or not review_model
@@ -135,8 +182,10 @@ def run(args):
     else:
         if args.answer:
             raise ValueError('--answer requires --resume')
+        user_inputs = snapshot_user_inputs(session)
         packet = packet_from(Path(args.packet).read_text() if args.packet else sys.stdin.read())
-        task_id = hashlib.sha256(json.dumps(packet, sort_keys=True).encode()).hexdigest()[:16]
+        task_id = hashlib.sha256(json.dumps({'packet': packet, 'user_inputs': [item['id'] for item in user_inputs]},
+                                            sort_keys=True).encode()).hexdigest()[:16]
         directory = tasks / task_id
         directory.mkdir(exist_ok=True)
     with (directory / 'lock').open('a') as lock:
@@ -156,10 +205,10 @@ def run(args):
             workspace = prepare(packet['repo'], isolated, packet.get('branch', ''), packet['base'], store,
                                 directory.name + '-execute', False)
             state = {'packet': packet, 'workspace': workspace, 'review_base': review_base,
-                     'stage': 'execute', 'status': 'running'}
+                     'user_inputs': user_inputs, 'stage': 'execute', 'status': 'running'}
             save(directory, state)
-        (directory / 'spec.md').write_text(spec(packet))
-        (session / 'spec.md').write_text(spec(packet))
+        (directory / 'spec.md').write_text(spec(packet, state['user_inputs']))
+        (session / 'spec.md').write_text(spec(packet, state['user_inputs']))
         if state['stage'] == 'done':
             if args.answer:
                 raise ValueError('task is complete; start a focused correction packet')
@@ -185,11 +234,17 @@ def run(args):
             if recover:
                 rc = int(receipt.read_text().strip())
             else:
+                refresh_user_inputs(session, directory, state)
                 if attempt:
                     prompt = Path(attempt['prompt']).read_text()
+                    prompted_ids = set(attempt.get('user_input_ids', []))
+                    additions = [item for item in state['user_inputs'] if item['id'] not in prompted_ids]
+                    if additions:
+                        prompt += '\n\nNew original user input captured since this stage prompt was created:\n\n'
+                        prompt += user_input_spec(additions)
                 else:
                     prompt = (ROOT / 'payloads' / 'prompts' / (role + '.md')).read_text()
-                    prompt += '\n\n' + spec(packet)
+                    prompt += '\n\n' + spec(packet, state['user_inputs'])
                     prompt += '\nSelected checkout: ' + state['workspace']['path'] + '\nReview base commit: ' + state['review_base'] + '\n'
                     if role == 'review':
                         implementation = json.loads(Path(state['execute_output']).read_text())
@@ -202,7 +257,8 @@ def run(args):
                 child_log = session / 'children' / (role + '-' + uuid.uuid4().hex + '.jsonl')
                 prompt_file = child_log.with_suffix('.prompt')
                 prompt_file.write_text(prompt)
-                attempt = {'log': str(child_log), 'prompt': str(prompt_file)}
+                attempt = {'log': str(child_log), 'prompt': str(prompt_file),
+                           'user_input_ids': [item['id'] for item in state['user_inputs']]}
                 state['attempt'] = attempt
                 state['status'] = 'running'
                 state.pop('error', None)

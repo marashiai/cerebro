@@ -6,10 +6,14 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+from types import SimpleNamespace
 
 root = Path(__file__).resolve().parent.parent
 binary = root / 'bin' / 'cerebro'
+sys.path.insert(0, str(root / 'lib/python'))
+from user_input import record, snapshot
 
 
 with tempfile.TemporaryDirectory(prefix='cerebro-acp-launch-tests-') as temporary:
@@ -67,12 +71,12 @@ with open(os.environ['TEST_ACP_LOG'], 'a') as log:
                  and node.name == 'CerebroAgent')
     methods = [node for node in agent.body
                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-               and node.name in ('_read_foreign', 'load_session', 'resume_session')]
+               and node.name in ('_read_foreign', 'load_session', 'resume_session', 'prompt')]
     guarded = ast.Module(body=[
         ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0),
         ast.ClassDef(name='SessionGuards', bases=[], keywords=[], body=methods, decorator_list=[]),
     ], type_ignores=[])
-    guard_namespace = {'os': os, 'json': json, 'CEREBRO_HOME': str(home)}
+    guard_namespace = {'os': os, 'json': json, 'CEREBRO_HOME': str(home), 'Path': Path, 'record': record}
     exec(compile(ast.fix_missing_locations(guarded), 'acp_server.py', 'exec'), guard_namespace)
     proxy = guard_namespace['SessionGuards']()
     spawned = []
@@ -87,6 +91,19 @@ with open(os.environ['TEST_ACP_LOG'], 'a') as log:
     proxy._spawn_child = spawn
     resumed = home / 'sessions' / 'persisted-parent'
     resumed.mkdir(parents=True)
+    submitted = [{'type': 'text', 'text': 'Exact user input.\n\n'},
+                 {'type': 'image', 'data': 'fixture', 'mimeType': 'image/png'}]
+
+    class Child:
+        async def prompt(self, session_id, prompt, **kwargs):
+            assert session_id == 'native-parent' and prompt is submitted
+            assert snapshot(resumed)[-1]['content'] == submitted, 'ACP forwarded before durable capture'
+            return 'forwarded'
+
+    proxy.sessions = {resumed.name: SimpleNamespace(child=Child(), foreign_sid='native-parent')}
+    for _ in range(2):
+        assert asyncio.run(proxy.prompt(resumed.name, submitted)) == 'forwarded'
+    assert len(snapshot(resumed)) == 2, 'distinct actual submissions were deduplicated by text'
     metadata = resumed / 'metadata.json'
     recorded = {'backend': 'claude', 'foreign_session_id': 'native-parent', 'last_touched': '2020-01-01T00:00:00Z'}
     for role in ('observer', 'reviewer', 'execute', 'unknown-role', None):
@@ -147,6 +164,7 @@ with open(os.environ['TEST_ACP_LOG'], 'a') as log:
         assert len(set(session_ids)) == 2, 'native ACP sessions reused a Cerebro identity'
         for sid in session_ids:
             child_env = namespace['_build_child_env'](sid)
+            assert child_env['CEREBRO_INPUT_OWNER'] == 'external'
             processes.append(subprocess.Popen(spec['argv'], env=child_env,
                                               cwd=home / 'acp' / sid, text=True,
                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE))

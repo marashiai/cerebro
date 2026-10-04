@@ -121,9 +121,10 @@ class ScopeWatch:
         decisions = self._decisions()
         packet = task_packet(self.task_spec)
         state = {
-            'original_user_goal': packet['goal'],
-            'user_acceptance_criteria': packet['acceptance'],
-            'supervisor_task_plan': packet['task'],
+            'original_user_inputs': packet['original_user_inputs'],
+            'supervisor_goal': packet['supervisor_goal'],
+            'supervisor_acceptance_criteria': packet['supervisor_acceptance_criteria'],
+            'supervisor_task_plan': packet['supervisor_task_plan'],
             'trusted_delegated_task': self.prompt,
             'trusted_supervisor_steering': steering,
             'supervisor_dispositions': decisions,
@@ -135,10 +136,10 @@ class ScopeWatch:
                                  'activity_counts': total_activity},
         }
         encoded = json.dumps(state, sort_keys=True, ensure_ascii=False)
-        if not state['original_user_goal'].strip() or len(encoded) > 60000:
+        if not state['original_user_inputs'] or len(encoded) > 60000:
             raise ValueError('Jev requires nonempty requirements and at most 60,000 context characters')
-        authority = {key: state[key] for key in ('original_user_goal', 'user_acceptance_criteria',
-                                                   'supervisor_task_plan', 'trusted_delegated_task',
+        authority = {key: state[key] for key in ('original_user_inputs', 'supervisor_goal',
+                                                   'supervisor_acceptance_criteria', 'supervisor_task_plan', 'trusted_delegated_task',
                                                    'trusted_supervisor_steering', 'supervisor_dispositions')}
         return state, hashlib.sha256(json.dumps(authority, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -264,8 +265,8 @@ class ScopeWatch:
                 self.history_chars += len(event['activity'])
 
     def _notice_signature(self, result, evidence, state):
-        authority = {key: state[key] for key in ('original_user_goal', 'user_acceptance_criteria',
-                                                 'supervisor_task_plan', 'trusted_delegated_task',
+        authority = {key: state[key] for key in ('original_user_inputs', 'supervisor_goal',
+                                                 'supervisor_acceptance_criteria', 'supervisor_task_plan', 'trusted_delegated_task',
                                                  'trusted_supervisor_steering', 'supervisor_dispositions')}
         authority_sha = hashlib.sha256(json.dumps(authority, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         material = '\0'.join((result['attention'], result['reason'], evidence['activity'],

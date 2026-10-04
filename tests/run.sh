@@ -8,7 +8,7 @@ for file in "$root/bin/cerebro" "$root/lib"/*.sh "$root/lib/commands"/*.sh; do
   bash -n "$file"
 done
 for name in task_lifecycle workspace pair_adapters durable_task role_models mcp_environment \
-            retire_skills recall claude_hook acp_launch jev_watch; do
+            retire_skills recall claude_hook native_input acp_launch jev_watch; do
   printf 'CHECK %s\n' "$name"
   python3 "$here/${name}_test.py"
 done

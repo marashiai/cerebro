@@ -73,10 +73,8 @@ backend_claude_child_run() {
 
 backend_claude_materialise_extras() {
   mkdir -p "$CEREBRO_HOME/.claude"
-  write_if_changed "$CEREBRO_HOME/hook.sh" "$(cerebro_hook_script)"
-  chmod +x "$CEREBRO_HOME/hook.sh"
   write_if_changed "$CEREBRO_HOME/.claude/settings.local.json" \
-    "$(cerebro_settings_json "$CEREBRO_HOME/hook.sh")"
+    "$(cerebro_settings_json "$CEREBRO_LIB_DIR/payloads/hook.sh")"
 }
 
 backend_claude_parent_opts() {

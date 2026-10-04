@@ -46,6 +46,7 @@ else:
                    'CEREBRO_HOME': str(home), 'CEREBRO_SESSION_ID': session.name,
                    'CEREBRO_SESSION_DIR': str(session),
                    'CEREBRO_JEV_ENABLED': '0', 'CEREBRO_JEV_API_KEY': '',
+                   'CEREBRO_INPUT_OWNER': 'external',
                    'TEST_NATIVE_LOG': str(home / 'native-argv.jsonl'),
                    'CEREBRO_PI_CMD': str(native), 'CEREBRO_CODEX_CMD': str(native),
                    'CEREBRO_CLAUDE_CMD': str(native)}

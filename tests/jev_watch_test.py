@@ -18,8 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'lib' / 'python'))
 from jev import Jev
 from review_check import assess, context
-from scope_watch import HISTORY_CHARS, HISTORY_LIMIT, ScopeWatch
+from scope_watch import HISTORY_CHARS, HISTORY_LIMIT, ScopeWatch, scope_questions
 from wait_detached import completion_socket
+from user_input import record_text, snapshot
 
 
 class Classifier(BaseHTTPRequestHandler):
@@ -160,7 +161,11 @@ class JevTests(unittest.TestCase):
         self.session = self.root / 'session'
         self.task = self.session / 'tasks' / 'task-a'
         self.task.mkdir(parents=True)
-        (self.task / 'task.json').write_text(json.dumps({'packet': {'goal': 'Fix parser. Avoid billing changes.', 'task': 'Fix and verify parser.', 'acceptance': ['parser works']}}))
+        record_text(self.session, 'Fix parser carefully. Avoid billing changes. Preserve None and False as different values.',
+                    source='test-native', native_id='session-a', turn_id='turn-original')
+        self.user_inputs = snapshot(self.session)
+        self.write_task({'goal': 'Summarize parser work.', 'task': 'Fix and verify parser.',
+                         'acceptance': ['parser works']})
         self.status = str(self.root / 'job.status')
         self.socket = NoticeSocket(self.status)
         self.addCleanup(self.socket.close)
@@ -176,6 +181,9 @@ class JevTests(unittest.TestCase):
         with patch.dict(os.environ, self.env):
             return ScopeWatch('codex', str(self.root), 'Fix and verify parser.',
                               str(self.root / 'steer.fifo'), str(self.child_log))
+
+    def write_task(self, packet):
+        (self.task / 'task.json').write_text(json.dumps({'packet': packet, 'user_inputs': self.user_inputs}))
 
     def wait_for(self, predicate, timeout=10):
         deadline = time.monotonic() + timeout
@@ -208,7 +216,10 @@ class JevTests(unittest.TestCase):
         self.assertEqual(self.socket.notices, [])
         state = Classifier.requests[0]['state']
         self.assertGreater(state['phase_facts']['last_completed_elapsed_seconds'], 90000)
-        self.assertEqual(state['original_user_goal'], 'Fix parser. Avoid billing changes.')
+        self.assertEqual(state['original_user_inputs'], self.user_inputs)
+        self.assertEqual(state['supervisor_goal'], 'Summarize parser work.')
+        self.assertIn('Preserve None and False', json.dumps(state['original_user_inputs']))
+        self.assertNotIn('Preserve None and False', state['supervisor_goal'])
 
     def test_scope_and_mistake_notice_cites_stable_event(self):
         watch = self.start_watch()
@@ -228,7 +239,8 @@ class JevTests(unittest.TestCase):
         watch.event({'type': 'tool_execution_start', 'command': 'APPARENT_MISTAKE: assumed bad parser behavior'})
         watch.turn_done()
         self.assertTrue(Classifier.started.wait(5))
-        (self.task / 'task.json').write_text(json.dumps({'packet': {'goal': 'Fix parser carefully. Avoid billing changes.', 'task': 'Fix and verify parser.', 'acceptance': ['parser works']}}))
+        self.write_task({'goal': 'Changed supervisor summary.', 'task': 'Fix and verify parser.',
+                         'acceptance': ['parser works']})
         watch.event({'type': 'tool_execution_start', 'command': 'PARSER_PROGRESS: added focused regression test'})
         Classifier.release.set()
         self.wait_for(lambda: len(Classifier.requests) >= 3)
@@ -278,7 +290,8 @@ class JevTests(unittest.TestCase):
         self.assertLessEqual(len(watch.history), HISTORY_LIMIT)
         self.assertLessEqual(watch.history_chars, HISTORY_CHARS)
         self.assertEqual(watch.history_chars, sum(len(item['activity']) for item in watch.history))
-        state = {'original_user_goal': 'Fix parser', 'user_acceptance_criteria': 'No billing changes',
+        state = {'original_user_inputs': self.user_inputs, 'supervisor_goal': 'Fix parser',
+                 'supervisor_acceptance_criteria': ['No billing changes'],
                  'supervisor_task_plan': 'Inspect parser', 'trusted_delegated_task': 'Inspect parser',
                  'trusted_supervisor_steering': [],
                  'supervisor_dispositions': [{'sequence': 1, 'disposition': 'continue', 'reason': 'keep going'}]}
@@ -313,6 +326,8 @@ class JevTests(unittest.TestCase):
         report.write_text(original)
         criteria = self.task / 'task.json'
         Classifier.mode = 'mixed'
+        late_input = record_text(self.session, 'Captured during review and outside this evaluated snapshot.',
+                                 source='test-native', native_id='session-a', turn_id='turn-late-review')
         with patch.dict(os.environ, self.env):
             assessment = assess(repo, base, report, str(criteria), self.session)
         self.assertEqual(report.read_text(), original)
@@ -320,7 +335,10 @@ class JevTests(unittest.TestCase):
         self.assertEqual(assessment['findings'][1]['validity'], 'uncertain')
         self.assertEqual(len(Classifier.requests), 2)
         self.assertEqual(Classifier.requests[0]['state']['finding']['id'], 'supported')
-        self.assertIn('Avoid billing changes', Classifier.requests[0]['state']['task_spec']['goal'])
+        self.assertIn('Avoid billing changes', json.dumps(Classifier.requests[0]['state']['task_spec']['original_user_inputs']))
+        self.assertIn('Preserve None and False', json.dumps(Classifier.requests[0]['state']['task_spec']['original_user_inputs']))
+        self.assertEqual(Classifier.requests[0]['state']['task_spec']['supervisor_goal'], 'Summarize parser work.')
+        self.assertNotIn(late_input['id'], json.dumps(Classifier.requests[0]['state']['task_spec']))
         self.assertEqual(len(Classifier.requests[0]['state']['evidence']), 2)
         self.assertTrue(Classifier.requests[0]['state']['evidence'][1]['windowed'])
         self.assertFalse(Classifier.requests[0]['state']['evidence'][1]['truncated'])
@@ -361,17 +379,29 @@ class JevTests(unittest.TestCase):
         goal = 'Original goal\n# Goal\nThis heading is part of the original goal.'
         task = 'Implement requested task\n# Goal\nThis is task prose, not a replacement goal.\n# Acceptance criteria\nTask prose.'
         packet = {'goal': goal, 'task': task, 'acceptance': ['Original acceptance\n# Goal\nStill a criterion']}
-        (self.task / 'task.json').write_text(json.dumps({'packet': packet}))
+        self.write_task(packet)
         watch = self.start_watch()
         self.addCleanup(watch.close)
         state, _ = watch.context()
-        self.assertEqual(state['original_user_goal'], goal)
+        self.assertEqual(state['original_user_inputs'], self.user_inputs)
+        self.assertEqual(state['supervisor_goal'], goal)
         self.assertEqual(state['supervisor_task_plan'], task)
-        self.assertEqual(state['user_acceptance_criteria'], packet['acceptance'])
+        self.assertEqual(state['supervisor_acceptance_criteria'], packet['acceptance'])
+
+    def test_scope_questions_name_original_context_and_explicit_precedence(self):
+        watch = self.start_watch()
+        self.addCleanup(watch.close)
+        state, _ = watch.context()
+        instructions = scope_questions(state)['attention']['instructions']
+        self.assertIn('original_user_inputs', instructions)
+        self.assertIn('supervisor_goal', instructions)
+        self.assertIn('supervisor_acceptance_criteria', instructions)
+        self.assertIn('do not erase original requirements', instructions)
+        self.assertNotIn('original_user_goal', instructions)
 
     def test_large_task_context_failure_is_advisory(self):
         packet = {'goal': 'Original goal', 'task': 'large plan ' * 7000, 'acceptance': ['Original acceptance']}
-        (self.task / 'task.json').write_text(json.dumps({'packet': packet}))
+        self.write_task(packet)
         watch = self.start_watch()
         self.addCleanup(watch.close)
         watch.event({'type': 'tool_execution_start', 'command': 'Native work still runs'})

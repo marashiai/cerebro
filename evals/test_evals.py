@@ -102,6 +102,8 @@ class EvalTests(unittest.TestCase):
             try:
                 self.assertEqual(Path(env['CODEX_HOME']).parent, root)
                 self.assertTrue((Path(env['CODEX_HOME']) / 'auth.json').is_file())
+                self.assertEqual(env['CEREBRO_INPUT_OWNER'], 'external')
+                runtime.capture_task_input(env, 'Record arguments without modifying source.')
                 result = runtime.codex(root, env, 'Record arguments without modifying source.', settings, supervisor=True)
                 self.assertEqual(result['answer'], 'configuration recorded')
                 observed = json.loads((root / 'child-request.json').read_text())

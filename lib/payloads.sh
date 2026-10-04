@@ -4,10 +4,10 @@ cerebro_skills_dir() { printf '%s\n' "$CEREBRO_LIB_DIR/payloads/skills"; }
 cerebro_skill_body() {
   awk 'BEGIN{f=0} /^---$/{if(!f){f=1;next};if(f==1){f=2;next}} f==2||f==0{print}' "$1"
 }
-cerebro_hook_script() { cat "$(cerebro_payloads_dir)/hook.sh"; }
 cerebro_settings_json() {
-  local tpl; tpl="$(cat "$(cerebro_payloads_dir)/settings.json")"
-  printf '%s\n' "${tpl//__CEREBRO_HOOK_PATH__/$1}"
+  local command; command="bash $(printf '%q' "$1")"
+  jq --arg command "$command" '.hooks.UserPromptSubmit[0].hooks[0].command = $command' \
+    "$(cerebro_payloads_dir)/settings.json"
 }
 cerebro_system_prompt() { cerebro_skill_body "$(cerebro_skills_dir)/cerebro-supervisor/SKILL.md"; }
 child_sys_prompt() {

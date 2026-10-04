@@ -34,12 +34,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
 import shutil
 import sys
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import acp
+from user_input import record
 from acp.core import run_agent
 from acp.schema import (
     AgentCapabilities,
@@ -97,6 +99,7 @@ def _build_child_env(cerebro_sid: str) -> dict[str, str]:
     env["CEREBRO_SESSION_ID"] = cerebro_sid
     env["CEREBRO_SESSION_DIR"] = os.path.join(CEREBRO_HOME, "sessions", cerebro_sid)
     env["CEREBRO_HOME"] = CEREBRO_HOME
+    env["CEREBRO_INPUT_OWNER"] = "external"
     return env
 
 
@@ -496,6 +499,10 @@ class CerebroAgent:
         st = self.sessions.get(session_id)
         if not st:
             raise RuntimeError(f"unknown session: {session_id}")
+        content = [block if isinstance(block, dict) else block.model_dump(mode="json", by_alias=True, exclude_none=True)
+                   for block in prompt]
+        record(Path(CEREBRO_HOME) / "sessions" / session_id, content,
+               source="acp", native_id=st.foreign_sid or "")
         return await st.child.prompt(session_id=st.foreign_sid, prompt=prompt, **kw)
 
     async def cancel(self, session_id: str, **kw: Any) -> None:
