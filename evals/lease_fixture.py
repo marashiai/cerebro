@@ -2,13 +2,10 @@
 
 import hashlib
 import json
-import os
-import signal
 import math
-import subprocess
 import sys
 
-from fixtures import PARSER_TESTS, seed_repo
+from fixtures import PARSER_TESTS, bounded_process, seed_repo
 from runtime import file_hashes, write_json
 
 REQUIREMENTS = (
@@ -297,23 +294,6 @@ if __name__ == "__main__":
 def seed(repo):
     seed_repo(repo, {'jobs.py': JOBS, 'storage.py': STORAGE, 'test_jobs.py': TESTS,
                      'AGENTS.md': 'Use Python standard-library code. Do not commit or publish.\n'})
-
-
-def bounded_process(command, repo, timeout):
-    process = subprocess.Popen(command, cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, start_new_session=True)
-    timed_out = False
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        os.killpg(process.pid, signal.SIGTERM)
-        try:
-            stdout, stderr = process.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            stdout, stderr = process.communicate()
-    return process.returncode, stdout, stderr, timed_out
 
 
 def profile(directory):

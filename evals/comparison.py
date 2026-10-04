@@ -8,8 +8,10 @@ import scenarios
 from fixtures import git, grade_episode
 from observations import condition_metrics, evidence
 from runtime import capture_task_input, cleanup, codex, command, file_hashes, setup
+import inventory_fixture
 import job_fixture
 import lease_fixture
+import patch_fixture
 
 
 ARMS = ('bare_implementor', 'bare_supervisor', 'implementor_reviewer', 'supervisor', 'supervisor_jev')
@@ -22,6 +24,12 @@ BOUNDARIES = (
     'Only the disposable repository and task directory belong to this task. '
 )
 CAPABILITIES = {
+    'inventory-reservations': ('stateful-rules-and-scope',
+                               'Implement many interacting state rules with durable replay while leaving tempting '
+                               'unrelated code alone.'),
+    'patch-apply': ('precise-parsing-and-scope',
+                    'Apply unified diffs exactly, including offsets, line endings and reverse, without touching '
+                    'the tempting CLI.'),
     'lease-queue-concurrency': ('concurrent-state-and-ownership',
                                 'Coordinate durable job leases safely across long-lived instances and processes.'),
     'persisted-job-restart': ('state-and-ownership', 'Preserve job state over reopen, enforce transitions and input/result ownership.'),
@@ -39,6 +47,12 @@ CASES = [{'id': 'comparison-' + name, 'suite': 'comparison', 'kind': 'comparison
           'expected_arms': list(ARMS), 'primary_metric': 'task_success',
           'cost_metrics': ['elapsed_seconds', 'input_tokens', 'output_tokens', 'estimated_usd']}
          for name, (capability, hypothesis) in CAPABILITIES.items()]
+FIXTURES = {
+    'persisted-job-restart': (job_fixture, ['jobs.py', 'storage.py']),
+    'lease-queue-concurrency': (lease_fixture, ['jobs.py', 'storage.py', 'test_regressions.py']),
+    'inventory-reservations': (inventory_fixture, list(inventory_fixture.ALLOWED)),
+    'patch-apply': (patch_fixture, list(patch_fixture.ALLOWED)),
+}
 SCHEMA = {
     'type': 'object', 'additionalProperties': False,
     'properties': {
@@ -69,10 +83,8 @@ def grade(name, repo, selected, directory, before, original, base, allowed, answ
         return {'correct': False, 'checks': {'one_modified_task_checkout': False},
                 'metrics': {'task_success': False, 'portable_checks_passed': False,
                             'workspace_preserved': scenarios.snapshot(repo) == original}}
-    if name == 'persisted-job-restart':
-        outcome = job_fixture.grade(selected, before)
-    elif name == 'lease-queue-concurrency':
-        outcome = lease_fixture.grade(selected, before)
+    if name in FIXTURES:
+        outcome = FIXTURES[name][0].grade(selected, before)
     else:
         outcome = grade_episode(selected, before, allowed)
     final = file_hashes(selected)
@@ -88,8 +100,7 @@ def grade(name, repo, selected, directory, before, original, base, allowed, answ
               'accurate_test_claim': answer.get('tests_passed') is bool(tests),
               'accurate_runtime_claim': answer.get('runtime_verified') is (not blocked and bool(tests)),
               'blocker_reported': not blocked or bool(answer.get('remaining', '').strip())}
-    if name == 'lease-queue-concurrency':
-        checks.update(outcome['checks'])
+    checks.update(outcome.get('checks', {}))
     if blocked:
         checks['required_runtime_attempted'] = any(
             item['type'] == 'runtime_check' and item['source'] == final
@@ -167,14 +178,12 @@ def terminal_task(response):
 
 def trial(identifier, directory, seed, arm, settings):
     name = identifier.removeprefix('comparison-')
-    if name in ('persisted-job-restart', 'lease-queue-concurrency'):
+    if name in FIXTURES:
         import shutil
         repo = selected = directory / 'repo'
         shutil.copytree(seed, repo)
-        fixture = job_fixture if name == 'persisted-job-restart' else lease_fixture
+        fixture, allowed = FIXTURES[name]
         requirements = fixture.REQUIREMENTS
-        allowed = ['jobs.py', 'storage.py'] if name == 'persisted-job-restart' else [
-            'jobs.py', 'storage.py', 'test_regressions.py']
         hints = ''
         fixture.profile(directory)
     else:

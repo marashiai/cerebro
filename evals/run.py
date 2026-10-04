@@ -18,8 +18,6 @@ from model_config import add_arguments, cli_overrides, load_config, resolve_conf
 from fixtures import git, seed_episode
 from usage import collect as collect_usage
 import comparison
-import job_fixture
-import lease_fixture
 import probes
 from jev import ENDPOINT
 
@@ -84,10 +82,9 @@ def run_group(group, emit):
     pair = Path(group['directory'])
     seed = pair / 'seed'
     if entry['mode'] != 'protocol':
-        if entry['id'] == 'comparison-persisted-job-restart':
-            job_fixture.seed(seed)
-        elif entry['id'] == 'comparison-lease-queue-concurrency':
-            lease_fixture.seed(seed)
+        fixture = comparison.FIXTURES.get(entry['id'].removeprefix('comparison-'))
+        if fixture:
+            fixture[0].seed(seed)
         else:
             seed_episode(seed)
     for arm in group['arms']:
