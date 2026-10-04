@@ -1,12 +1,10 @@
 """A two-module JSON job queue fixture with restart and input ownership checks."""
 
-import hashlib
 import json
 import subprocess
 import sys
 
-from fixtures import PARSER_TESTS, seed_repo
-from runtime import file_hashes, write_json
+from fixtures import PARSER_TESTS, file_hashes, seed_repo
 
 REQUIREMENTS = (
     'Repair the local file-backed Queue in jobs.py and storage.py. Preserve its public API. '
@@ -103,18 +101,11 @@ start = PARSER_TESTS.index('    def test_empty(')
 end = PARSER_TESTS.index('if __name__')
 TESTS = (PARSER_TESTS[:start].replace('from parser import parse_row\n', '')
          + TEST_METHODS + '\n' + PARSER_TESTS[end:])
-IDENTITIES = ('test_restart_completion', 'test_input_ownership', 'test_duplicate_submission')
 
 
 def seed(repo):
     seed_repo(repo, {'jobs.py': JOBS, 'storage.py': STORAGE, 'test_jobs.py': TESTS,
                      'AGENTS.md': 'Use Python standard-library code. Do not commit or publish.\n'})
-
-
-def profile(directory):
-    write_json(directory / 'receipt-profile.json', {
-        'test_file': 'test_jobs.py', 'test_sha256': hashlib.sha256(TESTS.encode()).hexdigest(),
-        'test_identities': list(IDENTITIES)})
 
 
 def grade(repo, before):

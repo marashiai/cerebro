@@ -1,12 +1,10 @@
 """A multi-process lease queue repair fixture with observable hidden checks."""
 
-import hashlib
 import json
 import math
 import sys
 
-from fixtures import PARSER_TESTS, bounded_process, seed_repo
-from runtime import file_hashes, write_json
+from fixtures import PARSER_TESTS, bounded_process, file_hashes, seed_repo
 
 REQUIREMENTS = (
     'Repair jobs.py and storage.py for a JSON-backed leased job queue. Preserve this API: '
@@ -128,8 +126,6 @@ class LeaseQueueSmokeTests(unittest.TestCase):
             self.assertTrue(queue.retry("one", token, now=2))
             self.assertEqual(queue.get("one")["attempts"], 1)
 '''
-IDENTITIES = ('test_submit_and_snapshot_ownership', 'test_claim_completion_and_reopen',
-              'test_retry_keeps_attempt_count')
 
 PROCESS_CHECKS = r'''import json, multiprocessing as mp, tempfile, time
 from pathlib import Path
@@ -294,13 +290,6 @@ if __name__ == "__main__":
 def seed(repo):
     seed_repo(repo, {'jobs.py': JOBS, 'storage.py': STORAGE, 'test_jobs.py': TESTS,
                      'AGENTS.md': 'Use Python standard-library code. Do not commit or publish.\n'})
-
-
-def profile(directory):
-    write_json(directory / 'receipt-profile.json', {
-        'test_file': 'test_jobs.py', 'test_sha256': hashlib.sha256(TESTS.encode()).hexdigest(),
-        'test_identities': list(IDENTITIES),
-    })
 
 
 def grade(repo, before):

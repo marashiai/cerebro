@@ -11,8 +11,7 @@ import unittest
 from unittest.mock import patch
 
 import inventory_fixture
-from native import TestJournal
-from runtime import file_hashes
+from fixtures import file_hashes
 
 REFERENCE_STORE = '''import json
 from pathlib import Path
@@ -245,26 +244,6 @@ class InventoryFixtureTests(unittest.TestCase):
             self.assertFalse(outcome['checks']['replay_identical'])
             self.assertTrue(outcome['checks']['skus_sorted'])
             self.assertTrue(outcome['scope_pass'])
-
-    def test_public_receipt_binds_supplied_tests_in_subdirectory_to_final_source(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory).resolve()
-            repo, _ = seeded(root)
-            repair(repo)
-            inventory_fixture.profile(root)
-            profile = json.loads((root / 'receipt-profile.json').read_text())
-            self.assertEqual(profile['test_file'], 'tests/test_smoke.py')
-            self.assertEqual(profile['test_identities'], list(inventory_fixture.IDENTITIES))
-            journal = TestJournal(root, 'inventory-worker', 'execute')
-            environment = {**os.environ, **journal.environment(), 'CEREBRO_CHILD_ROLE': 'execute'}
-            run = subprocess.run([sys.executable, '-m', 'unittest', '-v'], cwd=repo,
-                                 capture_output=True, text=True, env=environment)
-            self.assertEqual(run.returncode, 0, run.stderr)
-            receipts = journal.take(repo, 'inventory-thread')
-            self.assertEqual(len(receipts), 1)
-            self.assertTrue(receipts[0]['passed'])
-            self.assertEqual(receipts[0]['source'], file_hashes(repo))
-
 
 if __name__ == '__main__':
     unittest.main()

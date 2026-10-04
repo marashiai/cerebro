@@ -3,10 +3,10 @@
 **The user's direct instructions always take precedence over these
 instructions.**
 
-Use the [engineering skill](lib/payloads/skills/engineering/SKILL.md) for
-development. Use [supervise](lib/payloads/skills/supervise/SKILL.md) for an
+Use the [engineering skill](skills/engineering/SKILL.md) for
+development. Use [supervise](skills/supervise/SKILL.md) for an
 explicit unattended handoff. Ordinary sessions keep a short adjustable plan
-of possible commits and offer [Hashimoto diff notes](lib/payloads/skills/hashimoto-review/SKILL.md)
+of possible commits and offer [Hashimoto diff notes](skills/hashimoto-review/SKILL.md)
 after each authorized commit, without requiring review acceptance to continue.
 
 ## Branches
@@ -31,39 +31,24 @@ metadata to commit messages or trailers.
 
 ## Project layout
 
-`cerebro` is a Bash CLI split into small sourced modules. `bin/cerebro`
-is a thin entry point: it resolves its own path (through any PATH
-symlink), sources the library, then calls `main`. Nothing else lives in
-the entry point.
+`cerebro` is a small Go command. It runs one native coding agent (Codex, Claude
+or Pi) headlessly while Jev, a System 1 classifier, watches the agent's event
+stream and sends predefined nudges when the agent drifts from the request.
 
 ```
-bin/cerebro            # entry point: locate lib, source modules, dispatch
-lib/config.sh          # shell options + CEREBRO_* env defaults (sourced first)
-lib/helpers.sh         # say/warn/die, exit-code helpers, path + repo resolution, usage
-lib/payloads.sh        # shared skill/prompt and configuration payload loaders
-lib/payloads/          # skills, prompts, native session-binding hooks/plugins
-lib/session-store.sh   # session metadata (incl. backend) + child-agent session store
-lib/backend.sh         # backend dispatch (child_run/launch/resume/materialise)
-lib/backend-pi.sh       # Pi: native TUI + RPC child events and steering
-lib/backend-codex.sh   # Codex: native TUI + app-server thread/turn API
-lib/backend-claude.sh  # Claude: native TUI + stream-json children
-lib/python/            # guarded MCP commands, native transports, stream parsing,
-                       #   detached completion, Jev scope watching and path helpers
-lib/pair.sh            # pair-programming mode shared helpers (watch + steer a live child)
-lib/commands/*.sh      # one file per subcommand group (plan, execute, review, ...)
-lib/main.sh            # dispatch table mapping argv[0] to a cmd_* function
-tests/run.sh           # plain-bash test suite for the read-only bridges + child paths
+cmd/cerebro/            # CLI: flags, run loop, follow-up input, JSONL log, repository facts
+internal/agent/         # native processes and per-backend protocols (steer, interrupt, completion)
+internal/jev/           # Jev HTTP client and strict answer validation
+internal/watch/         # batching, Jev context, wake policy, nudges
+internal/watch/*.json   # Jev questions and nudge templates (embedded)
+evals/                  # paired bare vs Jev harness, frozen task fixtures, published results
+skills/                 # development workflow skills referenced above
 ```
 
-Keep modules cohesive: a new subcommand goes in `lib/commands/`, gets a
-`cmd_<name>` function, and a route in `lib/main.sh`. Only `config.sh`
-runs ordering-sensitive top-level code (it sets shell options); every
-other module is function and string definitions, so load order among
-them does not matter. Non-shell content stays out of shell strings:
-multi-line python belongs in `lib/python/` (invoked as `python3
-"$CEREBRO_LIB_DIR/python/<name>.py"`; shell one-liners are fine
-inline), and prompts/templates/config payloads belong in
-`lib/payloads/`. Run `bash tests/run.sh` before proposing changes.
+The agent gets no instructions beyond the user's task; Jev's nudges are the
+only addition. Keep it that way: behavior belongs in the nudge policy and
+templates, not in agent prompts. Run `go vet ./... && go test -race ./...` and
+`python3 -m unittest discover -s evals` before proposing changes.
 
 ## Rules (apply to every repository)
 

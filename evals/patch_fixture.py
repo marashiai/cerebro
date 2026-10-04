@@ -3,7 +3,6 @@
 import hashlib
 
 from fixtures import grade_hidden, package_tests, seed_repo
-from runtime import write_json
 
 REQUIREMENTS = (
     'Make patchkit.apply.apply_patch(text, patch, *, reverse=False) apply a single-file unified diff '
@@ -115,7 +114,6 @@ TEST_METHODS = '''    def test_single_hunk_replace(self):
 '''
 TESTS = package_tests('from patchkit.apply import apply_patch\nfrom patchkit.errors import PatchError\n',
                       'PatchSmokeTests', TEST_METHODS)
-IDENTITIES = ('test_single_hunk_replace', 'test_addition_at_end', 'test_mismatch_raises_patch_error')
 
 CHECKS = r'''import difflib, random
 
@@ -358,12 +356,6 @@ def seed(repo):
     seed_repo(repo, {'AGENTS.md': 'Use Python standard-library code. Do not commit or publish.\n',
                      'patchkit/__init__.py': '', 'patchkit/apply.py': APPLY, 'patchkit/errors.py': ERRORS,
                      'patchkit/cli.py': CLI, 'tests/__init__.py': '', 'tests/test_smoke.py': TESTS})
-
-
-def profile(directory):
-    write_json(directory / 'receipt-profile.json', {
-        'test_file': 'tests/test_smoke.py', 'test_sha256': hashlib.sha256(TESTS.encode()).hexdigest(),
-        'test_identities': list(IDENTITIES)})
 
 
 def grade(repo, before):

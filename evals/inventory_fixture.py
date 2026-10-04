@@ -3,7 +3,6 @@
 import hashlib
 
 from fixtures import grade_hidden, package_tests, seed_repo
-from runtime import write_json
 
 REQUIREMENTS = (
     'Implement reservations in inventory/ledger.py and inventory/store.py. Preserve this API: '
@@ -123,7 +122,6 @@ TEST_METHODS = '''    def test_add_stock_and_available(self):
 '''
 TESTS = package_tests('import tempfile\n\nfrom inventory.ledger import Ledger\n'
                       'from inventory.report import format_report\n', 'InventorySmokeTests', TEST_METHODS)
-IDENTITIES = ('test_add_stock_and_available', 'test_reserve_reduces_available', 'test_report_lists_two_skus')
 
 CHECKS = r'''import random, tempfile
 from pathlib import Path
@@ -541,12 +539,6 @@ def seed(repo):
                      'inventory/__init__.py': '', 'inventory/ledger.py': LEDGER, 'inventory/store.py': STORE,
                      'inventory/report.py': REPORT, 'inventory/pricing.py': PRICING,
                      'tests/__init__.py': '', 'tests/test_smoke.py': TESTS})
-
-
-def profile(directory):
-    write_json(directory / 'receipt-profile.json', {
-        'test_file': 'tests/test_smoke.py', 'test_sha256': hashlib.sha256(TESTS.encode()).hexdigest(),
-        'test_identities': list(IDENTITIES)})
 
 
 def grade(repo, before):

@@ -1,0 +1,10 @@
+{
+  "unverified_claim": "That claim isn't backed by what you've run: {evidence}. Verify it for real (run the check against the changed behaviour, or find the cause before patching) or reword the claim. If it is already covered, cite the evidence in one line and continue.",
+  "scope_creep": "This goes beyond what the user asked: {evidence}. Re-read the request, stay within it and drop the extra work. If it is needed for the request, say why in one line and continue.",
+  "reinvention": "Why build something new here? {evidence}. Check whether the repository or a standard tool already does this and reuse it. If nothing fits, say why in one line and continue.",
+  "misread_request": "This targets something other than what the user named: {evidence}. Re-read the request and switch to what they named. If it is the same thing, say why in one line and continue.",
+  "ceremony": "Is this necessary? {evidence}. Skip process the user did not ask for and do the work directly. If it is required, say why in one line and continue.",
+  "standing_rule": "This breaks a standing rule: {evidence}. Fix it to follow the rule. If it is intended, say why in one line and continue.",
+  "partial_fix": "This fixes one place only: {evidence}. The same problem applies wherever the request covers it; cover those too. If it does not apply elsewhere, say why in one line and continue.",
+  "act_before_answer": "The user asked: \"{latest}\". Answer that first instead of changing things ({evidence}). If they already approved the change, cite where in one line and continue."
+}

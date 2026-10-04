@@ -8,3 +8,6 @@
 # Python build / runtime artifacts
 __pycache__/
 .lock
+
+# Built binary
+/cerebro
