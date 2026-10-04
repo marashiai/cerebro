@@ -33,9 +33,14 @@ def emit(event):
 
 
 class Claude:
+    # Claude replays each input when it takes it into the conversation. Input
+    # taken during a turn joins that turn, so results are not one per input.
     def __init__(self, send, resume):
         self.send = send
-        self.outstanding = 0
+        self.sent = 0
+        self.taken = 0
+        self.turn_open = False
+        self.results = 0
         self.busy = {}
 
     def start(self, prompt):
@@ -43,11 +48,14 @@ class Claude:
 
     def steer(self, text):
         self.send({'type': 'user', 'message': {'role': 'user', 'content': text}})
-        self.outstanding += 1
+        self.sent += 1
 
     def event(self, event):
         emit(event)
         kind = event.get('type')
+        if kind == 'user' and event.get('isReplay'):
+            self.taken += 1
+            self.turn_open = True
         for block in (event.get('message') or {}).get('content', []) or []:
             if not isinstance(block, dict):
                 continue
@@ -58,11 +66,12 @@ class Claude:
             elif block.get('type') == 'tool_result':
                 self.busy.pop(block['tool_use_id'], None)
         if kind == 'result':
-            self.outstanding -= 1
+            self.results += 1
+            self.turn_open = False
         return self.ended()
 
     def ended(self):
-        return self.outstanding == 0
+        return bool(self.results) and self.taken == self.sent and not self.turn_open
 
 
 class Codex:
@@ -80,6 +89,8 @@ class Codex:
         self.busy = {}
         self.active_turns = set()
         self.completed_turns = set()
+        self.steering = None
+        self.unsteerable = set()
 
     def request(self, method, params, purpose):
         self.next_id += 1
@@ -90,23 +101,42 @@ class Codex:
         self.pending.append(prompt)
         self.request('initialize', {'clientInfo': {'name': 'cerebro', 'version': '2.0.0'}}, 'initialize')
 
-    def next_turn(self):
+    def flush(self):
+        # One admission at a time, so each input lands in a known turn.
+        if not self.thread or not self.pending or {'turn', 'steer'} & set(self.requests.values()):
+            return
+        steerable = self.active_turns - self.unsteerable
+        if self.active_turns and not steerable:
+            return
         text = '\n\n'.join(self.pending)
         self.pending.clear()
-        self.request('turn/start', {'threadId': self.thread,
-                     'input': [{'type': 'text', 'text': text}],
-                     **({'effort': os.environ['CEREBRO_CHILD_EFFORT']} if os.environ.get('CEREBRO_CHILD_EFFORT') else {})}, 'turn')
+        if steerable:
+            # turn/steer reaches the running turn at its next model step.
+            turn = next(iter(steerable))
+            self.steering = (turn, text)
+            self.request('turn/steer', {'threadId': self.thread, 'expectedTurnId': turn,
+                                        'input': [{'type': 'text', 'text': text}]}, 'steer')
+        else:
+            self.request('turn/start', {'threadId': self.thread,
+                         'input': [{'type': 'text', 'text': text}],
+                         **({'effort': os.environ['CEREBRO_CHILD_EFFORT']} if os.environ.get('CEREBRO_CHILD_EFFORT') else {})}, 'turn')
 
     def steer(self, text):
-        # Native turn/start atomically starts an idle turn or steers the active
-        # one, including the boundary where a completion is still in transit.
         self.pending.append(text)
-        if self.thread:
-            self.next_turn()
+        self.flush()
 
     def event(self, event):
         if 'id' in event and 'method' not in event:
             purpose = self.requests.pop(event['id'], None)
+            if 'error' in event and purpose == 'steer':
+                # The turn is ending; the input starts the next turn instead.
+                turn, text = self.steering
+                self.unsteerable.add(turn)
+                self.pending.insert(0, text)
+                print('cerebro pair: steer rejected by turn ' + turn + '; queued for the next turn: '
+                      + json.dumps(event['error']), file=sys.stderr)
+                self.flush()
+                return self.ended()
             if 'error' in event:
                 raise RuntimeError(json.dumps(event['error']))
             result = event.get('result') or {}
@@ -120,11 +150,11 @@ class Codex:
             elif purpose == 'thread':
                 self.thread = result['thread']['id']
                 emit({'type': 'thread.started', 'thread_id': self.thread})
-                self.next_turn()
             elif purpose == 'turn':
                 turn_id = result['turn']['id']
                 if turn_id not in self.completed_turns:
                     self.active_turns.add(turn_id)
+            self.flush()
             return self.ended()
         method = event.get('method', '')
         params = event.get('params') or {}
@@ -161,10 +191,12 @@ class Codex:
             self.active_turns.discard(turn['id'])
         else:
             emit({'type': 'progress', 'event': event})
+        self.flush()
         return self.ended()
 
     def ended(self):
-        return bool(self.completed_turns) and not self.active_turns and not self.pending and 'turn' not in self.requests.values()
+        return (bool(self.completed_turns) and not self.active_turns and not self.pending
+                and not {'turn', 'steer'} & set(self.requests.values()))
 
 
 def run():

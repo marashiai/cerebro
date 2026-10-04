@@ -1,4 +1,5 @@
 """Task lifecycle over real Git and native CLI transport fixtures, without models."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -474,8 +475,10 @@ class LifecycleTests(unittest.TestCase):
             stdout, stderr = proc.communicate(timeout=10)
             self.assertEqual(proc.returncode, 0, stderr)
             self.assertEqual(json.loads(stdout)['stage'], 'done')
-            turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
-            self.assertIn('Keep the requested original plan focused', turns[1])
+            steers = [item for item in self.records() if item.get('method') == 'turn/steer']
+            self.assertEqual(len(steers), 1)
+            self.assertIn('Keep the requested original plan focused', steers[0]['params']['input'][0]['text'])
+            self.assertEqual(len([item for item in self.records() if item.get('method') == 'turn/start']), 2)
             self.assertEqual(self.stages(), ['execute', 'review'])
         finally:
             if proc.poll() is None:
@@ -513,6 +516,51 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(records[1]['anthropic_model'], 'native-default')
         self.assertEqual(records[1]['haiku_model'], 'native-housekeeping')
         self.assertEqual(records[1]['context_window'], 'native-window')
+
+    def concern_job(self, notice):
+        job_id = '0d5a8f3e-1111-4c2e-9a6b-2b1f9e3c7d10'
+        jobs = self.session / 'detached-jobs'
+        jobs.mkdir(exist_ok=True)
+        status = jobs / (job_id + '.status')
+        status.write_text('0\n')
+        for suffix in ('.out', '.result'):
+            status.with_suffix(suffix).write_text('')
+        Path(str(status) + '.updates.json').write_text(json.dumps(
+            {'sequence': 1, 'acknowledged': 0, 'notices': [{'sequence': 1, 'notice': notice}]}))
+        (jobs / (job_id + '.json')).write_text(json.dumps({'id': job_id, 'status': str(status),
+            'output': str(status.with_suffix('.out')), 'result': str(status.with_suffix('.result'))}))
+        return job_id
+
+    def decisions(self):
+        path = self.session / 'decisions.jsonl'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_correct_disposition_steers_the_cited_child_before_recording(self):
+        fifo = self.session / 'children' / 'execute-concern.steer.fifo'
+        os.mkfifo(fifo)
+        reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, reader)
+        job_id = self.concern_job({'classification': {'reason': 'apparent_mistake'}, 'steering_pipe': str(fifo)})
+        self.env['CEREBRO_ROLE'] = 'supervisor'
+        result = self.cli('wait', job_id, '--after', '1', '--disposition', 'correct',
+                          '--note', 'Fix the failing regression test before continuing')
+        self.assertEqual(result['state'], 'completed')
+        prefix, encoded = os.read(reader, 65536).decode().strip().split(' ', 1)
+        delivered = base64.b64decode(encoded).decode()
+        self.assertEqual(prefix, 'S')
+        self.assertTrue(delivered.startswith('[supervisor] '))
+        self.assertIn('Fix the failing regression test before continuing', delivered)
+        self.assertEqual([item['disposition'] for item in self.decisions()], ['correct'])
+
+    def test_correct_disposition_without_live_child_records_nothing(self):
+        for notice in ({'observer_failure': {'error': 'invalid classification'}},
+                       {'steering_pipe': str(self.session / 'children' / 'finished.steer.fifo')}):
+            with self.subTest(notice=notice):
+                job_id = self.concern_job(notice)
+                failed = self.cli('wait', job_id, '--after', '1', '--disposition', 'correct',
+                                  '--note', 'Fix it', ok=False)
+                self.assertIn('wait' if 'observer_failure' in notice else 'steer', failed.stderr)
+                self.assertEqual(self.decisions(), [])
 
     def test_wait_missing_values_fail_without_hanging(self):
         for flag in ('--after', '--note', '--disposition'):

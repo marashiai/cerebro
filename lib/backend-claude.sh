@@ -113,7 +113,7 @@ backend_claude_pair_run() {
   local cwd="$1" prompt="$2" role="$3" resume="$4" child_log="$5" \
     msg_capture="$6" id_capture="$7" store_file="$8" ckey="$9" model="${10-$CEREBRO_MODEL}"
   backend_claude_child_run_opts "$role" "$resume" "$model"
-  CHILD_RUN_OPTS+=(--input-format stream-json)
+  CHILD_RUN_OPTS+=(--input-format stream-json --replay-user-messages)
   [[ -n "$resume" ]] || CHILD_RUN_OPTS+=(--session-id "$PAIR_SID")
   printf '%s' "$prompt" | CEREBRO_CHILD_ROLE="$role" CEREBRO_PAIR_IDLE="$CEREBRO_PAIR_IDLE" \
     "${TIMEOUT_CMD[@]}" python3 "$CEREBRO_LIB_DIR/python/pair_process.py" claude "$cwd" "$resume" "$model" \

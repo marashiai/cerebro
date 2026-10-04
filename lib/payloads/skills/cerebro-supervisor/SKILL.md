@@ -34,11 +34,15 @@ its report; treat claims that depend on them as unverified.
 
 A running command returns on a Jev concern or completion and survives parent
 disconnects. On a concern, inspect the evidence and decide whether to continue,
-correct, or stop. Use steer for a focused correction, restart to retire a strayed
-conversation while retaining its checkout, and cancel only within task authority.
-Acknowledge with ["wait", job_id, "--after", sequence, "--disposition", disposition,
-"--note", reason]. The decision feeds Jev without sending a dismissal to the
-implementor. Waiting blocks on events; do not poll status or logs.
+correct, or stop, then answer with ["wait", job_id, "--after", sequence,
+"--disposition", disposition, "--note", text]. For correct, the note is the
+instruction: it is delivered to the cited implementor, which reads it after its
+current tool call, before the decision is recorded. For continue or stop, the
+note is your reason; it informs Jev and never reaches the implementor. If the
+implementor has finished, correct fails; decide continue or stop and use a
+correction packet. Use restart to retire a strayed conversation while retaining
+its checkout, and cancel only within task authority. Waiting blocks on events;
+do not poll status or logs.
 
 Adjudicate the implementation evidence and original independent findings against
 the user's goal and acceptance criteria. The reviewer reports

@@ -94,7 +94,7 @@ def main():
                 reply(message["id"], {})
             elif method == "tools/list":
                 reply(message["id"], {"tools": [{"name": "command",
-                    "description": "Run a Cerebro orchestration operation. Literal argv; large bodies go in stdin. Child commands wait for completion or a Jev scope notice and survive parent disconnects. After handling a notice, wait <job-id> --after <sequence> --disposition continue|correct|stop --note <reason>. Native inspection tools remain available.",
+                    "description": "Run a Cerebro orchestration operation. Literal argv; large bodies go in stdin. Child commands wait for completion or a Jev scope notice and survive parent disconnects. After handling a notice, wait <job-id> --after <sequence> --disposition continue|correct|stop --note <text>; a correct note is delivered to the cited implementor. Native inspection tools remain available.",
                     "inputSchema": {"type": "object", "properties": {
                         "argv": {"type": "array", "items": {"type": "string"}},
                         "stdin": {"type": "string", "default": ""}},

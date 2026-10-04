@@ -106,16 +106,21 @@ a concrete reason, and confidence at or above `jev_confidence`; each event and
 reason wakes the supervisor once. Every classification stays in the child's
 `.scope.jsonl` log. Observer failures remain explicit.
 
-Acknowledge a concern without sending its dismissal to the implementor:
+Answer a concern with a disposition:
 
 ```bash
 cerebro wait <job-id> --after 1 --disposition continue --note "The cited work is required by acceptance criterion 2."
+cerebro wait <job-id> --after 2 --disposition correct --note "Fix the failing regression test before continuing."
 ```
 
-Disposition is continue, correct, or stop. The reason is recorded in the session's
+Disposition is continue, correct, or stop. For `correct`, the note is delivered to
+the cited implementor as a steering message before the decision is recorded; the
+implementor reads it after its current tool call. If the implementor has finished,
+`correct` fails and records nothing. For `continue` and `stop`, the note is a reason
+and never reaches the implementor. Every decision is recorded in the session's
 `decisions.jsonl`, scoped to job ID and notice sequence, for Jev's next assessment.
 The wait blocks until the next notice or completion. It does not poll status.
-Record a decision after applying any needed correction:
+Steer, restart or cancel directly at any time:
 
 ```bash
 cerebro steer [<pipe>] "Use the existing login helper and rerun its tests"

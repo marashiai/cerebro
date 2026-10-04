@@ -110,6 +110,14 @@ cmd_wait() {
   fi
 
   [[ -z "$note$disposition" ]] || args+=(--note "$note" --disposition "$disposition")
+  # A correct decision is delivered to the cited child before it is recorded.
+  if [[ "$disposition" == correct && -n "$note" ]]; then
+    local pipe
+    pipe="$(jq -r --argjson sequence "$after" \
+      '.notices[] | select(.sequence == $sequence) | .notice.steering_pipe // empty' "$updates_path")"
+    [[ -n "$pipe" ]] || die "wait: notice $after has no live child to correct; decide continue or stop and use a correction packet"
+    cmd_steer "$pipe" "$note"
+  fi
   python3 "$CEREBRO_LIB_DIR/python/wait_detached.py" \
     "${args[@]}"
 }

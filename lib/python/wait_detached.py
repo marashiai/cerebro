@@ -111,8 +111,9 @@ def job_response(job, update):
         rc = update.get('job_exit_code')
         result.update(exit_code=0, state='running' if rc is None else 'completed',
                       job_exit_code=rc, sequence=update['sequence'], notice=update['notice'],
-                      text='Inspect the cited scope notice, decide whether to steer or restart '
-                           'within task authority, then wait again with --after ' + str(update['sequence']))
+                      text='Inspect the cited scope notice, then answer with wait --after ' + str(update['sequence']) +
+                           ' --disposition continue|correct|stop --note <text>; a correct note is delivered '
+                           'to the cited implementor.')
     else:
         rc = update['exit_code']
         text = Path(job['result']).read_text(errors='replace') if job.get('result') else ''

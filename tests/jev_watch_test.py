@@ -391,7 +391,8 @@ class JevTests(unittest.TestCase):
                 marker = self.root / 'native-exited'
                 native.write_text('#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n'
                     'print(json.dumps({"type":"system","subtype":"init","session_id":"native-eof"}),flush=True)\n'
-                    'sys.stdin.readline()\n'
+                    'line = json.loads(sys.stdin.readline())\n'
+                    'print(json.dumps({**line, "isReplay": True}),flush=True)\n'
                     'print(json.dumps({"type":"result","subtype":"success","result":"BILLING_DRIFT: inspect this concern"}),flush=True)\n'
                     'Path(' + repr(str(marker)) + ').touch()\n')
                 native.chmod(0o755)
@@ -401,7 +402,7 @@ class JevTests(unittest.TestCase):
                 os.mkfifo(fifo)
                 proc = subprocess.Popen([sys.executable, str(ROOT / 'lib/python/pair_process.py'), 'claude', str(self.root), '', '',
                                          str(fifo), str(self.root / 'steering.md'), str(self.child_log), str(native),
-                                         '--input-format', 'stream-json'],
+                                         '--input-format', 'stream-json', '--replay-user-messages'],
                                         env={**self.env, 'CEREBRO_JEV_ENABLED': '1', 'CEREBRO_PAIR_IDLE': '0'},
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 try:

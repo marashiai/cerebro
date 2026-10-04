@@ -86,7 +86,7 @@ if backend == 'codex':
         params = event.get('params', {})
         if method == 'initialized':
             continue
-        if method not in ('initialize', 'thread/start', 'thread/resume', 'turn/start'):
+        if method not in ('initialize', 'thread/start', 'thread/resume', 'turn/start', 'turn/steer'):
             raise SystemExit('unexpected native app-server method: ' + str(method))
         result = {}
         new_turn = False
@@ -96,6 +96,14 @@ if backend == 'codex':
                 continue
             thread_id = params.get('threadId', thread_id)
             result = {'thread': {'id': thread_id}}
+        elif method == 'turn/steer':
+            # Like Codex: input joins the named turn only while it is active.
+            with turn_lock:
+                accepted = turn_active and params.get('expectedTurnId') == turn_id
+            if not accepted:
+                send({'jsonrpc': '2.0', 'id': event['id'], 'error': {'code': -32600, 'message': 'no matching active turn'}})
+                continue
+            result = {'turnId': turn_id}
         elif method == 'turn/start':
             with turn_lock:
                 if not turn_active:
@@ -124,6 +132,8 @@ else:
         for line in sys.stdin:
             event = json.loads(line)
             record(event)
+            if '--replay-user-messages' in sys.argv:
+                send({**event, 'isReplay': True, 'session_id': thread_id})
             if mode == 'steer':
                 time.sleep(0.4)
             if mode == 'abandoned':
