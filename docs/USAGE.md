@@ -97,7 +97,10 @@ searches retained session logs.
 Configure Jev with `jev_enabled: 1` and `jev_api_key` (or corresponding
 `CEREBRO_JEV_*` environment variables). The observer watches native events using
 the canonical task packet’s goal and criteria. Concern notices wake a pending orchestration
-call; healthy execution otherwise remains quiet. Jev also assesses completed
+call; healthy execution otherwise remains quiet. A notice requires a cited event,
+a concrete reason, and confidence at or above `jev_confidence`; each event and
+reason wakes the supervisor once. Every classification stays in the child's
+`.scope.jsonl` log. Jev also assesses completed
 review findings individually, retaining the original report and an assessment
 sidecar with trace/evidence. Observer/assessment failures remain explicit.
 

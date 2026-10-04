@@ -45,6 +45,7 @@ class Classifier(BaseHTTPRequestHandler):
             return
         state, questions = body['state'], body['questions']
         choices = {}
+        confidence = {}
         if 'attention' in questions:
             activity = state.get('events', []) + state.get('history', [])
             concern = next((event for event in activity if 'APPARENT_MISTAKE' in event['activity'] or
@@ -53,6 +54,10 @@ class Classifier(BaseHTTPRequestHandler):
                        'reason': ('apparent_mistake' if concern and 'APPARENT_MISTAKE' in concern['activity']
                                   else 'scope_drift' if concern else 'none'),
                        'evidence': concern['id'] if concern else 'none'}
+            if self.mode == 'weak':
+                # Observed live: low-confidence issues citing ordinary reads with no reason.
+                choices = {'attention': 'possible_issue', 'reason': 'none', 'evidence': activity[0]['id']}
+                confidence['attention'] = 0.33
         else:
             for name, question in questions.items():
                 if name == 'validity':
@@ -71,7 +76,7 @@ class Classifier(BaseHTTPRequestHandler):
                 elif name == 'clean_evidence':
                     choices[name] = 'clean-diff'
         answers = {name: {'type': 'choice', 'choice': choices[name],
-                          'confidence': 0.99,
+                          'confidence': confidence.get(name, 0.99),
                           'probabilities': {key: float(key == choices[name]) for key in question['criteria']}}
                    for name, question in questions.items()}
         if self.mode == 'invalid':
@@ -232,6 +237,43 @@ class JevTests(unittest.TestCase):
         self.assertEqual(notice['evidence']['id'], notice['classification']['evidence_id'])
         self.assertEqual(notice['job_id'], 'job-a')
 
+    def scope_records(self):
+        path = self.child_log.with_suffix('.scope.jsonl')
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def test_weak_repeated_concerns_are_logged_without_waking(self):
+        Classifier.mode = 'weak'
+        watch = self.start_watch()
+        self.addCleanup(watch.close)
+        for command in ('cat AGENTS.md && cat jobs.py', 'python3 -m unittest test_jobs.py'):
+            watch.event({'type': 'tool_execution_start', 'command': command})
+            watch.turn_done()
+            self.wait_for(lambda: len(self.scope_records()) == len(Classifier.requests) and not watch.busy())
+        self.assertEqual(self.socket.notices, [])
+        records = self.scope_records()
+        self.assertEqual([item['classification']['attention'] for item in records], ['uncertain', 'uncertain'])
+        self.assertEqual([item['wake'] for item in records], [False, False])
+
+    def test_concrete_concern_wakes_once_per_event_despite_continue(self):
+        watch = self.start_watch()
+        self.addCleanup(watch.close)
+        watch.event({'type': 'tool_execution_start', 'command': 'APPARENT_MISTAKE: assuming parse(None) is valid'})
+        watch.turn_done()
+        self.wait_for(lambda: len(self.socket.notices) == 1 and not watch.busy())
+        (self.session / 'decisions.jsonl').write_text(json.dumps(
+            {'job_id': 'job-a', 'sequence': 1, 'disposition': 'continue', 'reason': 'Checked; None is valid here.'}) + '\n')
+        watch.event({'type': 'tool_execution_start', 'command': 'PARSER_PROGRESS: added focused regression test'})
+        watch.turn_done()
+        self.wait_for(lambda: len(self.scope_records()) == 2 and not watch.busy())
+        self.assertEqual(len(self.socket.notices), 1)
+        self.assertEqual(self.scope_records()[1]['evidence']['id'], self.socket.notices[0]['evidence']['id'])
+        self.assertFalse(self.scope_records()[1]['wake'])
+        self.assertIn('None is valid here', json.dumps(Classifier.requests[-1]['state']['supervisor_dispositions']))
+        watch.event({'type': 'tool_execution_start', 'command': 'APPARENT_MISTAKE: now deleting test_jobs.py'})
+        watch.turn_done()
+        self.wait_for(lambda: len(self.socket.notices) == 2)
+        self.assertIn('deleting test_jobs.py', self.socket.notices[1]['evidence']['activity'])
+
     def test_authority_change_reassesses_retained_events_and_new_activity_is_kept(self):
         Classifier.mode = 'blocked'
         watch = self.start_watch()
@@ -281,7 +323,7 @@ class JevTests(unittest.TestCase):
         self.assertIn('invalid typed classification', self.child_log.with_suffix('.jev.jsonl').read_text())
         self.assertIn('observer_failure', self.child_log.with_suffix('.scope.jsonl').read_text())
 
-    def test_rolling_history_and_notice_dedup_have_bounded_stable_behavior(self):
+    def test_rolling_history_is_bounded(self):
         watch = object.__new__(ScopeWatch)
         watch.history = deque()
         watch.history_chars = 0
@@ -290,19 +332,6 @@ class JevTests(unittest.TestCase):
         self.assertLessEqual(len(watch.history), HISTORY_LIMIT)
         self.assertLessEqual(watch.history_chars, HISTORY_CHARS)
         self.assertEqual(watch.history_chars, sum(len(item['activity']) for item in watch.history))
-        state = {'original_user_inputs': self.user_inputs, 'supervisor_goal': 'Fix parser',
-                 'supervisor_acceptance_criteria': ['No billing changes'],
-                 'supervisor_task_plan': 'Inspect parser', 'trusted_delegated_task': 'Inspect parser',
-                 'trusted_supervisor_steering': [],
-                 'supervisor_dispositions': [{'sequence': 1, 'disposition': 'continue', 'reason': 'keep going'}]}
-        result = {'attention': 'possible_issue', 'reason': 'apparent_mistake'}
-        evidence = {'activity': 'Assuming parse(None) succeeds without checking.'}
-        first = watch._notice_signature(result, evidence, state)
-        self.assertEqual(first, watch._notice_signature(result, evidence, state))
-        self.assertNotEqual(first, watch._notice_signature(result,
-                         {'activity': 'Changing unrelated billing code.'}, state))
-        state['supervisor_dispositions'] = [{'sequence': 2, 'disposition': 'correct', 'reason': 'check empty input'}]
-        self.assertNotEqual(first, watch._notice_signature(result, evidence, state))
 
     def test_review_assesses_findings_individually_and_preserves_original_json(self):
         repo = self.root / 'repo'

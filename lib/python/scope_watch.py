@@ -20,6 +20,7 @@ ROLES = {'execute'}
 HISTORY_LIMIT = 64
 HISTORY_CHARS = 24000
 ACTIVITY_LIMIT = 2400
+CONCRETE_REASONS = {'apparent_mistake', 'unsupported_assumption', 'scope_drift', 'ineffective_repeat'}
 
 
 def scope_questions(state):
@@ -264,15 +265,6 @@ class ScopeWatch:
                 self.history.append(event)
                 self.history_chars += len(event['activity'])
 
-    def _notice_signature(self, result, evidence, state):
-        authority = {key: state[key] for key in ('original_user_inputs', 'supervisor_goal',
-                                                 'supervisor_acceptance_criteria', 'supervisor_task_plan', 'trusted_delegated_task',
-                                                 'trusted_supervisor_steering', 'supervisor_dispositions')}
-        authority_sha = hashlib.sha256(json.dumps(authority, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-        material = '\0'.join((result['attention'], result['reason'], evidence['activity'],
-                               authority_sha))
-        return hashlib.sha256(material.encode()).hexdigest()
-
     def publish(self, notice):
         with socket.socket(socket.AF_UNIX) as client:
             with self.condition:
@@ -337,21 +329,25 @@ class ScopeWatch:
                     result['attention'] = 'quiet'
                 elif result['attention'] == 'possible_issue' and result['confidence'] < self.confidence:
                     result['attention'] = 'uncertain'
+                # Only a confident, cited concern with a concrete reason wakes the
+                # supervisor, once per event and reason; every classification is logged.
+                wake = (evidence is not None and result['attention'] != 'quiet'
+                        and result['reason'] in CONCRETE_REASONS and result['confidence'] >= self.confidence)
+                signature = (evidence['id'], result['reason']) if wake else None
                 record = {'classification': result, 'evidence': evidence, 'request_id': response['request_id'],
+                          'wake': wake and signature not in self.notice_signatures,
                           'context_sha': fingerprint, 'native_id': self.native_id,
                           'backend': self.backend, 'role': self.role, 'worktree': self.cwd,
                           'steering_pipe': self.fifo, 'job_id': self.job_id}
                 self._append_history(events)
                 with self.log.open('a', encoding='utf-8') as log:
                     log.write(json.dumps(record, ensure_ascii=False) + '\n')
-                if result['attention'] != 'quiet' and evidence:
-                    signature = self._notice_signature(result, evidence, state)
-                    if signature not in self.notice_signatures:
-                        self.publish(record)
-                        if len(self.notices) == 256:
-                            self.notice_signatures.remove(self.notices.popleft())
-                        self.notices.append(signature)
-                        self.notice_signatures.add(signature)
+                if record['wake']:
+                    self.publish(record)
+                    if len(self.notices) == 256:
+                        self.notice_signatures.remove(self.notices.popleft())
+                    self.notices.append(signature)
+                    self.notice_signatures.add(signature)
                 with self.condition:
                     self.active = False
                 self.wake()
