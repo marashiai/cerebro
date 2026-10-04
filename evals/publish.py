@@ -305,7 +305,7 @@ def report_markdown(report, *, charts=True):
                   '| Role | Model | Effort |', '| --- | --- | --- |']
         for role in ROLES:
             lines.append('| %s | %s | %s |' % (role, cohort['settings']['models'][role], cohort['settings']['efforts'][role] or 'native default'))
-        lines += ['', 'Jev model: `%s`; confidence threshold: %s; timeout per stage: %ss. '
+        lines += ['', 'Jev model: `%s`; confidence threshold: %s; parent deadline: %ss. '
                   'Endpoint fingerprint: `%s`.' % (cohort['settings']['jev_model'], cohort['settings']['jev_confidence'],
                   cohort['settings']['timeout'], cohort['settings']['jev_endpoint_sha256'])]
         lines += ['', '| Arm | Passed / trials | Pass rate | Wilson 95% | Seconds / attempted task | Errors |',

@@ -2,7 +2,7 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-04-lease-queue/report.md)
+[Latest published results](results/2026-10-04-lease-queue-context/report.md)
 
 Configuration `8faa3267495d`: **Bare supervisor model 1/1; Supervisor + implementor + reviewer 0/1; Supervisor + implementor + reviewer + Jev 0/1** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-100.0 percentage points**. 1 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
@@ -10,17 +10,20 @@ Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (m
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare supervisor model | 1/1 | 151.5 | 0.1473 |
-| Supervisor + implementor + reviewer | 0/1 | 301.6 | unknown |
+| Bare supervisor model | 1/1 | 126.1 | 0.1457 |
+| Supervisor + implementor + reviewer | 0/1 | 301.5 | unknown |
 | Supervisor + implementor + reviewer + Jev | 0/1 | 301.5 | unknown |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-context/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
-The [lease queue interpretation](results/2026-10-04-lease-queue/interpretation.md)
-separates deadline failures from post-run behavioral checks and documents the
-requirements lost during delegation. The previous
+The [context-preservation rerun](results/2026-10-04-lease-queue-context/interpretation.md)
+retained the original requirements, and all three saved implementations passed
+the frozen behavioral checks. Both supervised deliveries still timed out on
+unfinished reviewer checks. The
+[earlier lease challenge](results/2026-10-04-lease-queue/interpretation.md)
+documents the requirements lost during delegation. The previous
 [happy-path comparison](results/2026-10-03-happy-path-jev/report.md) passed in both
 conditions, with additional time and cost for Cerebro.
 
