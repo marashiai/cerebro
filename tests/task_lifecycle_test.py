@@ -136,6 +136,19 @@ class LifecycleTests(unittest.TestCase):
             if status == 'malformed':
                 self.assertIn('original reply retained', result['error'])
 
+    def test_rejected_handoff_resume_explains_rejection_and_accepts_restated_criteria(self):
+        self.update('execute', status='malformed')
+        result = self.cli('execute', packet=self.packet, ok=False)
+        self.assertEqual(result['status'], 'unfinished')
+        self.update('execute', status='complete', criterion_prefix='Restated: ')
+        result = self.cli('execute', '--resume', result['task_id'])
+        self.assertEqual(result['stage'], 'done')
+        self.assertEqual(result['implementation']['criteria'][0]['criterion'], 'Restated: Original acceptance')
+        turns = [item['params']['input'][0]['text'] for item in self.records() if item.get('method') == 'turn/start']
+        self.assertNotIn('rejected your previous closing JSON', turns[0])
+        self.assertIn('rejected your previous closing JSON: invalid execute handoff', turns[1])
+        self.assertEqual(self.stages(), ['execute', 'execute', 'review'])
+
     def test_native_worker_failure_has_no_review(self):
         self.update('execute', native_mode='failure')
         result = self.cli('execute', packet=self.packet, ok=False)

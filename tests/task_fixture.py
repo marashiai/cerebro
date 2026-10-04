@@ -12,7 +12,8 @@ def result(prompt, role):
         return 'prose without a structured handoff'
     acceptance = config['acceptance']
     handoff = {'status': state, 'summary': role + ' finished',
-               'criteria': [{'criterion': item, 'result': settings.get('criterion_result', 'passed'),
+               'criteria': [{'criterion': settings.get('criterion_prefix', '') + item,
+                             'result': settings.get('criterion_result', 'passed'),
                              'evidence': 'fixture observed actual native handoff'} for item in acceptance]}
     if state == 'question':
         handoff['question'] = 'Which behavior is intended?'

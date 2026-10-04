@@ -111,10 +111,9 @@ def handoff(path, role, acceptance):
         raise ValueError('question handoff requires the question')
     if result['status'] == 'complete':
         criteria = result.get('criteria')
+        # Results map to acceptance criteria by position; restated wording is not compared.
         if not isinstance(criteria, list) or len(criteria) != len(acceptance):
-            raise ValueError('complete handoff requires evidence for every acceptance criterion')
-        if [item.get('criterion') for item in criteria if isinstance(item, dict)] != acceptance:
-            raise ValueError('criteria must repeat the packet criteria in order')
+            raise ValueError('complete handoff requires one result per acceptance criterion, in packet order')
         for item in criteria:
             if item.get('result') not in ('passed', 'failed', 'unverified') or not isinstance(item.get('evidence'), str) or not item['evidence'].strip():
                 raise ValueError('every criterion requires a result and concrete evidence')
@@ -250,6 +249,9 @@ def run(args):
                     if additions:
                         prompt += '\n\nNew original user input captured since this stage prompt was created:\n\n'
                         prompt += user_input_spec(additions)
+                    if state['status'] == 'unfinished' and state.get('error'):
+                        prompt += ('\n\nThe controller rejected your previous closing JSON: ' + state['error'] +
+                                   '\nReturn a corrected closing JSON object.\n')
                 else:
                     prompt = (ROOT / 'payloads' / 'prompts' / (role + '.md')).read_text()
                     prompt += '\n\n' + spec(packet, state['user_inputs'])
