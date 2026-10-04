@@ -1,5 +1,30 @@
 # cerebro
 
+> **Archived. This project is no longer maintained.**
+>
+> Cerebro was useful when AI coding agents were less advanced. They hallucinated,
+> drifted from the request, and needed planning and steering to finish real work.
+> Current agents rarely hallucinate and rarely need that kind of steering or
+> up-front planning. The original purpose is gone, so the project is archived.
+>
+> The evaluations agree:
+>
+> - [Second hard-task proof](evals/results/2026-10-04-hard-proof-2/interpretation.md)
+>   and [first hard-task proof](evals/results/2026-10-04-hard-proof/interpretation.md):
+>   across both, a single strong agent and Cerebro with Jev each delivered 7 of 12
+>   tasks. Cerebro took about twice the time and cost.
+> - [Supervisor judgment](evals/results/2026-10-04-lease-queue-proportion/interpretation.md):
+>   bare Terra delivered 3 of 3, Cerebro 2 of 3 without Jev and 1 of 3 with it,
+>   at 1.2–1.6 times the time. Correction cycles risked the deadline.
+> - [Happy-path comparison](evals/results/2026-10-03-happy-path-jev/report.md):
+>   both passed, with Cerebro adding time and cost.
+>
+> A later rewrite tried a single agent watched only by Jev; it is kept in the git
+> history (commits `776e9de` to `184eee8`). Replaying 89 real corrections a user
+> made to Codex agents showed that neither Jev nor a strong LLM could anticipate
+> them from the agent's activity: about 0.60 and 0.58 area under the ROC curve on
+> held-out cases, where 0.5 is chance.
+
 **A strong supervisor, a focused implementor, and an independent review.**
 
 Cerebro runs through your existing **Pi, Codex, or Claude Code** installation.
