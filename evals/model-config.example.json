@@ -1,0 +1,21 @@
+{
+  "defaults": {
+    "models": {
+      "implementation": "gpt-6-luna",
+      "review": "gpt-5.6-terra",
+      "supervisor": "gpt-5.6-terra"
+    },
+    "efforts": {
+      "implementation": "low",
+      "review": "medium",
+      "supervisor": "medium"
+    }
+  },
+  "cases": {
+    "comparison-persisted-job-restart": {
+      "efforts": {
+        "review": "high"
+      }
+    }
+  }
+}

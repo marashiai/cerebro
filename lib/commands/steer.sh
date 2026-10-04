@@ -1,0 +1,43 @@
+# cerebro lib: commands/steer
+# subcommand: steer (one-shot inject into a paired child)
+# Sourced by bin/cerebro; not meant to be executed directly.
+
+
+# steer_fifo_live <fifo> -- true if the pipe exists AND the child's pump is
+# still reading it (a writer-open succeeds), i.e. it is a live paired session
+# rather than a stale pipe left by a crashed child.
+steer_fifo_live() {
+  [[ -p "$1" ]] || return 1
+  python3 "$CEREBRO_LIB_DIR/python/fifo_live.py" "$1" 2>/dev/null
+}
+
+# ----- subcommand: cerebro steer [--interrupt] [<pipe>] "<message>" --------
+# One-shot steering: inject a single instruction into a live task stage and
+# return at once (no attach, no lock). With ONE argument that argument is the
+# message and the live paired session is found automatically (the common case);
+# with TWO, the first is the <pipe> path from the child's PAIR MODE banner (to
+# pick one when several run at once) and the second is the message. The message
+# reaches the running turn at its next model step; --interrupt first stops the
+# running turn and its tool calls so the message starts the next turn at once.
+cmd_steer() {
+  local fifo="" msg="" prefix=S
+  if [[ "${1:-}" == --interrupt ]]; then
+    prefix=I; shift
+  fi
+  if (( $# == 1 )); then
+    msg="$1"
+  elif (( $# == 2 )); then
+    fifo="$1"; msg="$2"
+  else
+    die "steer: usage: cerebro steer [--interrupt] [<pipe>] \"<message>\""
+  fi
+  [[ -n "$msg" ]] || die "steer: empty steering message"
+  case "${CEREBRO_ROLE:-user}" in
+    supervisor) msg="[supervisor] Enforce the current spec and delegated task only; this is not a new user requirement. $msg" ;;
+    *) msg="[user] $msg" ;;
+  esac
+  pair_resolve_live_fifo "$fifo" steer
+  fifo="$PAIR_RESOLVED_FIFO"
+  python3 "$CEREBRO_LIB_DIR/python/steer_send.py" "$fifo" "$msg" "$prefix" || die "steer: could not deliver (the child may have finished)"
+  say "cerebro: steered $(basename "${fifo%.steer.fifo}")"
+}

@@ -1,4 +1,4 @@
-"""Hidden grader checks for the persisted job fixture."""
+"""Check stateful ground truth and its source-bound native test receipt profile."""
 
 import os
 from pathlib import Path
@@ -8,7 +8,8 @@ import tempfile
 import unittest
 
 import job_fixture
-from fixtures import file_hashes
+from native import TestJournal
+from runtime import file_hashes
 
 
 def repaired_source():
@@ -42,6 +43,23 @@ class JobFixtureTests(unittest.TestCase):
             (repo / 'jobs.py').write_text(repaired_source())
             (repo / 'test_jobs.py').write_text('print("passed")\n')
             self.assertFalse(job_fixture.grade(repo, before)['scope_pass'])
+
+    def test_immutable_profile_validates_actual_job_tests_on_final_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            repo = root / 'repo'
+            job_fixture.seed(repo)
+            job_fixture.profile(root)
+            (repo / 'jobs.py').write_text(repaired_source())
+            journal = TestJournal(root, 'job-worker', 'execute')
+            result = subprocess.run([sys.executable, '-m', 'unittest', '-v'], cwd=repo, capture_output=True,
+                                    env={**os.environ, **journal.environment(), 'CEREBRO_CHILD_ROLE': 'execute'})
+            self.assertEqual(result.returncode, 0)
+            receipts = journal.take(repo, 'job-thread')
+            self.assertEqual(len(receipts), 1)
+            self.assertTrue(receipts[0]['passed'])
+            self.assertEqual(receipts[0]['source'], file_hashes(repo))
+
 
 if __name__ == '__main__':
     unittest.main()

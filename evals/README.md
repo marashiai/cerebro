@@ -1,72 +1,225 @@
-# Evaluations
+# Cerebro evals
 
-## Final result
+<!-- evals:overview:start -->
 
-The project is archived without running the paired bare-vs-Jev comparison
-below. Its precondition failed first: Jev has to recognise the moments where a
-user would step in. `calibration/` replays 89 real corrections from one user's
-Codex sessions, plus 240 moments the user let pass, through Jev's shipped
-context. Neither Jev nor a strong LLM given the same context separated them
-much better than chance: about 0.60 and 0.58 area under the ROC curve on
-held-out cases. The case data stays private; only the tooling is committed.
+[Latest published results](results/2026-10-04-hard-proof-2/report.md)
 
-## Bare agent vs agent + Jev
+Configuration `4457388d6b52`: **Bare implementor 0/6; Bare supervisor model 2/6; Supervisor + implementor + reviewer + Jev 4/6** shared task outcomes; Bare implementor → Bare supervisor model **+33.3 percentage points**. 6 matched groups across 2 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
-`run.py` runs the same native agent on frozen tasks twice per repetition, once
-bare (`--no-jev`) and once with Jev watching. The arm order is randomized within
-each pair. Each run gets a fresh seeded repository and is graded by a hidden
-behavioral grader that checks only rules stated in the task, plus a scope check
-(allowed files only, supplied tests unchanged). A run counts as **delivered**
-when Cerebro exits normally within the deadline and the grader passes.
+Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
+
+| Condition | Passed / trials | Mean seconds | Mean estimated USD |
+| --- | ---: | ---: | ---: |
+| Bare implementor | 0/6 | 73.3 | 0.0042 |
+| Bare supervisor model | 2/6 | 170.9 | 0.1766 |
+| Supervisor + implementor + reviewer + Jev | 4/6 | 372.5 | 0.3412 |
+
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-hard-proof-2/cohort-01-bars.svg)
+
+<!-- evals:overview:end -->
+
+The [second hard-task proof](results/2026-10-04-hard-proof-2/interpretation.md) delivered
+0/6 for bare Luna, 2/6 for bare Terra and 4/6 for Cerebro with Jev, with review and
+correction, not Jev, making the difference; across both proofs Terra and Cerebro each
+delivered 7/12, with Cerebro taking about twice the time and cost.
+The [hard-task proof run](results/2026-10-04-hard-proof/interpretation.md) found that
+Cerebro with Jev turned Luna into Terra-quality code (5/6 correct saved code against
+bare Luna's 2/6) but delivered 3/6 at about three times bare Terra's time; review
+loops did not converge, and Jev's six wakes never became steering.
+The [three-repetition supervisor-judgment run](results/2026-10-04-lease-queue-proportion/interpretation.md)
+delivered 3/3 bare, 2/3 without Jev and 1/3 with Jev. Supervisors corrected
+contract-literal findings that bare Terra also leaves, and each correction cycle
+risked the 300-second budget. The run also exposed a strict handoff-wording
+check, fixed afterwards, and one Jev provider inconsistency. The
+[unfinished-tool rerun](results/2026-10-04-lease-queue-unfinished/interpretation.md)
+no longer stalled. Cerebro with Jev passed, but Jev did not intervene. Without
+Jev, the supervisor accepted low-impact review findings, and the correction
+cycle timed out after editing the supplied tests. The
+[context-preservation rerun](results/2026-10-04-lease-queue-context/interpretation.md)
+retained the original requirements, and both supervised deliveries timed out on
+unfinished reviewer checks. The
+[earlier lease challenge](results/2026-10-04-lease-queue/interpretation.md)
+documents the requirements lost during delegation. The previous
+[happy-path comparison](results/2026-10-03-happy-path-jev/report.md) passed in both
+conditions, with additional time and cost for Cerebro.
+
+The [Terra pilot](results/2026-10-03-terra-pilot/report.md) and its
+[interpretation](results/2026-10-03-terra-pilot/interpretation.md) describe the
+previous workflow. They remain historical evidence; the five-condition protocol
+below is a different experiment.
+
+## Run a comparison
+
+From the repository root, create an isolated Python environment and edit
+[model-config.example.json](model-config.example.json) for your available models:
 
 ```sh
-export JEV_API_KEY=...
-python3 evals/run.py --cases inventory patch --repeat 10 \
-  --backend codex --model gpt-6-luna --effort low --timeout 600 \
-  --out evals/runs/NEW-DIRECTORY
+python3 -m venv evals/.venv
+evals/.venv/bin/python -m pip install -r evals/requirements.txt
 ```
 
-Results go to the output directory: `report.md`, `summary.json`, `results.jsonl`,
-and per-run logs. The report lists every nudge alongside the agent's next
-message, so false alarms can be judged.
+Python 3.9+, Bash, Git and `jq` are required. Live trials require an installed,
+authenticated Codex CLI and consume provider tokens. Live model-quality evals
+currently support **Codex only**; the Cerebro product supports Pi, Codex and
+Claude. Protocol fixtures test native transports without live inference.
+Jev conditions also require `CEREBRO_JEV_API_KEY` or `jev_api_key` in Cerebro's
+config; environment settings override the configured endpoint, model and
+confidence. Missing providers fail the run rather than substituting fixtures.
 
-### Decision rule (fixed before running)
+Each command creates a new private output directory:
 
-Jev is **better** only if, over all paired (task, repetition) runs:
+```sh
+# Default smoke: three tasks, five conditions each (15 trials).
+evals/.venv/bin/python evals/run.py --config evals/model-config.example.json --out /tmp/cerebro-smoke-new
 
-- the Jev arm delivers in more of the pairs where the arms disagree than the bare
-  arm does,
-- with a one-sided exact sign test p ≤ 0.10, and
-- its mean wall time is at most 20% above the bare arm's.
+# All task comparisons and offline protocol cases.
+evals/.venv/bin/python evals/run.py --suite all --config evals/model-config.example.json --out /tmp/cerebro-all-new
 
-Otherwise the result is **not better**, and the project is archived.
+# Offline native lifecycle contracts; no model settings or credentials needed.
+evals/.venv/bin/python evals/run.py --suite protocol --out /tmp/cerebro-protocol-new
+```
 
-### Tasks
+Smoke covers complete code and executable-documentation delivery, legitimate
+domain investigation, and a two-module JSON job queue with persisted state,
+transition and ownership requirements. Hidden checks exercise behavior beyond
+supplied tests. These are small local fixtures, not broad software-engineering
+benchmarks. `--suite all --list` shows the current catalogue: task comparisons
+cover delivery, truthful blockers, review recovery, scope and workspace reuse;
+protocol cases cover completion, answer/resume, failure, interruption, steering,
+cancellation/disconnect ownership and restart.
 
-| Case | What it tests | Frozen grader |
-| --- | --- | --- |
-| `inventory` | about 20 interacting state rules with durable replay, plus tempting forbidden files | 23 hidden checks |
-| `patch` | applying unified diffs exactly: offsets, line endings, no-newline markers, reverse; tempting CLI TODO | 23 hidden checks |
-| `lease` | a persisted job queue with leases across processes | 19 hidden checks |
-| `job` | a persisted job queue's state and ownership over restart | hidden checks |
+The separate `comparison-lease-queue-concurrency` case tests whether a repair
+keeps a JSON-backed lease queue correct across long-lived instances and
+simultaneous POSIX processes. Its hypothesis is that concurrency and ownership
+failures require coordination across the full read-modify-write path, including
+exact lease expiry and stale owners. The initial exploratory group uses three
+conditions, Luna (low) for implementation and Terra (medium) for review and
+supervision, with a 300-second task timeout:
 
-`python3 -m unittest discover -s evals` checks each grader against a reference
-solution, the seeded code, scope violations and a hanging candidate.
+```sh
+evals/.venv/bin/python evals/run.py --config evals/model-config.example.json \
+  --case comparison-lease-queue-concurrency \
+  --conditions bare_supervisor supervisor supervisor_jev \
+  --implementation-model gpt-6-luna --implementation-effort low \
+  --review-model gpt-5.6-terra --review-effort medium \
+  --supervisor-model gpt-5.6-terra --supervisor-effort medium \
+  --timeout 300 --jobs 1 --seed 42 --out /tmp/cerebro-lease-queue-2026-10-03
+```
 
-## Historical results
+`--case ID` is repeatable and replaces the smoke selection within the chosen
+suite. `--suite comparison` selects only task comparisons. `--repeat N` repeats
+cases, `--seed N` counterbalances arm order, and `--timeout N` bounds each native
+stage. Repetitions do not add independent task diversity.
 
-These came from the previous design (a supervisor, implementor and reviewer
-pipeline). They are kept as recorded; the commands that produced them were
-removed with that design.
+## Conditions and role settings
 
-- [Second hard-task proof](results/2026-10-04-hard-proof-2/interpretation.md):
-  bare Luna 0/6, bare Terra 2/6, supervisor pipeline with Jev 4/6. Across both
-  proofs, Terra and the pipeline each delivered 7/12, with the pipeline taking
-  about twice the time and cost.
-- [First hard-task proof](results/2026-10-04-hard-proof/interpretation.md)
-- [Supervisor judgment, three repetitions](results/2026-10-04-lease-queue-proportion/interpretation.md)
-- [Unfinished-tool rerun](results/2026-10-04-lease-queue-unfinished/interpretation.md)
-- [Context-preservation rerun](results/2026-10-04-lease-queue-context/interpretation.md)
-- [First lease challenge](results/2026-10-04-lease-queue/interpretation.md)
-- [Happy-path comparison](results/2026-10-03-happy-path-jev/report.md)
-- [Terra pilot](results/2026-10-03-terra-pilot/interpretation.md)
+| CLI condition | Coding role | Independent review | Supervisor | Jev |
+| --- | --- | --- | --- | --- |
+| `bare_implementor` | implementation | none | none | off |
+| `bare_supervisor` | supervisor | none | none | off |
+| `implementor_reviewer` | implementation | review role | none | off |
+| `supervisor` | implementation | review role | supervisor role | off |
+| `supervisor_jev` | implementation | review role | supervisor role | watches implementation |
+
+Arms share initial requirements, source and prior task evidence. Bare conditions
+make model-strength comparisons explicit. The implementor codes and tests; the
+reviewer reports original findings. The `implementor_reviewer` condition gets
+**one predetermined task packet plus review**, with no supervisor planning or
+correction loop.
+Supervisor conditions plan, adjudicate findings and may request up to two
+focused correction tasks. Jev remains advisory. There is no verifier agent,
+mandatory plan/spec ceremony or tool guard in this protocol.
+Workspace cases leave checkout decisions to each condition; the harness does not
+pre-plan a worktree for the one-pass condition. Refusals and unfinished workspace
+work remain failures rather than being repaired by the harness.
+Related-branch reuse supplies the same selected checkout to every arm; it measures
+reuse and preservation of original edits, rather than checkout discovery.
+
+There is no built-in model catalogue or coding-role model/effort default. The
+example's Luna/Terra choices are editable configuration, not product defaults.
+JSON `defaults.models` and `defaults.efforts` use the role keys `implementation`,
+`review`, and `supervisor`; `cases` supplies the same shape keyed by exact case
+ID. Precedence is **config defaults < per-case config < CLI overrides**.
+
+Instead of a config file, supply `--implementation-model`, `--review-model`
+and `--supervisor-model`; corresponding `--implementation-effort`,
+`--review-effort` and `--supervisor-effort` flags are optional. Live task
+comparisons require all three model choices. Omitted efforts preserve native
+defaults. Names and efforts pass through without a catalogue or silent
+substitution. Requested settings and native resolution evidence are recorded
+separately; aliases may resolve to a different native identifier.
+
+For comparison runs without Jev, select
+`--conditions bare_implementor bare_supervisor implementor_reviewer supervisor`.
+
+`--jobs 1` is the default and measures isolated trial latency. Higher values cap
+concurrent **case/repeat groups**, each in a spawned process. Arms within each
+group run sequentially in counterbalanced order. Parallel timings measure shared
+machine/provider load, not isolated latency. Trials have separate checkouts and
+native/Cerebro homes. The manifest records requested/effective concurrency and
+timing mode; cohorts separate concurrency, role settings, Jev settings and time
+budget. Reports are aggregated by the coordinator. Interrupted runs retain
+receipts and failure denominators; unstarted trials have no timed/usage sample.
+The runner has no cache or resume framework.
+
+## Outcomes and evidence
+
+`task_success` is the common delivery outcome: hidden behavior checks, preserved
+scope/checkouts, final-source executed tests and truthful **model-authored**
+completion, runtime and blocker claims. Stage completion alone proves no
+acceptance criterion. Bare arms need no Cerebro artifacts to pass.
+
+`condition_valid` separately measures compliance with assigned models,
+monitoring, delegation and independent review of delivered source.
+`role_separated_success` combines delivery and condition validity for delegated
+arms; it is not measured for bare arms. A supervisor that codes directly or skips
+review can deliver working code while failing the condition diagnostic.
+`ambiguous_source_ownership` records edits whose supervisor/child ownership
+cannot be established; uncertainty is not successful role separation. Failures
+and unfinished work stay visible.
+
+Each trial writes a durable `result.json` before coordinator delivery. Keep
+original receipts and run a new experiment rather than editing recorded evidence.
+Private runs include native events, source-bound checks, original model replies,
+Jev request/response traces and source/configuration fingerprints. Completed
+receipts survive interruption; missing work receives an explicit failure record.
+
+Usage totals count native conversation totals once and retain per-provider/role
+coverage. Cached input/write counts are input subsets. Partial token evidence is
+reported as partial; missing usage or pricing remains **unknown**, never zero.
+[Reference rates](prices-2026-10-03.json) are dated API estimates, not account
+bills; `--prices FILE` selects another dated rate sheet.
+
+## Publish and inspect
+
+Publish directly after a run:
+
+```sh
+evals/.venv/bin/python evals/run.py --config evals/model-config.example.json \
+  --out /tmp/cerebro-publish-new --publish evals/results/my-smoke
+```
+
+Or publish existing private receipts without rerunning providers:
+
+```sh
+evals/.venv/bin/python evals/publish.py /tmp/cerebro-smoke-new \
+  --out evals/results/my-smoke-published --prices evals/prices-2026-10-03.json
+```
+
+Publication creates sanitized Markdown, SVG/PNG charts, aggregate statistics and
+an allowlisted trial dataset in a **new, immutable directory**. It excludes
+private logs, prompts, source, paths, credentials, endpoints and provider prose.
+`run.py --update-readme` updates only this overview block when used with
+`--publish`; `publish.py --readme evals/README.md` does the same for saved results.
+Historical result directories are never overwritten.
+
+Only complete matched arm groups enter paired comparisons; failed trials remain
+in those denominators and missing arms are listed separately. Reports use Wilson
+descriptive intervals. Case-bootstrap intervals require ten distinct cases;
+smoke results cannot establish general advantage or statistical significance.
+
+Offline checks:
+
+```sh
+PYTHONPATH=evals evals/.venv/bin/python -m unittest discover -s evals -p 'test_*.py' -v
+```

@@ -1,227 +1,280 @@
-"""Paired evaluation: the same native agent with and without Jev, on frozen tasks.
-
-Decision rule (fixed before any run; see README): Jev is "better" only when, over
-all (task, repetition) pairs, the Jev arm wins more discordant pairs than it
-loses with a one-sided sign test p <= 0.10, and its mean wall time is at most
-20% above the bare arm's. Otherwise the result is "not better".
-"""
+#!/usr/bin/env python3
+"""Compare native Codex role configurations, with optional Jev advisory evidence."""
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import math
 import os
 from pathlib import Path
-import random
-import signal
+import shutil
 import subprocess
 import sys
 import time
 
+from runtime import ROOT, redact, write_json
+from model_config import add_arguments, cli_overrides, load_config, resolve_config
+from fixtures import git, seed_episode
+from usage import collect as collect_usage
+import comparison
+import probes
+from jev import ENDPOINT
+
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent
-sys.path.insert(0, str(HERE))
-
-import inventory_fixture  # noqa: E402
-import job_fixture  # noqa: E402
-import lease_fixture  # noqa: E402
-import patch_fixture  # noqa: E402
-from fixtures import file_hashes, write_json  # noqa: E402
-
-CASES = {'inventory': inventory_fixture, 'patch': patch_fixture, 'lease': lease_fixture, 'job': job_fixture}
-ARMS = ('bare', 'jev')
-MAX_P, MAX_OVERHEAD = 0.10, 0.20
 
 
-def usage(log_path, model, prices):
-    """Return agent and Jev token totals and an estimated price, or None where unknown."""
-    agent, jev_in, jev_out, nudges, calls, failures = None, 0, 0, [], 0, 0
-    records = [json.loads(line) for line in log_path.read_text().splitlines()] if log_path.exists() else []
-    for index, record in enumerate(records):
-        line = record.get('line')
-        if record['type'] == 'native' and isinstance(line, dict) and line.get('method') == 'thread/tokenUsage/updated':
-            agent = line['params']['tokenUsage']['total']
-        elif record['type'] == 'jev':
-            calls += 1
-            failures += 'error' in record
-            if isinstance(record.get('raw'), dict):
-                jev_in += record['raw'].get('usage', {}).get('input_tokens', 0)
-                jev_out += record['raw'].get('usage', {}).get('output_tokens', 0)
-        elif record['type'] == 'nudge':
-            reply = next((later['event']['text'] for later in records[index + 1:]
-                          if later['type'] == 'event' and later['event']['kind'] == 'message'), None)
-            nudges.append({**record['nudge'], 'next_agent_message': reply})
-    agent_cost = jev_cost = None
-    if agent and model in prices:
-        rate = prices[model]
-        uncached = agent['inputTokens'] - agent['cachedInputTokens']
-        agent_cost = (uncached * rate['input_per_million'] + agent['cachedInputTokens'] * rate['cached_input_per_million']
-                      + agent['outputTokens'] * rate['output_per_million']) / 1e6
-    jev_model = os.environ.get('JEV_MODEL', 'jev-latest')
-    if not calls:
-        jev_cost = 0.0
-    elif jev_model in prices:
-        jev_cost = jev_in * prices[jev_model]['input_per_million'] / 1e6
-    cost = None if agent_cost is None or jev_cost is None else agent_cost + jev_cost
-    return {'agent_tokens': agent, 'jev_calls': calls, 'jev_failures': failures, 'jev_input_tokens': jev_in,
-            'jev_output_tokens': jev_out, 'estimated_usd': cost, 'nudges': nudges}
+def arm_order(index, repeat, seed, arms):
+    if len(arms) == 2:
+        return list(reversed(arms)) if (index + repeat + seed) % 2 else list(arms)
+    offset = (index + repeat + seed) % len(arms)
+    return list(arms[offset:]) + list(arms[:offset])
 
 
-def trial(args, binary, case, arm, repeat, prices):
-    directory = args.out / f'r{repeat:02d}' / case / arm
-    repo = directory / 'repo'
-    CASES[case].seed(repo)
-    before = file_hashes(repo)
-    log_path = directory / 'run.jsonl'
-    command = [str(binary), 'run', '--backend', args.backend, '--dir', str(repo), '--log', str(log_path),
-               '--timeout', f'{args.timeout}s']
-    for flag, value in (('--model', args.model), ('--effort', args.effort)):
-        if value:
-            command += [flag, value]
-    if arm == 'bare':
-        command.append('--no-jev')
-    else:
-        command += ['--threshold', str(args.threshold), '--max-nudges', str(args.max_nudges)]
-    command.append(CASES[case].REQUIREMENTS)
-    env = dict(os.environ)
-    if arm == 'bare':
-        env.pop('JEV_API_KEY', None)
-    started = time.monotonic()
-    with (directory / 'stdout.txt').open('w') as out, (directory / 'stderr.txt').open('w') as err:
-        process = subprocess.Popen(command, cwd=repo, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                                   start_new_session=True)
+def exit_status(rows):
+    if any(row.get('error') for row in rows):
+        return 2
+    return int(any(not row['correct'] for row in rows))
+
+
+def report(directory, rows, manifest, prices=None):
+    from stats import summarize
+    from publish import public_provenance, report_markdown
+    document = {'manifest': manifest, 'exit_status': exit_status(rows), 'trials': rows}
+    write_json(directory / 'results.json', document)
+    summary = summarize(document, prices)
+    summary['provenance'] = public_provenance(manifest)
+    write_json(directory / 'aggregate.json', {key: value for key, value in summary.items() if key != 'trials'})
+    write_json(directory / 'trials.json', summary['trials'])
+    lines = [report_markdown(summary, charts=False), '', '## Private trial evidence', '',
+             '| Case / repeat | Condition | Outcome | Failed checks or error | Evidence |',
+             '| --- | --- | --- | --- | --- |']
+    for row in rows:
+        failed = [name for name, passed in row.get('checks', {}).items() if not passed]
+        detail = row.get('error') or ', '.join(failed)
+        relative = Path(row['artifacts']).relative_to(directory)
+        lines.append('| %s / %d | %s | %s | %s | [Receipts](%s/result.json) |' % (
+            row['case'], row['repeat'] + 1, row['arm'], 'PASS' if exit_status([row]) == 0 else 'FAIL',
+            detail.replace('|', '/').replace('\n', ' ')[:350], relative))
+    (directory / 'report.md').write_text('\n'.join(lines) + '\n')
+
+
+def catalogue():
+    comparisons = [{**entry, 'jev_features': ['attention']} for entry in comparison.CASES]
+    return comparisons + [{**entry, 'jev_features': []} for entry in probes.CASES]
+
+
+def public_settings(settings):
+    return {key: value for key, value in settings.items() if key != 'jev_api_key'}
+
+
+def trial_row(group, arm):
+    entry = group['entry']
+    directory = Path(group['directory']) / arm
+    return {'case': entry['id'], 'kind': entry['kind'], 'repeat': group['repeat'], 'arm': arm,
+            'artifacts': str(directory), 'mode': entry['mode'], 'paired': len(group['expected_arms']) > 1,
+            'settings': public_settings(group['settings']), 'expected_arms': group['expected_arms'],
+            'capability': entry.get('capability', entry['suite'])}
+
+
+def run_group(group, emit):
+    entry, settings = group['entry'], group['settings']
+    pair = Path(group['directory'])
+    seed = pair / 'seed'
+    if entry['mode'] != 'protocol':
+        fixture = comparison.FIXTURES.get(entry['id'].removeprefix('comparison-'))
+        if fixture:
+            fixture[0].seed(seed)
+        else:
+            seed_episode(seed)
+    for arm in group['arms']:
+        row = trial_row(group, arm)
+        directory = Path(row['artifacts'])
+        directory.mkdir(parents=True)
+        write_json(directory / 'settings.json', row['settings'])
+        started = time.monotonic()
+        interrupted = False
+        row['metrics'] = {'attempted_trial': True}
         try:
-            exit_code = process.wait(timeout=args.timeout + 60)
-        except subprocess.TimeoutExpired:
-            # SIGTERM lets cerebro end the agent's own process group first.
-            os.killpg(process.pid, signal.SIGTERM)
+            if entry['mode'] == 'comparison':
+                outcome = comparison.trial(entry['id'], directory, seed, arm, settings)
+            else:
+                outcome = probes.trial(entry['id'], directory, settings)
+            row.update(outcome)
+        except BaseException as error:
+            interrupted = isinstance(error, (KeyboardInterrupt, SystemExit))
+            row.update(correct=False, error=(str(error) or type(error).__name__).replace(
+                settings['jev_api_key'], '[REDACTED]') if settings['jev_api_key'] else str(error) or type(error).__name__)
+        finally:
             try:
-                exit_code = process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                exit_code = process.wait()
-    elapsed = time.monotonic() - started
-    graded = CASES[case].grade(repo, before)
-    record = {'case': case, 'arm': arm, 'repeat': repeat, 'exit_code': exit_code, 'elapsed_seconds': round(elapsed, 2),
-              'delivered': exit_code == 0 and graded['correct'], 'correct_code': graded['correct'],
-              'failed_checks': sorted(name for name, passed in graded['checks'].items() if not passed),
-              'scope_pass': graded['scope_pass'], 'changed_files': graded['changed_files'],
-              **usage(log_path, args.model, prices)}
-    write_json(directory / 'result.json', record)
-    return record
-
-
-def sign_test(wins, losses):
-    """One-sided exact sign test: probability of at least `wins` successes in wins+losses fair trials."""
-    total = wins + losses
-    if total == 0:
-        return 1.0
-    return sum(math.comb(total, k) for k in range(wins, total + 1)) / 2 ** total
-
-
-def summarize(records):
-    arms = {}
-    for arm in ARMS:
-        rows = [row for row in records if row['arm'] == arm]
-        if not rows:
-            continue
-        costs = [row['estimated_usd'] for row in rows if row['estimated_usd'] is not None]
-        arms[arm] = {'trials': len(rows), 'delivered': sum(row['delivered'] for row in rows),
-                     'mean_seconds': round(sum(row['elapsed_seconds'] for row in rows) / len(rows), 1),
-                     'mean_usd': round(sum(costs) / len(costs), 4) if len(costs) == len(rows) else None,
-                     'nudges': sum(len(row['nudges']) for row in rows),
-                     'jev_calls': sum(row['jev_calls'] for row in rows),
-                     'jev_failures': sum(row['jev_failures'] for row in rows)}
-    pairs = {}
-    for row in records:
-        pairs.setdefault((row['case'], row['repeat']), {})[row['arm']] = row['delivered']
-    complete = [pair for pair in pairs.values() if set(pair) == set(ARMS)]
-    wins = sum(pair['jev'] and not pair['bare'] for pair in complete)
-    losses = sum(pair['bare'] and not pair['jev'] for pair in complete)
-    p = sign_test(wins, losses)
-    overhead = (arms['jev']['mean_seconds'] / arms['bare']['mean_seconds'] - 1
-                if {'jev', 'bare'} <= arms.keys() and arms['bare']['mean_seconds'] else None)
-    better = wins > losses and p <= MAX_P and overhead is not None and overhead <= MAX_OVERHEAD
-    return {'arms': arms, 'pairs': len(complete), 'jev_wins': wins, 'jev_losses': losses,
-            'sign_test_p': round(p, 4), 'time_overhead': None if overhead is None else round(overhead, 3),
-            'decision': 'better' if better else 'not better'}
-
-
-def report(summary, records, args):
-    lines = [f'# Bare agent vs agent + Jev', '',
-             f'Backend `{args.backend}`, model `{args.model or "default"}`, effort `{args.effort or "default"}`, '
-             f'cases {", ".join(args.cases)}, {args.repeat} repetitions, {args.timeout}s deadline.', '',
-             '| Arm | Delivered | Mean seconds | Mean est. USD | Nudges | Jev calls (failed) |',
-             '| --- | ---: | ---: | ---: | ---: | ---: |']
-    for arm, row in summary['arms'].items():
-        usd = 'unknown' if row['mean_usd'] is None else f'{row["mean_usd"]:.4f}'
-        lines.append(f'| {arm} | {row["delivered"]}/{row["trials"]} | {row["mean_seconds"]} | {usd} | {row["nudges"]} | '
-                     f'{row["jev_calls"]} ({row["jev_failures"]}) |')
-    lines += ['', f'Paired: {summary["pairs"]} pairs; Jev won {summary["jev_wins"]}, lost {summary["jev_losses"]} '
-              f'(one-sided sign test p = {summary["sign_test_p"]}); time overhead {summary["time_overhead"]}.',
-              f'**Decision: {summary["decision"]}** (better requires more wins than losses, p <= {MAX_P}, '
-              f'and at most {int(MAX_OVERHEAD * 100)}% extra time).', '', '## Trials', '',
-              '| Case | Rep | Arm | Delivered | Seconds | Failed checks | Nudges |', '| --- | ---: | --- | --- | ---: | --- | ---: |']
-    for row in sorted(records, key=lambda item: (item['case'], item['repeat'], item['arm'])):
-        lines.append(f'| {row["case"]} | {row["repeat"]} | {row["arm"]} | {row["delivered"]} | {row["elapsed_seconds"]} | '
-                     f'{", ".join(row["failed_checks"]) or "-"} | {len(row["nudges"])} |')
-    nudged = [(row, nudge) for row in records for nudge in row['nudges']]
-    if nudged:
-        lines += ['', '## Nudges and the agent\'s next message', '']
-        for row, nudge in nudged:
-            reply = (nudge['next_agent_message'] or '(none)').replace('\n', ' ')[:300]
-            lines.append(f'- {row["case"]} r{row["repeat"]} `{nudge["reason"]}`'
-                         f'{" (interrupt)" if nudge["interrupt"] else ""}: {reply}')
-    return '\n'.join(lines) + '\n'
+                if entry['mode'] != 'protocol':
+                    row.update(collect_usage(directory, settings))
+                redact(directory, settings['jev_api_key'])
+            except Exception as error:
+                row.update(correct=False, error='evidence finalization failed: ' + str(error))
+            row.setdefault('metrics', {})['attempted_trial'] = True
+            row['metrics']['jev_attention_enabled'] = arm == 'supervisor_jev'
+            row['elapsed_seconds'] = round(time.monotonic() - started, 3)
+            write_json(directory / 'result.json', row)
+            emit(row)
+        if interrupted:
+            raise KeyboardInterrupt('eval group interrupted')
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--cases', nargs='+', choices=sorted(CASES), default=['inventory', 'patch'])
-    parser.add_argument('--arms', nargs='+', choices=ARMS, default=list(ARMS))
-    parser.add_argument('--repeat', type=int, default=10)
-    parser.add_argument('--backend', default='codex', choices=['codex', 'claude', 'pi'])
-    parser.add_argument('--model', default='')
-    parser.add_argument('--effort', default='')
-    parser.add_argument('--timeout', type=int, default=600, help='seconds per run, the same for both arms')
-    parser.add_argument('--seed', type=int, default=42, help='randomizes arm order within each pair')
-    parser.add_argument('--threshold', type=float, default=0.8, help='Jev confidence needed for a nudge')
-    parser.add_argument('--max-nudges', type=int, default=3)
+    entries = catalogue()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--suite', choices=['smoke', 'all', 'comparison', 'protocol'], default='smoke')
+    parser.add_argument('--case', action='append', default=[], help='case ID, repeatable; replaces smoke selection')
+    parser.add_argument('--conditions', nargs='+', choices=comparison.ARMS,
+                        help='selected comparison arms; default: all five')
+    parser.add_argument('--list', action='store_true', help='list selection without providers')
+    parser.add_argument('--repeat', type=int, default=1)
+    parser.add_argument('--jobs', type=int, default=1, help='process worker cap; 1 gives isolated timing')
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--timeout', type=int, default=900, help='seconds per native stage')
+    add_arguments(parser)
+    parser.add_argument('--out', type=Path, help='new private output directory')
+    parser.add_argument('--publish', type=Path, help='new directory for sanitized Markdown and charts')
     parser.add_argument('--prices', type=Path, default=HERE / 'prices-2026-10-03.json')
-    parser.add_argument('--out', type=Path, required=True, help='new output directory')
+    parser.add_argument('--update-readme', action='store_true')
     args = parser.parse_args()
-    args.out = args.out.resolve()  # runs execute inside their seeded repositories
-    if args.out.exists():
-        parser.error('output directory already exists: ' + str(args.out))
-    if 'jev' in args.arms and not os.environ.get('JEV_API_KEY'):
-        parser.error('the jev arm needs JEV_API_KEY')
-    args.out.mkdir(parents=True)
-    binary = args.out / 'bin' / 'cerebro'
-    subprocess.run(['go', 'build', '-o', str(binary), './cmd/cerebro'], cwd=ROOT, check=True)
-    commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    dirty = bool(subprocess.run(['git', 'status', '--porcelain', '--', 'cmd', 'internal', 'evals/*.py'], cwd=ROOT,
-                                capture_output=True, text=True).stdout.strip())
-    write_json(args.out / 'manifest.json', {**{key: str(value) for key, value in vars(args).items()},
-                                            'jev_model': os.environ.get('JEV_MODEL', 'jev-latest'),
-                                            'commit': commit, 'dirty_source': dirty})
-    prices = json.loads(args.prices.read_text())['models']
-    order = random.Random(args.seed)
-    records = []
-    for repeat in range(1, args.repeat + 1):
-        for case in args.cases:
-            arms = list(args.arms)
-            order.shuffle(arms)
-            for arm in arms:
-                record = trial(args, binary, case, arm, repeat, prices)
-                records.append(record)
-                print(f'{case} r{repeat} {arm}: delivered={record["delivered"]} {record["elapsed_seconds"]}s '
-                      f'nudges={len(record["nudges"])} failed={record["failed_checks"]}', flush=True)
-                with (args.out / 'results.jsonl').open('a') as stream:
-                    stream.write(json.dumps(record) + '\n')
-    summary = summarize(records)
-    write_json(args.out / 'summary.json', summary)
-    (args.out / 'report.md').write_text(report(summary, records, args))
-    print(json.dumps(summary, indent=2))
+    if min(args.repeat, args.timeout, args.jobs) < 1:
+        parser.error('--repeat, --timeout and --jobs must be positive')
+    if args.update_readme and not args.publish:
+        parser.error('--update-readme requires --publish')
+    selected = [entry for entry in entries if args.suite in ('all', 'smoke') or entry['suite'] == args.suite]
+    if args.case:
+        unknown = set(args.case) - {entry['id'] for entry in selected}
+        if unknown:
+            parser.error('unknown cases for this suite: ' + ', '.join(sorted(unknown)))
+        selected = [entry for entry in selected if entry['id'] in args.case]
+    elif args.suite == 'smoke':
+        selected = [entry for entry in selected if entry['id'] in comparison.SMOKE]
+    if args.conditions and len(set(args.conditions)) != len(args.conditions):
+        parser.error('--conditions must be distinct')
+    conditions = [arm for arm in comparison.ARMS if not args.conditions or arm in args.conditions]
+    if args.list:
+        for entry in selected:
+            print('%s [%s; %s]: %s' % (entry['id'], entry['suite'], entry['mode'], entry['description']))
+        return 0
+    try:
+        config = load_config(args.config, {entry['id'] for entry in entries})
+        overrides = cli_overrides(args)
+        roles = {entry['id']: resolve_config(config, entry['id'], overrides) for entry in selected}
+        for entry in selected:
+            if entry['mode'] != 'protocol':
+                missing = [role for role in ('implementation', 'review', 'supervisor') if not roles[entry['id']]['models'][role]]
+                if missing:
+                    raise ValueError(entry['id'] + ': configure models for ' + ', '.join(missing)
+                                     + ' with --config or role overrides; see model-config.example.json')
+        from stats import public_prices
+        prices = public_prices(json.loads(args.prices.read_text()))
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    live = any(entry['mode'] != 'protocol' for entry in selected)
+    native = shutil.which(os.environ.get('CEREBRO_CODEX_CMD', 'codex')) if live else None
+    if live and not native:
+        parser.error('installed, authenticated Codex CLI required for live conditions')
+    if args.publish:
+        import importlib.util
+        if importlib.util.find_spec('matplotlib') is None:
+            parser.error('publication requires matplotlib in the Python environment')
+        if args.publish.exists():
+            parser.error('--publish must name a new directory')
+    config_path = Path(os.environ.get('CEREBRO_HOME', str(Path.home() / '.cerebro'))) / 'config.json'
+    product_config = json.loads(config_path.read_text()) if config_path.is_file() else {}
+    effective_jobs = min(args.jobs, len(selected) * args.repeat)
+    settings = {'codex': native, 'timeout': args.timeout, 'jobs_requested': args.jobs,
+                'jobs_effective': effective_jobs, 'timing_mode': 'isolated' if effective_jobs == 1 else 'shared-load',
+                'baseline_roles': {'bare_implementor': 'implementation', 'bare_supervisor': 'supervisor'}}
+    for name, default in [('jev_api_key', ''), ('jev_model', 'jev-latest'), ('jev_endpoint', ENDPOINT), ('jev_confidence', .8)]:
+        settings[name] = os.environ.get('CEREBRO_' + name.upper(), product_config.get(name, default))
+    try:
+        settings['jev_confidence'] = float(settings['jev_confidence'])
+        if not math.isfinite(settings['jev_confidence']) or not 0 <= settings['jev_confidence'] <= 1:
+            raise ValueError()
+    except (TypeError, ValueError):
+        parser.error('Jev confidence must be finite and between 0 and 1')
+    uses_jev = 'supervisor_jev' in conditions and any(entry['mode'] == 'comparison' for entry in selected)
+    if uses_jev and not settings['jev_api_key']:
+        parser.error('configure CEREBRO_JEV_API_KEY or jev_api_key; no simulated live-provider substitution')
+    os.umask(0o077)
+    directory = (args.out or HERE / 'runs' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')).resolve()
+    directory.mkdir(parents=True, exist_ok=False)
+    per_case = {name: {**settings, **value} for name, value in roles.items()}
+    groups = []
+    for repeat in range(args.repeat):
+        for index, entry in enumerate(selected):
+            expected = conditions if entry['mode'] == 'comparison' else entry['expected_arms']
+            groups.append({'entry': entry, 'settings': per_case[entry['id']], 'repeat': repeat,
+                           'directory': str(directory / ('r%02d-c%02d' % (repeat + 1, index + 1))),
+                           'expected_arms': expected, 'arms': arm_order(index, repeat, args.seed, expected)})
+    manifest = {'created_at': datetime.now(timezone.utc).isoformat(), 'settings': public_settings(settings),
+                'resolved_case_settings': {name: public_settings(value) for name, value in per_case.items()},
+                'repetitions': args.repeat, 'seed': args.seed, 'scheduled_trials': sum(len(g['arms']) for g in groups),
+                'cases': selected,
+                'source_commit': git(ROOT, 'rev-parse', 'HEAD'),
+                'source_diff_sha256': hashlib.sha256(git(ROOT, 'diff', 'HEAD').encode()).hexdigest(),
+                'eval_sources': {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                 for path in HERE.iterdir() if path.is_file()}}
+    if live:
+        manifest['native_version'] = subprocess.check_output([native, '--version'], text=True).strip()
+    write_json(directory / 'manifest.json', manifest)
+    print('Artifacts: ' + str(directory), flush=True)
+    rows = []
+    def receive(row):
+        rows.append(row)
+        report(directory, rows, manifest, prices)
+        print('%s [%s] repeat %d: %s%s' % (row['case'], row['arm'], row['repeat'] + 1,
+              'PASS' if exit_status([row]) == 0 else 'FAIL', ': ' + row['error'] if row.get('error') else ''), flush=True)
+    failure = None
+    try:
+        from parallel import coordinate
+        coordinate(groups, effective_jobs, receive, run_group)
+    except (KeyboardInterrupt, RuntimeError) as error:
+        failure = str(error) or 'run interrupted'
+    finally:
+        known = {row['artifacts'] for row in rows}
+        for group in groups:
+            for arm in group['arms']:
+                row = trial_row(group, arm)
+                path = Path(row['artifacts']) / 'result.json'
+                cleanup_error = None
+                from runtime import cleanup
+                try:
+                    cleanup({'CEREBRO_EVAL_DIR': row['artifacts'],
+                             'CEREBRO_SESSION_DIR': str(Path(row['artifacts']) / 'home/sessions/eval'),
+                             'CEREBRO_HOME': str(Path(row['artifacts']) / 'home'), 'CEREBRO_BACKEND': 'codex',
+                             'CEREBRO_SESSION_ID': 'eval', 'CEREBRO_LIB_DIR': str(ROOT / 'lib'),
+                             **{key: value for key, value in os.environ.items() if not key.startswith('CEREBRO_')}})
+                except Exception as error:
+                    cleanup_error = str(error)
+                if row['artifacts'] in known and not cleanup_error:
+                    continue
+                if path.is_file():
+                    row = json.loads(path.read_text())
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    partial_usage = collect_usage(path.parent, group['settings']) if group['entry']['mode'] != 'protocol' else {}
+                    row.update(correct=False, error=failure or 'worker ended without a durable result', elapsed_seconds=None,
+                               metrics={'attempted_trial': bool(partial_usage.get('usage_ledger'))},
+                               usage_complete=False, usage_ledger=partial_usage.get('usage_ledger', []))
+                    write_json(path, row)
+                if cleanup_error:
+                    row.update(correct=False, error='coordinator cleanup failed: ' + cleanup_error)
+                redact(path.parent, group['settings']['jev_api_key'])
+                write_json(path, row)
+                if row['artifacts'] in known:
+                    rows = [item for item in rows if item['artifacts'] != row['artifacts']]
+                rows.append(row)
+        report(directory, rows, manifest, prices)
+    print('Report: ' + str(directory / 'report.md'), flush=True)
+    if args.publish:
+        from publish import publish
+        publish(directory, args.publish, prices=prices, readme=HERE / 'README.md' if args.update_readme else None)
+    return 130 if failure and 'interrupt' in failure.lower() else exit_status(rows)
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

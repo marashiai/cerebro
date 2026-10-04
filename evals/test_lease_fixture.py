@@ -1,4 +1,4 @@
-"""Hidden grader checks for the lease queue fixture."""
+"""Offline ground-truth and source-bound receipt checks for lease concurrency."""
 
 from pathlib import Path
 import hashlib
@@ -9,7 +9,8 @@ import tempfile
 import unittest
 
 import lease_fixture
-from fixtures import file_hashes
+from runtime import file_hashes
+from native import TestJournal
 
 REFERENCE_STORAGE = '''import fcntl
 import json
@@ -224,6 +225,35 @@ class LeaseFixtureTests(unittest.TestCase):
             (repo / 'storage.py').write_text(REFERENCE_STORAGE)
             outcome = lease_fixture.grade(repo, before)
             self.assertFalse(outcome['checks']['wrong_token_retry_does_not_mutate'])
+
+    def test_profile_binds_supplied_test_identities_and_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lease_fixture.profile(root)
+            import json
+            profile = json.loads((root / 'receipt-profile.json').read_text())
+            self.assertEqual(profile['test_file'], 'test_jobs.py')
+            self.assertEqual(profile['test_identities'], list(lease_fixture.IDENTITIES))
+            self.assertEqual(profile['test_sha256'], hashlib.sha256(lease_fixture.TESTS.encode()).hexdigest())
+
+    def test_public_receipt_binds_identity_and_final_source_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            repo = root / 'repo'
+            lease_fixture.seed(repo)
+            (repo / 'jobs.py').write_text(REFERENCE_JOBS)
+            (repo / 'storage.py').write_text(REFERENCE_STORAGE)
+            lease_fixture.profile(root)
+            journal = TestJournal(root, 'lease-worker', 'execute')
+            environment = {**os.environ, **journal.environment(), 'CEREBRO_CHILD_ROLE': 'execute'}
+            run = subprocess.run([sys.executable, '-m', 'unittest', '-v'], cwd=repo,
+                                 capture_output=True, text=True, env=environment)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            receipts = journal.take(repo, 'lease-thread')
+            self.assertEqual(len(receipts), 1)
+            self.assertTrue(receipts[0]['passed'])
+            self.assertEqual(receipts[0]['source'], file_hashes(repo))
+
 
 if __name__ == '__main__':
     unittest.main()
