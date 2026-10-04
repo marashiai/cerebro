@@ -2,22 +2,26 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-04-hard-proof/report.md)
+[Latest published results](results/2026-10-04-hard-proof-2/report.md)
 
-Configuration `4457388d6b52`: **Bare implementor 2/6; Bare supervisor model 5/6; Supervisor + implementor + reviewer + Jev 3/6** shared task outcomes; Bare implementor → Bare supervisor model **+50.0 percentage points**. 6 matched groups across 2 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
+Configuration `4457388d6b52`: **Bare implementor 0/6; Bare supervisor model 2/6; Supervisor + implementor + reviewer + Jev 4/6** shared task outcomes; Bare implementor → Bare supervisor model **+33.3 percentage points**. 6 matched groups across 2 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
 Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare implementor | 2/6 | 65.3 | 0.0041 |
-| Bare supervisor model | 5/6 | 151.7 | 0.1782 |
-| Supervisor + implementor + reviewer + Jev | 3/6 | 473.6 | unknown |
+| Bare implementor | 0/6 | 73.3 | 0.0042 |
+| Bare supervisor model | 2/6 | 170.9 | 0.1766 |
+| Supervisor + implementor + reviewer + Jev | 4/6 | 372.5 | 0.3412 |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-hard-proof/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-hard-proof-2/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
+The [second hard-task proof](results/2026-10-04-hard-proof-2/interpretation.md) delivered
+0/6 for bare Luna, 2/6 for bare Terra and 4/6 for Cerebro with Jev, with review and
+correction, not Jev, making the difference; across both proofs Terra and Cerebro each
+delivered 7/12, with Cerebro taking about twice the time and cost.
 The [hard-task proof run](results/2026-10-04-hard-proof/interpretation.md) found that
 Cerebro with Jev turned Luna into Terra-quality code (5/6 correct saved code against
 bare Luna's 2/6) but delivered 3/6 at about three times bare Terra's time; review

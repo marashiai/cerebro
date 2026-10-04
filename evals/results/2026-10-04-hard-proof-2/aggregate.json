@@ -1,0 +1,2087 @@
+{
+  "schema_version": 2,
+  "cohorts": [
+    {
+      "configuration": "4457388d6b52",
+      "settings": {
+        "models": {
+          "implementation": "gpt-6-luna",
+          "review": "gpt-5.6-terra",
+          "supervisor": "gpt-5.6-terra"
+        },
+        "efforts": {
+          "implementation": "low",
+          "review": "medium",
+          "supervisor": "medium"
+        },
+        "jobs_requested": 1,
+        "jobs_effective": 1,
+        "timing_mode": "isolated",
+        "baseline_roles": {
+          "bare_implementor": "implementation",
+          "bare_supervisor": "supervisor"
+        },
+        "jev_model": "jev-latest",
+        "jev_confidence": 0.8,
+        "timeout": 600,
+        "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+      },
+      "mode": "comparison",
+      "kind": "capabilities",
+      "expected_arms": [
+        "bare_implementor",
+        "bare_supervisor",
+        "supervisor_jev"
+      ],
+      "matched_units": 6,
+      "independent_cases": 2,
+      "incomplete_units": [],
+      "excluded_trials": 0,
+      "all_trials": 18,
+      "all_errors": 0,
+      "arms": {
+        "bare_implementor": {
+          "trials": 6,
+          "passed": 0,
+          "errors": 0,
+          "pass_rate": 0.0,
+          "wilson_95": [
+            0.0,
+            0.3903342879021653
+          ],
+          "mean_seconds": 73.30116666666666,
+          "timed_trials": 6,
+          "total_seconds": 439.80699999999996,
+          "mean_cost_usd": 0.00424895,
+          "total_cost_usd": 0.025493699999999998,
+          "cost_known_trials": 6,
+          "usage_complete_trials": 6,
+          "known_tokens": {
+            "input_tokens": 911097,
+            "cached_input_tokens": 832000,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 18528
+          },
+          "usage_by_role": [
+            {
+              "provider": "openai",
+              "role": "implementation",
+              "model": "gpt-6-luna",
+              "entries": 6,
+              "complete_entries": 6,
+              "known_tokens": {
+                "input_tokens": 911097,
+                "cached_input_tokens": 832000,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 18528
+              },
+              "token_known_entries": {
+                "input_tokens": 6,
+                "cached_input_tokens": 6,
+                "cache_write_input_tokens": 6,
+                "output_tokens": 6
+              },
+              "estimated_cost_usd": 0.025493699999999998
+            }
+          ],
+          "metrics": {
+            "accepted_steers": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "ambiguous_source_ownership": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "attempted_trial": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "condition_valid": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "drift_exposed": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "failed_job_attempts": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "functional_pass": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "functional_success": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "implementation_job_attempts": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "independent_reviews": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_attention_enabled": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_batches": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_notices": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_observer_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_provider_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "parent_seconds": {
+              "n": 6,
+              "sum": 436.71400000000006,
+              "mean": 72.78566666666667
+            },
+            "portable_checks_passed": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "recorded_passing_test_runs": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "scope_pass": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "scope_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "supervisor_source_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "task_success": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "transient_unrelated_edit_count": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "transient_unrelated_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "truthful_completion": {
+              "n": 6,
+              "sum": 5,
+              "mean": 0.8333333333333334
+            },
+            "unfinished_jobs": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "verified_delivery": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "workspace_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            }
+          }
+        },
+        "bare_supervisor": {
+          "trials": 6,
+          "passed": 2,
+          "errors": 0,
+          "pass_rate": 0.3333333333333333,
+          "wilson_95": [
+            0.09677141110578041,
+            0.700006684861608
+          ],
+          "mean_seconds": 170.94983333333332,
+          "timed_trials": 6,
+          "total_seconds": 1025.6989999999998,
+          "mean_cost_usd": 0.17663313333333333,
+          "total_cost_usd": 1.0597988,
+          "cost_known_trials": 6,
+          "usage_complete_trials": 6,
+          "known_tokens": {
+            "input_tokens": 1047643,
+            "cached_input_tokens": 917504,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 51335
+          },
+          "usage_by_role": [
+            {
+              "provider": "openai",
+              "role": "supervisor",
+              "model": "gpt-5.6-terra",
+              "entries": 6,
+              "complete_entries": 6,
+              "known_tokens": {
+                "input_tokens": 1047643,
+                "cached_input_tokens": 917504,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 51335
+              },
+              "token_known_entries": {
+                "input_tokens": 6,
+                "cached_input_tokens": 6,
+                "cache_write_input_tokens": 6,
+                "output_tokens": 6
+              },
+              "estimated_cost_usd": 1.0597988
+            }
+          ],
+          "metrics": {
+            "accepted_steers": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "ambiguous_source_ownership": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "attempted_trial": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "condition_valid": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "drift_exposed": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "failed_job_attempts": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "functional_pass": {
+              "n": 6,
+              "sum": 2,
+              "mean": 0.3333333333333333
+            },
+            "functional_success": {
+              "n": 6,
+              "sum": 2,
+              "mean": 0.3333333333333333
+            },
+            "implementation_job_attempts": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "independent_reviews": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_attention_enabled": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_batches": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_notices": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_observer_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_provider_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "parent_seconds": {
+              "n": 6,
+              "sum": 1022.4369999999999,
+              "mean": 170.40616666666665
+            },
+            "portable_checks_passed": {
+              "n": 6,
+              "sum": 2,
+              "mean": 0.3333333333333333
+            },
+            "recorded_passing_test_runs": {
+              "n": 6,
+              "sum": 7,
+              "mean": 1.1666666666666667
+            },
+            "scope_pass": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "scope_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "supervisor_source_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "task_success": {
+              "n": 6,
+              "sum": 2,
+              "mean": 0.3333333333333333
+            },
+            "transient_unrelated_edit_count": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "transient_unrelated_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "truthful_completion": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "unfinished_jobs": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "verified_delivery": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "workspace_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            }
+          }
+        },
+        "supervisor_jev": {
+          "trials": 6,
+          "passed": 4,
+          "errors": 0,
+          "pass_rate": 0.6666666666666666,
+          "wilson_95": [
+            0.299993315138392,
+            0.9032285888942195
+          ],
+          "mean_seconds": 372.5483333333334,
+          "timed_trials": 6,
+          "total_seconds": 2235.2900000000004,
+          "mean_cost_usd": 0.34122820933333337,
+          "total_cost_usd": 2.047369256,
+          "cost_known_trials": 6,
+          "usage_complete_trials": 6,
+          "known_tokens": {
+            "input_tokens": 5939694,
+            "cached_input_tokens": 4027392,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 154388
+          },
+          "usage_by_role": [
+            {
+              "provider": "jev",
+              "role": "jev-attention",
+              "model": "jev-1.13.0",
+              "entries": 140,
+              "complete_entries": 140,
+              "known_tokens": {
+                "input_tokens": 1277958,
+                "cached_input_tokens": null,
+                "cache_write_input_tokens": null,
+                "output_tokens": 55396
+              },
+              "token_known_entries": {
+                "input_tokens": 140,
+                "cached_input_tokens": 0,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 140
+              },
+              "estimated_cost_usd": 0.05367423600000001
+            },
+            {
+              "provider": "openai",
+              "role": "execute",
+              "model": "gpt-6-luna",
+              "entries": 14,
+              "complete_entries": 14,
+              "known_tokens": {
+                "input_tokens": 2266713,
+                "cached_input_tokens": 2017792,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 35830
+              },
+              "token_known_entries": {
+                "input_tokens": 14,
+                "cached_input_tokens": 14,
+                "cache_write_input_tokens": 14,
+                "output_tokens": 14
+              },
+              "estimated_cost_usd": 0.06298502000000002
+            },
+            {
+              "provider": "openai",
+              "role": "review",
+              "model": "gpt-5.6-terra",
+              "entries": 14,
+              "complete_entries": 14,
+              "known_tokens": {
+                "input_tokens": 1357586,
+                "cached_input_tokens": 1136384,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 48713
+              },
+              "token_known_entries": {
+                "input_tokens": 14,
+                "cached_input_tokens": 14,
+                "cache_write_input_tokens": 14,
+                "output_tokens": 14
+              },
+              "estimated_cost_usd": 1.2542368000000002
+            },
+            {
+              "provider": "openai",
+              "role": "supervisor",
+              "model": "gpt-5.6-terra",
+              "entries": 6,
+              "complete_entries": 6,
+              "known_tokens": {
+                "input_tokens": 1037437,
+                "cached_input_tokens": 873216,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 14449
+              },
+              "token_known_entries": {
+                "input_tokens": 6,
+                "cached_input_tokens": 6,
+                "cache_write_input_tokens": 6,
+                "output_tokens": 6
+              },
+              "estimated_cost_usd": 0.6764732
+            }
+          ],
+          "metrics": {
+            "accepted_steers": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "ambiguous_source_ownership": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "attempted_trial": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "condition_valid": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "drift_exposed": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "failed_job_attempts": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "functional_pass": {
+              "n": 6,
+              "sum": 4,
+              "mean": 0.6666666666666666
+            },
+            "functional_success": {
+              "n": 6,
+              "sum": 4,
+              "mean": 0.6666666666666666
+            },
+            "implementation_job_attempts": {
+              "n": 6,
+              "sum": 15,
+              "mean": 2.5
+            },
+            "independent_reviews": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "jev_attention_enabled": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "jev_batches": {
+              "n": 6,
+              "sum": 140,
+              "mean": 23.333333333333332
+            },
+            "jev_notices": {
+              "n": 6,
+              "sum": 1,
+              "mean": 0.16666666666666666
+            },
+            "jev_observer_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "jev_provider_failures": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "parent_seconds": {
+              "n": 6,
+              "sum": 2231.868,
+              "mean": 371.978
+            },
+            "portable_checks_passed": {
+              "n": 6,
+              "sum": 4,
+              "mean": 0.6666666666666666
+            },
+            "recorded_passing_test_runs": {
+              "n": 6,
+              "sum": 14,
+              "mean": 2.3333333333333335
+            },
+            "role_separated_success": {
+              "n": 6,
+              "sum": 4,
+              "mean": 0.6666666666666666
+            },
+            "scope_pass": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "scope_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "supervisor_source_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "task_success": {
+              "n": 6,
+              "sum": 4,
+              "mean": 0.6666666666666666
+            },
+            "transient_unrelated_edit_count": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "transient_unrelated_edits": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "truthful_completion": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "unfinished_jobs": {
+              "n": 6,
+              "sum": 0,
+              "mean": 0.0
+            },
+            "verified_delivery": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            },
+            "workspace_preserved": {
+              "n": 6,
+              "sum": 6,
+              "mean": 1.0
+            }
+          }
+        }
+      },
+      "deltas": [
+        {
+          "before": "bare_implementor",
+          "after": "bare_supervisor",
+          "pairs": 6,
+          "independent_cases": 2,
+          "improved": 2,
+          "regressed": 0,
+          "tied": 4,
+          "cluster_bootstrap_95": {
+            "pass_rate_delta_pp": null,
+            "mean_seconds_delta": null,
+            "mean_cost_usd_delta": null
+          },
+          "bootstrap_minimum_cases": 10,
+          "pass_rate_delta_pp": 33.333333333333336,
+          "mean_seconds_delta": 97.64866666666666,
+          "mean_cost_usd_delta": 0.1723841833333333
+        },
+        {
+          "before": "bare_implementor",
+          "after": "supervisor_jev",
+          "pairs": 6,
+          "independent_cases": 2,
+          "improved": 4,
+          "regressed": 0,
+          "tied": 2,
+          "cluster_bootstrap_95": {
+            "pass_rate_delta_pp": null,
+            "mean_seconds_delta": null,
+            "mean_cost_usd_delta": null
+          },
+          "bootstrap_minimum_cases": 10,
+          "pass_rate_delta_pp": 66.66666666666667,
+          "mean_seconds_delta": 299.2471666666667,
+          "mean_cost_usd_delta": 0.33697925933333334
+        },
+        {
+          "before": "bare_supervisor",
+          "after": "supervisor_jev",
+          "pairs": 6,
+          "independent_cases": 2,
+          "improved": 2,
+          "regressed": 0,
+          "tied": 4,
+          "cluster_bootstrap_95": {
+            "pass_rate_delta_pp": null,
+            "mean_seconds_delta": null,
+            "mean_cost_usd_delta": null
+          },
+          "bootstrap_minimum_cases": 10,
+          "pass_rate_delta_pp": 33.333333333333336,
+          "mean_seconds_delta": 201.59850000000003,
+          "mean_cost_usd_delta": 0.164595076
+        }
+      ],
+      "capabilities": [
+        {
+          "case": "comparison-inventory-reservations",
+          "kind": "stateful-rules-and-scope",
+          "arms": {
+            "bare_implementor": {
+              "trials": 3,
+              "passed": 0,
+              "errors": 0,
+              "pass_rate": 0.0,
+              "wilson_95": [
+                0.0,
+                0.5614970317550454
+              ],
+              "mean_seconds": 89.32133333333333,
+              "timed_trials": 3,
+              "total_seconds": 267.964,
+              "mean_cost_usd": 0.005251166666666667,
+              "total_cost_usd": 0.0157535,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 569354,
+                "cached_input_tokens": 520960,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 11409
+              },
+              "usage_by_role": [
+                {
+                  "provider": "openai",
+                  "role": "implementation",
+                  "model": "gpt-6-luna",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 569354,
+                    "cached_input_tokens": 520960,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 11409
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.0157535
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 266.324,
+                  "mean": 88.77466666666668
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            },
+            "bare_supervisor": {
+              "trials": 3,
+              "passed": 1,
+              "errors": 0,
+              "pass_rate": 0.3333333333333333,
+              "wilson_95": [
+                0.06149194472039621,
+                0.7923403991979522
+              ],
+              "mean_seconds": 150.82899999999998,
+              "timed_trials": 3,
+              "total_seconds": 452.48699999999997,
+              "mean_cost_usd": 0.16026093333333333,
+              "total_cost_usd": 0.48078279999999995,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 523877,
+                "cached_input_tokens": 463104,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 22218
+              },
+              "usage_by_role": [
+                {
+                  "provider": "openai",
+                  "role": "supervisor",
+                  "model": "gpt-5.6-terra",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 523877,
+                    "cached_input_tokens": 463104,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 22218
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.48078279999999995
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 450.8059999999999,
+                  "mean": 150.26866666666663
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            },
+            "supervisor_jev": {
+              "trials": 3,
+              "passed": 3,
+              "errors": 0,
+              "pass_rate": 1.0,
+              "wilson_95": [
+                0.4385029682449546,
+                1.0
+              ],
+              "mean_seconds": 260.9356666666667,
+              "timed_trials": 3,
+              "total_seconds": 782.807,
+              "mean_cost_usd": 0.24778791933333333,
+              "total_cost_usd": 0.743363758,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 2310826,
+                "cached_input_tokens": 1582592,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 55541
+              },
+              "usage_by_role": [
+                {
+                  "provider": "jev",
+                  "role": "jev-attention",
+                  "model": "jev-1.13.0",
+                  "entries": 56,
+                  "complete_entries": 56,
+                  "known_tokens": {
+                    "input_tokens": 484309,
+                    "cached_input_tokens": null,
+                    "cache_write_input_tokens": null,
+                    "output_tokens": 22372
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 56,
+                    "cached_input_tokens": 0,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 56
+                  },
+                  "estimated_cost_usd": 0.020340978000000003
+                },
+                {
+                  "provider": "openai",
+                  "role": "execute",
+                  "model": "gpt-6-luna",
+                  "entries": 6,
+                  "complete_entries": 6,
+                  "known_tokens": {
+                    "input_tokens": 872887,
+                    "cached_input_tokens": 772608,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 12352
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 6,
+                    "cached_input_tokens": 6,
+                    "cache_write_input_tokens": 6,
+                    "output_tokens": 6
+                  },
+                  "estimated_cost_usd": 0.023929980000000003
+                },
+                {
+                  "provider": "openai",
+                  "role": "review",
+                  "model": "gpt-5.6-terra",
+                  "entries": 6,
+                  "complete_entries": 6,
+                  "known_tokens": {
+                    "input_tokens": 515578,
+                    "cached_input_tokens": 442368,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 15056
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 6,
+                    "cached_input_tokens": 6,
+                    "cache_write_input_tokens": 6,
+                    "output_tokens": 6
+                  },
+                  "estimated_cost_usd": 0.41556560000000003
+                },
+                {
+                  "provider": "openai",
+                  "role": "supervisor",
+                  "model": "gpt-5.6-terra",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 438052,
+                    "cached_input_tokens": 367616,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 5761
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.2835272
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 6,
+                  "mean": 2.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 56,
+                  "mean": 18.666666666666668
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 780.945,
+                  "mean": 260.315
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 6,
+                  "mean": 2.0
+                },
+                "role_separated_success": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "case": "comparison-patch-apply",
+          "kind": "precise-parsing-and-scope",
+          "arms": {
+            "bare_implementor": {
+              "trials": 3,
+              "passed": 0,
+              "errors": 0,
+              "pass_rate": 0.0,
+              "wilson_95": [
+                0.0,
+                0.5614970317550454
+              ],
+              "mean_seconds": 57.281000000000006,
+              "timed_trials": 3,
+              "total_seconds": 171.84300000000002,
+              "mean_cost_usd": 0.003246733333333333,
+              "total_cost_usd": 0.0097402,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 341743,
+                "cached_input_tokens": 311040,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 7119
+              },
+              "usage_by_role": [
+                {
+                  "provider": "openai",
+                  "role": "implementation",
+                  "model": "gpt-6-luna",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 341743,
+                    "cached_input_tokens": 311040,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 7119
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.0097402
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 170.39,
+                  "mean": 56.79666666666666
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 2,
+                  "mean": 0.6666666666666666
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            },
+            "bare_supervisor": {
+              "trials": 3,
+              "passed": 1,
+              "errors": 0,
+              "pass_rate": 0.3333333333333333,
+              "wilson_95": [
+                0.06149194472039621,
+                0.7923403991979522
+              ],
+              "mean_seconds": 191.07066666666665,
+              "timed_trials": 3,
+              "total_seconds": 573.212,
+              "mean_cost_usd": 0.19300533333333333,
+              "total_cost_usd": 0.579016,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 523766,
+                "cached_input_tokens": 454400,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 29117
+              },
+              "usage_by_role": [
+                {
+                  "provider": "openai",
+                  "role": "supervisor",
+                  "model": "gpt-5.6-terra",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 523766,
+                    "cached_input_tokens": 454400,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 29117
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.579016
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 571.631,
+                  "mean": 190.54366666666667
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 4,
+                  "mean": 1.3333333333333333
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            },
+            "supervisor_jev": {
+              "trials": 3,
+              "passed": 1,
+              "errors": 0,
+              "pass_rate": 0.3333333333333333,
+              "wilson_95": [
+                0.06149194472039621,
+                0.7923403991979522
+              ],
+              "mean_seconds": 484.161,
+              "timed_trials": 3,
+              "total_seconds": 1452.483,
+              "mean_cost_usd": 0.43466849933333335,
+              "total_cost_usd": 1.304005498,
+              "cost_known_trials": 3,
+              "usage_complete_trials": 3,
+              "known_tokens": {
+                "input_tokens": 3628868,
+                "cached_input_tokens": 2444800,
+                "cache_write_input_tokens": 0,
+                "output_tokens": 98847
+              },
+              "usage_by_role": [
+                {
+                  "provider": "jev",
+                  "role": "jev-attention",
+                  "model": "jev-1.13.0",
+                  "entries": 84,
+                  "complete_entries": 84,
+                  "known_tokens": {
+                    "input_tokens": 793649,
+                    "cached_input_tokens": null,
+                    "cache_write_input_tokens": null,
+                    "output_tokens": 33024
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 84,
+                    "cached_input_tokens": 0,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 84
+                  },
+                  "estimated_cost_usd": 0.03333325800000001
+                },
+                {
+                  "provider": "openai",
+                  "role": "execute",
+                  "model": "gpt-6-luna",
+                  "entries": 8,
+                  "complete_entries": 8,
+                  "known_tokens": {
+                    "input_tokens": 1393826,
+                    "cached_input_tokens": 1245184,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 23478
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 8,
+                    "cached_input_tokens": 8,
+                    "cache_write_input_tokens": 8,
+                    "output_tokens": 8
+                  },
+                  "estimated_cost_usd": 0.03905504
+                },
+                {
+                  "provider": "openai",
+                  "role": "review",
+                  "model": "gpt-5.6-terra",
+                  "entries": 8,
+                  "complete_entries": 8,
+                  "known_tokens": {
+                    "input_tokens": 842008,
+                    "cached_input_tokens": 694016,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 33657
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 8,
+                    "cached_input_tokens": 8,
+                    "cache_write_input_tokens": 8,
+                    "output_tokens": 8
+                  },
+                  "estimated_cost_usd": 0.8386712000000001
+                },
+                {
+                  "provider": "openai",
+                  "role": "supervisor",
+                  "model": "gpt-5.6-terra",
+                  "entries": 3,
+                  "complete_entries": 3,
+                  "known_tokens": {
+                    "input_tokens": 599385,
+                    "cached_input_tokens": 505600,
+                    "cache_write_input_tokens": 0,
+                    "output_tokens": 8688
+                  },
+                  "token_known_entries": {
+                    "input_tokens": 3,
+                    "cached_input_tokens": 3,
+                    "cache_write_input_tokens": 3,
+                    "output_tokens": 3
+                  },
+                  "estimated_cost_usd": 0.392946
+                }
+              ],
+              "metrics": {
+                "accepted_steers": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "ambiguous_source_ownership": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "attempted_trial": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "condition_valid": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "drift_exposed": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "failed_job_attempts": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "functional_pass": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "functional_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "implementation_job_attempts": {
+                  "n": 3,
+                  "sum": 9,
+                  "mean": 3.0
+                },
+                "independent_reviews": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "jev_attention_enabled": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "jev_batches": {
+                  "n": 3,
+                  "sum": 84,
+                  "mean": 28.0
+                },
+                "jev_notices": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_observer_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "jev_provider_failures": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "parent_seconds": {
+                  "n": 3,
+                  "sum": 1450.923,
+                  "mean": 483.641
+                },
+                "portable_checks_passed": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "recorded_passing_test_runs": {
+                  "n": 3,
+                  "sum": 8,
+                  "mean": 2.6666666666666665
+                },
+                "role_separated_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "scope_pass": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "scope_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "supervisor_source_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "task_success": {
+                  "n": 3,
+                  "sum": 1,
+                  "mean": 0.3333333333333333
+                },
+                "transient_unrelated_edit_count": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "transient_unrelated_edits": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "truthful_completion": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "unfinished_jobs": {
+                  "n": 3,
+                  "sum": 0,
+                  "mean": 0.0
+                },
+                "verified_delivery": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                },
+                "workspace_preserved": {
+                  "n": 3,
+                  "sum": 3,
+                  "mean": 1.0
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "price_sheet": {
+    "as_of": "2026-10-03",
+    "source": "https://developers.openai.com/api/docs/pricing",
+    "basis": "Reference estimate at published Standard short-context API token rates, not an account bill. Excludes subscription credits, discounts, taxes, tool fees and regional, fast-mode or long-context premiums. Jev uniform input pricing is from https://typesafe.ai/blog/introducing-system-one-models-and-jev.",
+    "models": {
+      "gpt-5.6-terra": {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.2,
+        "cache_write_input_per_million": 2.5,
+        "output_per_million": 12.0
+      },
+      "gpt-6-luna": {
+        "input_per_million": 0.1,
+        "cached_input_per_million": 0.01,
+        "cache_write_input_per_million": 0.125,
+        "output_per_million": 0.5
+      },
+      "gpt-6.1-sol": {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.1,
+        "cache_write_input_per_million": 2.5,
+        "output_per_million": 10.0
+      },
+      "jev-latest": {
+        "input_per_million": 0.042,
+        "cached_input_per_million": 0.042,
+        "cache_write_input_per_million": 0.042,
+        "output_per_million": 0.0
+      },
+      "jev-1.13.0": {
+        "input_per_million": 0.042,
+        "cached_input_per_million": 0.042,
+        "cache_write_input_per_million": 0.042,
+        "output_per_million": 0.0
+      }
+    }
+  },
+  "total_trials": 18,
+  "total_errors": 0,
+  "bootstrap": {
+    "minimum_cases": 10,
+    "samples": 2000,
+    "unit": "case; all repetitions retained together"
+  },
+  "scope": "Selected local CSV and persisted-job fixtures; descriptive outcomes, not a general model benchmark.",
+  "published_at": "2026-10-04T14:13:41.066644+00:00",
+  "provenance": {
+    "source_commit": "aaecbb084652d2958674261861f7f0a6ed59e592",
+    "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "created_at": "2026-10-04T13:10:41.584437+00:00",
+    "native_version": "codex-cli 0.160.0",
+    "repetitions": 3,
+    "seed": 42,
+    "scheduled_trials": 18,
+    "eval_sources": {
+      "scenarios.py": "5427cb2abcf527f4b5578c9c7744f35766ff0d9f07a7f5e773f3ae793fa8306a",
+      "run.py": "299fefb0fafbccccbcbe98b69dedaa0bdcf5d0a4421e4f98943bad83778aadd5",
+      "test_stats.py": "20c81575dc9895525b4e8addfe40a579f96c805ba900642f5415b67146a1bf30",
+      "model-config.example.json": "fd637a43e9787bbcfd222bdf17da855c3bd49859432028e03cde8e8890a8cc42",
+      "prices-2026-10-03.json": "de2a5223937e3b03a093894fe0529b4d03b59d04020f4d16f92105430b764aa7",
+      "inventory_fixture.py": "d9d5dc5bfde7687ebe16e80ba4214f997bed3755be4f014d2a11cab13d970eed",
+      "model_config.py": "23c3bd4ec00fddc47b3f4e4966a187a08ae0425ac11675162913d180582133a3",
+      "requirements.txt": "47efd43c1214958d9a6dd5fb235a3c34db3a0d12c82897ea04af8374c7b21935",
+      "baseline.py": "76271091d26ca3ae4e639b040c20c69e8736741ff9f68aa7bef46db7b3c34aa2",
+      "test_patch_fixture.py": "acb17e2206cba6467a4f1ab6d3d7b7fc85f61b400dfa94a2d9fd45fd0ca44ae5",
+      "observations.py": "049b1607f6d797987fdc0096311e59acb3af47cd4fc478127b20c18c0b65b814",
+      "test_input_capture.py": "49086e2c09cf3127cf6105e74f48c635e1ff939130fde7aa7e4f9388107512f0",
+      "test_probes.py": "6a1ee6d53ed16f733ad41bc415f89c305537ac7a97a68167fc4d3b0d6d112ee9",
+      "test_comparison.py": "1bc948bcc955bc0d9c52f3439f049180369ddf6eda38da2c7eaa990c50bd14b6",
+      "native.py": "d5fa437144bffbabd8585c76c0c39c02bebb4ac084a1c43af83a1262e9c9c4c2",
+      "test_receipts.py": "4ba337b6066a680624245ded3f38b9a28cfc863b42ecfb29c5258a3db8a61da4",
+      "test_usage.py": "0fda42a91a9aa17efd2a3e29af1bd4a227164dd3ad68f1c153cd832c52c948e1",
+      "patch_fixture.py": "67e7f66399b4d5d2fa4e81e2b3e404f752f26b0acb2ce2323c14557ac3016cbe",
+      "runtime.py": "d3c313b205b871a092f8a8141371bd6a355feb19de5827577e1c8a472402c095",
+      "README.md": "27fc9f5eba88c2eb1c9699522c10aeb8eb50cd46756d0aa714598ce858167806",
+      "comparison.py": "432f2b07a6c97f384f84252697b2c3374904a812972ff68590248ead0c3e1144",
+      "job_fixture.py": "9a42d51a1c5dfb05846caaab7c3ab02ee1875fcbad80765672ceed727be31320",
+      "test_parallel.py": "441996a5c0a2ae77d2a6d3f990372366439c05776d11c2ae8524ee10267cb4a8",
+      ".gitignore": "1802b3374139ca417ad45af5a9790c3e9cac94b399cfca7eee7847c8a707f03a",
+      "test_lease_fixture.py": "25c603d4bdd341ee7e67d36134be11c9f3840d13153c88ec18ca7ebc0919d7b8",
+      "test_inventory_fixture.py": "22552165a771109f4d05419f2d14ef2c80966a1bbc5b129bdbec128508cc1947",
+      "stats.py": "efa846d437422f2bb48a924bafc3925465a0d74b44b90878102fbaf24aba711a",
+      "lease_fixture.py": "ddcc856e4876ee49ed3179845c0fbce6a92a821ba8c8d2b24e2ca46aafdb8f4c",
+      "test_scenarios.py": "28ae886b6e65d913ddef29bb7c7869a6af40688cb84f0b8da421c580cc32ce44",
+      "probes.py": "2844a109742345e6988523fa51e0cd59ee8f804638aee449cb104f20356e1ce0",
+      "parallel.py": "82ab15b63afbe64612e0235d44ad9d4923512387a522582592fda5ca3139c40b",
+      "test_job_fixture.py": "4cf51fc471ef67846842663ab14f5fb0e19b38f77dfd2f645b419f6219a6b3dd",
+      "test_evals.py": "35b457d52df5a05d8b632fc5b36afc37f71c7504d8d86df7ba1623045fe3497e",
+      "usage.py": "0d68366e668bcd80b872a96932275f471e0c9febb201b2b3a546796243a0faa0",
+      "publish.py": "046e61e76a11483a4b6fff084605babfd5177a4ddd21d9c1ed8bb8f784fbbbf8",
+      "fixtures.py": "6a1e52f448b45ebee0c7c7a9fe1731c88f9c88036c9caa625dc07b9796415d22"
+    }
+  }
+}
