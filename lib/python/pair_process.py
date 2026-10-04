@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 from child_store_lib import _atomic_write
 from scope_watch import watch_child
@@ -33,12 +34,13 @@ def emit(event):
 
 
 class Claude:
-    # Claude replays each input when it takes it into the conversation. Input
-    # taken during a turn joins that turn, so results are not one per input.
+    # Claude replays each input, with its uuid, when it takes it into the
+    # conversation. Input taken during a turn joins that turn, and inputs queued
+    # at a turn start may merge, so results are not one per input.
     def __init__(self, send, resume):
         self.send = send
-        self.sent = 0
-        self.taken = 0
+        self.sent = set()
+        self.taken = set()
         self.turn_open = False
         self.results = 0
         self.busy = {}
@@ -47,21 +49,24 @@ class Claude:
         self.steer(prompt)
 
     def steer(self, text):
-        self.send({'type': 'user', 'message': {'role': 'user', 'content': text}})
-        self.sent += 1
+        identity = str(uuid.uuid4())
+        self.sent.add(identity)
+        self.send({'type': 'user', 'uuid': identity, 'message': {'role': 'user', 'content': text}})
 
     def interrupt(self, text):
         # The interrupted turn ends with an error result; the text starts the next turn.
         if self.turn_open:
-            self.send({'type': 'control_request', 'request_id': 'cerebro-interrupt-' + str(self.sent),
+            self.send({'type': 'control_request', 'request_id': 'cerebro-interrupt-' + str(uuid.uuid4()),
                        'request': {'subtype': 'interrupt'}})
         self.steer(text)
 
     def event(self, event):
         emit(event)
         kind = event.get('type')
-        if kind == 'user' and event.get('isReplay'):
-            self.taken += 1
+        if kind == 'user' and event.get('isReplay') and event.get('uuid') in self.sent:
+            self.taken.add(event['uuid'])
+            self.turn_open = True
+        elif kind == 'assistant':
             self.turn_open = True
         for block in (event.get('message') or {}).get('content', []) or []:
             if not isinstance(block, dict):
@@ -78,7 +83,7 @@ class Claude:
         return self.ended()
 
     def ended(self):
-        return bool(self.results) and self.taken == self.sent and not self.turn_open
+        return bool(self.results) and self.sent <= self.taken and not self.turn_open
 
 
 class Codex:

@@ -112,8 +112,13 @@ cmd_wait() {
   fi
 
   [[ -z "$note$disposition" ]] || args+=(--note "$note" --disposition "$disposition")
-  # A correct decision is delivered to the cited child before it is recorded.
-  if [[ "$disposition" == correct && -n "$note" ]]; then
+  # A correct decision is delivered to the cited child before it is recorded,
+  # so everything the record needs is validated first.
+  if [[ -n "$note$disposition" ]]; then
+    [[ -n "$note" && -n "$disposition" && -n "$job_file" ]] && (( after > 0 )) \
+      || die "wait: a concern decision requires a job ID, --after, --disposition and --note"
+  fi
+  if [[ "$disposition" == correct ]]; then
     local pipe
     pipe="$(jq -r --argjson sequence "$after" \
       '.notices[] | select(.sequence == $sequence) | .notice.steering_pipe // empty' "$updates_path")"

@@ -581,6 +581,20 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn('Fix the failing regression test before continuing', delivered)
         self.assertEqual([item['disposition'] for item in self.decisions()], ['correct'])
 
+    def test_invalid_correct_decision_delivers_nothing(self):
+        fifo = self.session / 'children' / 'execute-invalid.steer.fifo'
+        os.mkfifo(fifo)
+        reader = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
+        self.addCleanup(os.close, reader)
+        job_id = self.concern_job({'steering_pipe': str(fifo)})
+        status = self.session / 'detached-jobs' / (job_id + '.status')
+        for target, after in ((str(status), '1'), (job_id, '0')):
+            with self.subTest(target=target, after=after):
+                failed = self.cli('wait', target, '--after', after, '--disposition', 'correct', '--note', 'Fix it', ok=False)
+                self.assertIn('requires a job ID, --after', failed.stderr)
+        self.assertEqual(os.read(reader, 65536), b'', 'a rejected decision delivered its note')
+        self.assertEqual(self.decisions(), [])
+
     def test_correct_disposition_without_live_child_records_nothing(self):
         for notice in ({'observer_failure': {'error': 'invalid classification'}},
                        {'steering_pipe': str(self.session / 'children' / 'finished.steer.fifo')}):

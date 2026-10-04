@@ -166,7 +166,8 @@ with contextlib.redirect_stdout(io.StringIO()):
     # against Claude Code 2.1.289). Input taken mid-turn joins that turn and
     # shares its single result; input taken after a result starts another turn.
     def taken(text):
-        return {'type': 'user', 'isReplay': True, 'message': {'role': 'user', 'content': text}}
+        frame = next(item for item in reversed(sent) if item.get('type') == 'user' and item['message']['content'] == text)
+        return {**frame, 'isReplay': True}
 
     def result(text):
         return {'type': 'result', 'subtype': 'success', 'result': text}
@@ -186,6 +187,22 @@ with contextlib.redirect_stdout(io.StringIO()):
     assert not adapter.event(result('first result')), 'a result finished the stage before pending input was taken'
     assert not adapter.event(taken('[supervisor] sent as the turn finishes'))
     assert adapter.event(result('steered result'))
+
+    # Inputs queued at a turn start can merge; Claude still replays each uuid.
+    # A replay of input Cerebro did not send is not counted.
+    sent = []
+    adapter = Claude(sent.append, '')
+    adapter.start('initial task')
+    adapter.steer('[supervisor] queued before the first turn')
+    assert len({item['uuid'] for item in sent}) == 2
+    assert not adapter.event({'type': 'user', 'isReplay': True, 'uuid': 'foreign', 'message': {'content': 'x'}})
+    assert not adapter.event(taken('[supervisor] queued before the first turn'))
+    assert not adapter.event(taken('initial task'))
+    assert adapter.event(result('merged result'))
+
+    # A turn Claude starts by itself is open until its result.
+    assert not adapter.event({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': 'more'}]}})
+    assert adapter.event(result('background follow-up'))
 
     # Interrupt (verified against Claude Code 2.1.289): the running turn ends with
     # an error result, then the new input runs as its own turn.
