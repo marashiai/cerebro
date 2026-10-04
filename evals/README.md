@@ -2,22 +2,26 @@
 
 <!-- evals:overview:start -->
 
-[Latest published results](results/2026-10-04-lease-queue-proportion/report.md)
+[Latest published results](results/2026-10-04-hard-proof/report.md)
 
-Configuration `8faa3267495d`: **Bare supervisor model 3/3; Supervisor + implementor + reviewer 2/3; Supervisor + implementor + reviewer + Jev 1/3** shared task outcomes; Bare supervisor model → Supervisor + implementor + reviewer **-33.3 percentage points**. 3 matched groups across 1 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
+Configuration `4457388d6b52`: **Bare implementor 2/6; Bare supervisor model 5/6; Supervisor + implementor + reviewer + Jev 3/6** shared task outcomes; Bare implementor → Bare supervisor model **+50.0 percentage points**. 6 matched groups across 2 distinct cases; 0 incomplete units excluded. Small selected local implementation fixtures; descriptive results.
 
 Models and efforts: implementation `gpt-6-luna` (low); review `gpt-5.6-terra` (medium); supervisor `gpt-5.6-terra` (medium).
 
 | Condition | Passed / trials | Mean seconds | Mean estimated USD |
 | --- | ---: | ---: | ---: |
-| Bare supervisor model | 3/3 | 175.1 | 0.1495 |
-| Supervisor + implementor + reviewer | 2/3 | 215.1 | unknown |
-| Supervisor + implementor + reviewer + Jev | 1/3 | 277.6 | unknown |
+| Bare implementor | 2/6 | 65.3 | 0.0041 |
+| Bare supervisor model | 5/6 | 151.7 | 0.1782 |
+| Supervisor + implementor + reviewer + Jev | 3/6 | 473.6 | unknown |
 
-![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-lease-queue-proportion/cohort-01-bars.svg)
+![Matched task outcomes, time, tokens and estimated price](results/2026-10-04-hard-proof/cohort-01-bars.svg)
 
 <!-- evals:overview:end -->
 
+The [hard-task proof run](results/2026-10-04-hard-proof/interpretation.md) found that
+Cerebro with Jev turned Luna into Terra-quality code (5/6 correct saved code against
+bare Luna's 2/6) but delivered 3/6 at about three times bare Terra's time; review
+loops did not converge, and Jev's six wakes never became steering.
 The [three-repetition supervisor-judgment run](results/2026-10-04-lease-queue-proportion/interpretation.md)
 delivered 3/3 bare, 2/3 without Jev and 1/3 with Jev. Supervisors corrected
 contract-literal findings that bare Terra also leaves, and each correction cycle

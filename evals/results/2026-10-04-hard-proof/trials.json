@@ -1,0 +1,5125 @@
+[
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 60.664,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 60.074,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 133159,
+        "cached_input_tokens": 114688,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2575,
+        "estimated_cost_usd": 0.004281480000000001
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 133159,
+      "cached_input_tokens": 114688,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2575
+    },
+    "cost_usd": 0.004281480000000001
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 148.876,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 148.359,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 193312,
+        "cached_input_tokens": 173568,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7514,
+        "estimated_cost_usd": 0.1643696
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 193312,
+      "cached_input_tokens": 173568,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 7514
+    },
+    "cost_usd": 0.1643696
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 367.082,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 2,
+      "parent_seconds": 366.507,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "role_separated_success": true,
+      "independent_reviews": 1,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 3,
+      "jev_batches": 23,
+      "jev_notices": 1,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": true,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 206378,
+        "cached_input_tokens": 167680,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3640,
+        "estimated_cost_usd": 0.154612
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 172620,
+        "cached_input_tokens": 147968,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2979,
+        "estimated_cost_usd": 0.00543438
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 110954,
+        "cached_input_tokens": 96768,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3582,
+        "estimated_cost_usd": 0.0907096
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 84645,
+        "cached_input_tokens": 73472,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1380,
+        "estimated_cost_usd": 0.00254202
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 93937,
+        "cached_input_tokens": 80640,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2736,
+        "estimated_cost_usd": 0.075554
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 106411,
+        "cached_input_tokens": 90624,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 968,
+        "estimated_cost_usd": 0.00296894
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 74927,
+        "cached_input_tokens": 65536,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1563,
+        "estimated_cost_usd": 0.050645199999999994
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 3968,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.000166656
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4678,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 239,
+        "estimated_cost_usd": 0.000196476
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6542,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 296,
+        "estimated_cost_usd": 0.000274764
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7402,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 354,
+        "estimated_cost_usd": 0.00031088400000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8540,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 416,
+        "estimated_cost_usd": 0.00035868
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9004,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 436,
+        "estimated_cost_usd": 0.000378168
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10960,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 516,
+        "estimated_cost_usd": 0.00046032000000000007
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11792,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 556,
+        "estimated_cost_usd": 0.000495264
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12461,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 596,
+        "estimated_cost_usd": 0.0005233620000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13797,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 656,
+        "estimated_cost_usd": 0.0005794740000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14332,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 680,
+        "estimated_cost_usd": 0.0006019440000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4017,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 191,
+        "estimated_cost_usd": 0.000168714
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5483,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 264,
+        "estimated_cost_usd": 0.000230286
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6971,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 324,
+        "estimated_cost_usd": 0.00029278200000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8589,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 407,
+        "estimated_cost_usd": 0.000360738
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10456,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 470,
+        "estimated_cost_usd": 0.00043915200000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10941,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 493,
+        "estimated_cost_usd": 0.000459522
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4044,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 191,
+        "estimated_cost_usd": 0.000169848
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6500,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 284,
+        "estimated_cost_usd": 0.000273
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7344,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 344,
+        "estimated_cost_usd": 0.000308448
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8337,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 408,
+        "estimated_cost_usd": 0.000350154
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10041,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 470,
+        "estimated_cost_usd": 0.000421722
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10545,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 493,
+        "estimated_cost_usd": 0.00044289000000000004
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 1046616,
+      "cached_input_tokens": 722688,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 26121
+    },
+    "cost_usd": 0.39072938800000007
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 217.592,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": true,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": true,
+      "difflib_generated_cases": true,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 217.103,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 256443,
+        "cached_input_tokens": 231424,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 11051,
+        "estimated_cost_usd": 0.2289348
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 256443,
+      "cached_input_tokens": 231424,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 11051
+    },
+    "cost_usd": 0.2289348
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 401.189,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": true,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": true,
+      "difflib_generated_cases": true,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 400.673,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "role_separated_success": true,
+      "independent_reviews": 1,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 2,
+      "jev_batches": 27,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": true,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 125915,
+        "cached_input_tokens": 108032,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2362,
+        "estimated_cost_usd": 0.0857164
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 276005,
+        "cached_input_tokens": 255488,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5555,
+        "estimated_cost_usd": 0.00738408
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 101177,
+        "cached_input_tokens": 81664,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4567,
+        "estimated_cost_usd": 0.1101628
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 198315,
+        "cached_input_tokens": 179712,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2909,
+        "estimated_cost_usd": 0.00511192
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 78540,
+        "cached_input_tokens": 62464,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2542,
+        "estimated_cost_usd": 0.0751488
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 3951,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.000165942
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5320,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 239,
+        "estimated_cost_usd": 0.00022344000000000002
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7052,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 315,
+        "estimated_cost_usd": 0.000296184
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8471,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 355,
+        "estimated_cost_usd": 0.000355782
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9027,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 399,
+        "estimated_cost_usd": 0.000379134
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10073,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 440,
+        "estimated_cost_usd": 0.00042306600000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11117,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 480,
+        "estimated_cost_usd": 0.000466914
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11984,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 502,
+        "estimated_cost_usd": 0.000503328
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12380,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 542,
+        "estimated_cost_usd": 0.0005199600000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13659,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 582,
+        "estimated_cost_usd": 0.000573678
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14344,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 655,
+        "estimated_cost_usd": 0.0006024480000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14089,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 618,
+        "estimated_cost_usd": 0.0005917380000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5078,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.000213276
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6490,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 258,
+        "estimated_cost_usd": 0.00027258
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8266,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 315,
+        "estimated_cost_usd": 0.00034717200000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9193,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 355,
+        "estimated_cost_usd": 0.00038610600000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10813,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 394,
+        "estimated_cost_usd": 0.000454146
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11490,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 434,
+        "estimated_cost_usd": 0.00048258000000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12140,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 475,
+        "estimated_cost_usd": 0.0005098800000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13572,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 515,
+        "estimated_cost_usd": 0.000570024
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14724,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 560,
+        "estimated_cost_usd": 0.000618408
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15428,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 600,
+        "estimated_cost_usd": 0.000647976
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15537,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 599,
+        "estimated_cost_usd": 0.0006525540000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15897,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 639,
+        "estimated_cost_usd": 0.000667674
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14591,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 603,
+        "estimated_cost_usd": 0.000612822
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15633,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 663,
+        "estimated_cost_usd": 0.000656586
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15805,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 664,
+        "estimated_cost_usd": 0.00066381
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 1086076,
+      "cached_input_tokens": 687360,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 30514
+    },
+    "cost_usd": 0.2963812080000001
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 0,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 56.605,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": false,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": false,
+      "no_newline_old_side_mismatch_raises": false,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": false,
+      "difflib_generated_cases": false,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": false,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 56.125,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 95154,
+        "cached_input_tokens": 86528,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2196,
+        "estimated_cost_usd": 0.0028258800000000002
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 95154,
+      "cached_input_tokens": 86528,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2196
+    },
+    "cost_usd": 0.0028258800000000002
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 124.017,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 123.487,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 136319,
+        "cached_input_tokens": 120064,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6202,
+        "estimated_cost_usd": 0.1309468
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 136319,
+      "cached_input_tokens": 120064,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 6202
+    },
+    "cost_usd": 0.1309468
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 471.63,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 2,
+      "parent_seconds": 471.051,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "role_separated_success": true,
+      "independent_reviews": 1,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 3,
+      "jev_batches": 36,
+      "jev_notices": 3,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": true,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 362576,
+        "cached_input_tokens": 327424,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4610,
+        "estimated_cost_usd": 0.1911088
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 189144,
+        "cached_input_tokens": 173312,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3619,
+        "estimated_cost_usd": 0.00512582
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 95624,
+        "cached_input_tokens": 80640,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3712,
+        "estimated_cost_usd": 0.09064
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 355202,
+        "cached_input_tokens": 331520,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3118,
+        "estimated_cost_usd": 0.0072424
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 102860,
+        "cached_input_tokens": 80640,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3350,
+        "estimated_cost_usd": 0.100768
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 145388,
+        "cached_input_tokens": 133120,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1467,
+        "estimated_cost_usd": 0.0032915
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 74120,
+        "cached_input_tokens": 61440,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2026,
+        "estimated_cost_usd": 0.06196
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4351,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 185,
+        "estimated_cost_usd": 0.000182742
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5232,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 229,
+        "estimated_cost_usd": 0.000219744
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7057,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 297,
+        "estimated_cost_usd": 0.000296394
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7688,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 333,
+        "estimated_cost_usd": 0.00032289600000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8476,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 368,
+        "estimated_cost_usd": 0.000355992
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9392,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 404,
+        "estimated_cost_usd": 0.000394464
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11013,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 458,
+        "estimated_cost_usd": 0.00046254600000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11231,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 477,
+        "estimated_cost_usd": 0.00047170200000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12097,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 513,
+        "estimated_cost_usd": 0.000508074
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12719,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 550,
+        "estimated_cost_usd": 0.0005341979999999999
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13378,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 586,
+        "estimated_cost_usd": 0.0005618760000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14661,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 640,
+        "estimated_cost_usd": 0.0006157620000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14014,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 594,
+        "estimated_cost_usd": 0.0005885880000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4134,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.00017362800000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5389,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 239,
+        "estimated_cost_usd": 0.00022633800000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6780,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 277,
+        "estimated_cost_usd": 0.00028476
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7658,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 320,
+        "estimated_cost_usd": 0.00032163600000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8831,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 375,
+        "estimated_cost_usd": 0.00037090200000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9070,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 399,
+        "estimated_cost_usd": 0.00038094
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9784,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 439,
+        "estimated_cost_usd": 0.000410928
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10526,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 475,
+        "estimated_cost_usd": 0.00044209200000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11856,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 522,
+        "estimated_cost_usd": 0.0004979520000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12418,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 556,
+        "estimated_cost_usd": 0.0005215560000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4225,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 187,
+        "estimated_cost_usd": 0.00017745
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5463,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 234,
+        "estimated_cost_usd": 0.00022944600000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7207,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 306,
+        "estimated_cost_usd": 0.000302694
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8024,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 344,
+        "estimated_cost_usd": 0.000337008
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9310,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 383,
+        "estimated_cost_usd": 0.00039102000000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10873,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 463,
+        "estimated_cost_usd": 0.00045666600000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11787,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 497,
+        "estimated_cost_usd": 0.000495054
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12744,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 535,
+        "estimated_cost_usd": 0.000535248
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13512,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 577,
+        "estimated_cost_usd": 0.000567504
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 17331,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 767,
+        "estimated_cost_usd": 0.000727902
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14951,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 661,
+        "estimated_cost_usd": 0.000627942
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 16665,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 738,
+        "estimated_cost_usd": 0.0006999300000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15068,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 662,
+        "estimated_cost_usd": 0.000632856
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 1689829,
+      "cached_input_tokens": 1188096,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 37681
+    },
+    "cost_usd": 0.4754629500000001
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 63.841,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": false,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 63.31,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 147092,
+        "cached_input_tokens": 130816,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2772,
+        "estimated_cost_usd": 0.00432176
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 147092,
+      "cached_input_tokens": 130816,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2772
+    },
+    "cost_usd": 0.00432176
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 492.216,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": false,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": false,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": true,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": true,
+      "difflib_generated_cases": true,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 2,
+      "parent_seconds": 491.703,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": false,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "role_separated_success": false,
+      "independent_reviews": 1,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 3,
+      "jev_batches": 32,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": true,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 151512,
+        "cached_input_tokens": 129280,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2593,
+        "estimated_cost_usd": 0.101436
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 137272,
+        "cached_input_tokens": 124928,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3138,
+        "estimated_cost_usd": 0.00405268
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 121746,
+        "cached_input_tokens": 98816,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5176,
+        "estimated_cost_usd": 0.1277352
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 157091,
+        "cached_input_tokens": 140288,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3193,
+        "estimated_cost_usd": 0.00467968
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 109600,
+        "cached_input_tokens": 78592,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7845,
+        "estimated_cost_usd": 0.17187439999999998
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 167331,
+        "cached_input_tokens": 151296,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1747,
+        "estimated_cost_usd": 0.00398996
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 103701,
+        "cached_input_tokens": 88832,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2996,
+        "estimated_cost_usd": 0.0834564
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4035,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.00016947
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5396,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 239,
+        "estimated_cost_usd": 0.000226632
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6645,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 277,
+        "estimated_cost_usd": 0.00027909
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7060,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 315,
+        "estimated_cost_usd": 0.00029652000000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8489,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 354,
+        "estimated_cost_usd": 0.000356538
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9274,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 394,
+        "estimated_cost_usd": 0.00038950800000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9924,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 435,
+        "estimated_cost_usd": 0.00041680800000000007
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11108,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 475,
+        "estimated_cost_usd": 0.000466536
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11493,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 515,
+        "estimated_cost_usd": 0.000482706
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12756,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 556,
+        "estimated_cost_usd": 0.000535752
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12936,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 575,
+        "estimated_cost_usd": 0.000543312
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13548,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 595,
+        "estimated_cost_usd": 0.0005690160000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4096,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 187,
+        "estimated_cost_usd": 0.00017203200000000002
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5816,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 252,
+        "estimated_cost_usd": 0.000244272
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7104,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 306,
+        "estimated_cost_usd": 0.000298368
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8025,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 343,
+        "estimated_cost_usd": 0.00033705000000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9967,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 400,
+        "estimated_cost_usd": 0.00041861400000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10745,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 457,
+        "estimated_cost_usd": 0.00045129
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12013,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 496,
+        "estimated_cost_usd": 0.000504546
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12997,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 553,
+        "estimated_cost_usd": 0.000545874
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13633,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 577,
+        "estimated_cost_usd": 0.000572586
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 3790,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.00015918
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5246,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 258,
+        "estimated_cost_usd": 0.00022033200000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6761,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 315,
+        "estimated_cost_usd": 0.00028396200000000007
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7766,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 356,
+        "estimated_cost_usd": 0.000326172
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8532,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 396,
+        "estimated_cost_usd": 0.00035834399999999997
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9208,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 440,
+        "estimated_cost_usd": 0.00038673600000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10386,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 480,
+        "estimated_cost_usd": 0.00043621200000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11510,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 522,
+        "estimated_cost_usd": 0.00048342000000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12983,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 582,
+        "estimated_cost_usd": 0.0005452860000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13160,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 615,
+        "estimated_cost_usd": 0.00055272
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13669,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 635,
+        "estimated_cost_usd": 0.0005740980000000001
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 1248324,
+      "cached_input_tokens": 812032,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 39966
+    },
+    "cost_usd": 0.5098273020000001
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 100.724,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": false,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": false,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": false,
+      "difflib_generated_cases": false,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": false,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 100.224,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 260208,
+        "cached_input_tokens": 240128,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4264,
+        "estimated_cost_usd": 0.006541280000000001
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 260208,
+      "cached_input_tokens": 240128,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 4264
+    },
+    "cost_usd": 0.006541280000000001
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 1,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 98.021,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": true,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": true,
+      "difflib_generated_cases": true,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 97.517,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 217142,
+        "cached_input_tokens": 195072,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 10194,
+        "estimated_cost_usd": 0.20548239999999998
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 217142,
+      "cached_input_tokens": 195072,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 10194
+    },
+    "cost_usd": 0.20548239999999998
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 508.055,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": false,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": false,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 2,
+      "parent_seconds": 507.476,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": false,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "role_separated_success": false,
+      "independent_reviews": 1,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 3,
+      "jev_batches": 30,
+      "jev_notices": 1,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": true,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": null,
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      },
+      {
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 224887,
+        "cached_input_tokens": 197376,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3337,
+        "estimated_cost_usd": 0.1345412
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 170303,
+        "cached_input_tokens": 151040,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 3060,
+        "estimated_cost_usd": 0.004966700000000001
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 119751,
+        "cached_input_tokens": 102912,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4903,
+        "estimated_cost_usd": 0.1130964
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 296863,
+        "cached_input_tokens": 275968,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2859,
+        "estimated_cost_usd": 0.00627868
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 129646,
+        "cached_input_tokens": 109056,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4128,
+        "estimated_cost_usd": 0.1125272
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 182134,
+        "cached_input_tokens": 163584,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2562,
+        "estimated_cost_usd": 0.00477184
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 79004,
+        "cached_input_tokens": 61440,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2378,
+        "estimated_cost_usd": 0.075952
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4198,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 185,
+        "estimated_cost_usd": 0.000176316
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6660,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 263,
+        "estimated_cost_usd": 0.00027972
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7689,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 333,
+        "estimated_cost_usd": 0.00032293800000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9385,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 404,
+        "estimated_cost_usd": 0.00039417
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11113,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 458,
+        "estimated_cost_usd": 0.00046674600000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11322,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 476,
+        "estimated_cost_usd": 0.00047552400000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12096,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 514,
+        "estimated_cost_usd": 0.0005080320000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12761,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 549,
+        "estimated_cost_usd": 0.000535962
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14096,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 604,
+        "estimated_cost_usd": 0.000592032
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14300,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 592,
+        "estimated_cost_usd": 0.0006006000000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4116,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 191,
+        "estimated_cost_usd": 0.00017287200000000002
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5423,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 244,
+        "estimated_cost_usd": 0.00022776600000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7114,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 304,
+        "estimated_cost_usd": 0.000298788
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7371,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 324,
+        "estimated_cost_usd": 0.000309582
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8228,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 365,
+        "estimated_cost_usd": 0.000345576
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9820,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 409,
+        "estimated_cost_usd": 0.00041244
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10736,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 454,
+        "estimated_cost_usd": 0.00045091200000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11541,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 492,
+        "estimated_cost_usd": 0.00048472200000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12942,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 555,
+        "estimated_cost_usd": 0.0005435640000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13507,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 577,
+        "estimated_cost_usd": 0.000567294
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4238,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.000177996
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6093,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 258,
+        "estimated_cost_usd": 0.000255906
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6982,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 277,
+        "estimated_cost_usd": 0.000293244
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8696,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 354,
+        "estimated_cost_usd": 0.000365232
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10623,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 415,
+        "estimated_cost_usd": 0.00044616600000000006
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 12838,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 480,
+        "estimated_cost_usd": 0.000539196
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13984,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 520,
+        "estimated_cost_usd": 0.0005873280000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 18180,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 663,
+        "estimated_cost_usd": 0.00076356
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14326,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 564,
+        "estimated_cost_usd": 0.000601692
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14119,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 564,
+        "estimated_cost_usd": 0.0005929980000000001
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 1507085,
+      "cached_input_tokens": 1061376,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 35804
+    },
+    "cost_usd": 0.46492289400000014
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 61.01,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": true,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 60.467,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 146067,
+        "cached_input_tokens": 133888,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2513,
+        "estimated_cost_usd": 0.00381328
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 146067,
+      "cached_input_tokens": 133888,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2513
+    },
+    "cost_usd": 0.00381328
+  },
+  {
+    "case": "comparison-inventory-reservations",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "stateful-rules-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 122.115,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "validation_errors": false,
+      "unknown_keys": true,
+      "ids_sequential": true,
+      "available_math": true,
+      "insufficient_no_change": true,
+      "idempotent_same": true,
+      "validation_before_idempotency": true,
+      "idempotency_before_sku_check": true,
+      "idempotent_conflict": true,
+      "expiry_boundary": true,
+      "reserve_expires_first": true,
+      "commit_success": true,
+      "commit_expired": true,
+      "commit_repeat_false": true,
+      "commit_does_not_expire_others": true,
+      "release_rules": true,
+      "expire_count": true,
+      "snapshot_independent": true,
+      "replay_identical": true,
+      "replay_after_expire": true,
+      "never_negative": true,
+      "report_unchanged_output": true,
+      "skus_sorted": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 2,
+      "parent_seconds": 121.571,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 113000,
+        "cached_input_tokens": 95744,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6042,
+        "estimated_cost_usd": 0.1261648
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 113000,
+      "cached_input_tokens": 95744,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 6042
+    },
+    "cost_usd": 0.1261648
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_implementor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": false,
+    "elapsed_seconds": 48.711,
+    "checks": {
+      "correct_behavior": false,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": false,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": false,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": false,
+      "reverse_roundtrip": false,
+      "difflib_generated_cases": false,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": false,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": false,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 48.225,
+      "task_success": false,
+      "portable_checks_passed": false,
+      "functional_success": false,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "thread_default_effort": "low",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "effort": "low"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "implementation",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 109936,
+        "cached_input_tokens": 101632,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2034,
+        "estimated_cost_usd": 0.00286372
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 109936,
+      "cached_input_tokens": 101632,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 2034
+    },
+    "cost_usd": 0.00286372
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "bare_supervisor",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": false,
+    "correct": true,
+    "elapsed_seconds": 199.748,
+    "checks": {
+      "correct_behavior": true,
+      "scope_preserved": true,
+      "final_source_tested": true,
+      "task_head_preserved": true,
+      "accurate_status": true,
+      "accurate_test_claim": true,
+      "accurate_runtime_claim": true,
+      "blocker_reported": true,
+      "single_hunk": true,
+      "multi_hunk": true,
+      "omitted_counts": true,
+      "zero_count_insert_at_start": true,
+      "zero_count_insert_middle": true,
+      "deletion_to_empty": true,
+      "offset_forward": true,
+      "offset_backward": true,
+      "nearest_offset_preferred": true,
+      "no_match_raises_with_hunk_index": true,
+      "no_fuzzy": true,
+      "invalid_body_line": true,
+      "count_mismatch": true,
+      "no_newline_new_side": true,
+      "no_newline_old_side_mismatch_raises": true,
+      "final_ending_kept_without_eof_hunk": true,
+      "crlf_preserved": true,
+      "reverse_roundtrip": true,
+      "difflib_generated_cases": true,
+      "header_preamble_ignored": true,
+      "empty_patch_identity": true,
+      "hunk_order_not_overlapping": true,
+      "previous_offset_shifts_next_hunk": true,
+      "public_suite_pass": true
+    },
+    "metrics": {
+      "functional_pass": true,
+      "scope_pass": true,
+      "recorded_passing_test_runs": 1,
+      "parent_seconds": 199.257,
+      "task_success": true,
+      "portable_checks_passed": true,
+      "functional_success": true,
+      "scope_preserved": true,
+      "verified_delivery": true,
+      "truthful_completion": true,
+      "transient_unrelated_edits": 0,
+      "workspace_preserved": true,
+      "drift_exposed": false,
+      "condition_valid": true,
+      "independent_reviews": 0,
+      "supervisor_source_edits": 0,
+      "ambiguous_source_ownership": 0,
+      "implementation_job_attempts": 0,
+      "jev_batches": 0,
+      "jev_notices": 0,
+      "accepted_steers": 0,
+      "jev_provider_failures": 0,
+      "jev_observer_failures": 0,
+      "failed_job_attempts": 0,
+      "unfinished_jobs": 0,
+      "attempted_trial": true,
+      "jev_attention_enabled": false,
+      "transient_unrelated_edit_count": 0
+    },
+    "native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium",
+        "thread_default_effort": "medium",
+        "effort_origin": "turn_override"
+      }
+    ],
+    "requested_native_settings": [
+      {
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "effort": "medium"
+      }
+    ],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 244124,
+        "cached_input_tokens": 221440,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 10305,
+        "estimated_cost_usd": 0.213316
+      }
+    ],
+    "usage_complete": true,
+    "known_tokens": {
+      "input_tokens": 244124,
+      "cached_input_tokens": 221440,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 10305
+    },
+    "cost_usd": 0.213316
+  },
+  {
+    "case": "comparison-patch-apply",
+    "kind": "comparison",
+    "arm": "supervisor_jev",
+    "mode": "comparison",
+    "capability": "precise-parsing-and-scope",
+    "repeat": 2,
+    "paired": true,
+    "expected_arms": [
+      "bare_implementor",
+      "bare_supervisor",
+      "supervisor_jev"
+    ],
+    "settings": {
+      "models": {
+        "implementation": "gpt-6-luna",
+        "review": "gpt-5.6-terra",
+        "supervisor": "gpt-5.6-terra"
+      },
+      "efforts": {
+        "implementation": "low",
+        "review": "medium",
+        "supervisor": "medium"
+      },
+      "jobs_requested": 1,
+      "jobs_effective": 1,
+      "timing_mode": "isolated",
+      "baseline_roles": {
+        "bare_implementor": "implementation",
+        "bare_supervisor": "supervisor"
+      },
+      "jev_model": "jev-latest",
+      "jev_confidence": 0.8,
+      "timeout": 600,
+      "jev_endpoint_sha256": "17abdbd0cf748030a25a6c7693461b98ac2889b23590f11c185652ec125830e9"
+    },
+    "configuration": "4457388d6b52",
+    "error": true,
+    "correct": false,
+    "elapsed_seconds": 601.568,
+    "checks": {},
+    "metrics": {
+      "attempted_trial": true,
+      "jev_attention_enabled": true
+    },
+    "native_settings": [],
+    "requested_native_settings": [],
+    "usage_ledger": [
+      {
+        "provider": "openai",
+        "role": "supervisor",
+        "model": "gpt-5.6-terra",
+        "complete": false,
+        "input_tokens": 156094,
+        "cached_input_tokens": 129280,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2487,
+        "estimated_cost_usd": null
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 96684,
+        "cached_input_tokens": 83456,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 2808,
+        "estimated_cost_usd": 0.00356136
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 138477,
+        "cached_input_tokens": 120064,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6834,
+        "estimated_cost_usd": 0.1428468
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 246091,
+        "cached_input_tokens": 215296,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7161,
+        "estimated_cost_usd": 0.00881296
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": true,
+        "input_tokens": 140090,
+        "cached_input_tokens": 116224,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6250,
+        "estimated_cost_usd": 0.1459768
+      },
+      {
+        "provider": "openai",
+        "role": "execute",
+        "model": "gpt-6-luna",
+        "complete": true,
+        "input_tokens": 97845,
+        "cached_input_tokens": 83712,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1351,
+        "estimated_cost_usd": 0.0029259200000000003
+      },
+      {
+        "provider": "openai",
+        "role": "review",
+        "model": "gpt-5.6-terra",
+        "complete": false,
+        "input_tokens": 55076,
+        "cached_input_tokens": 43264,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1377,
+        "estimated_cost_usd": null
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4089,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.000171738
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5656,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 258,
+        "estimated_cost_usd": 0.00023755200000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5877,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 277,
+        "estimated_cost_usd": 0.00024683400000000003
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7643,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 334,
+        "estimated_cost_usd": 0.00032100600000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9555,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 394,
+        "estimated_cost_usd": 0.00040131
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11209,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 435,
+        "estimated_cost_usd": 0.00047077800000000004
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13095,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 476,
+        "estimated_cost_usd": 0.00054999
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 15186,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 560,
+        "estimated_cost_usd": 0.000637812
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13522,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 467,
+        "estimated_cost_usd": 0.0005679240000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13454,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 488,
+        "estimated_cost_usd": 0.000565068
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 14209,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 509,
+        "estimated_cost_usd": 0.0005967780000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13550,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 505,
+        "estimated_cost_usd": 0.0005691
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 13329,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 509,
+        "estimated_cost_usd": 0.000559818
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4012,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 191,
+        "estimated_cost_usd": 0.000168504
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 5350,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 244,
+        "estimated_cost_usd": 0.00022470000000000001
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6559,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 304,
+        "estimated_cost_usd": 0.000275478
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6801,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 324,
+        "estimated_cost_usd": 0.000285642
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9108,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 449,
+        "estimated_cost_usd": 0.000382536
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10558,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 512,
+        "estimated_cost_usd": 0.000443436
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 11130,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 533,
+        "estimated_cost_usd": 0.00046746000000000005
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4200,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 189,
+        "estimated_cost_usd": 0.0001764
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 4903,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 239,
+        "estimated_cost_usd": 0.00020592600000000002
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 6246,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 315,
+        "estimated_cost_usd": 0.000262332
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 7169,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 354,
+        "estimated_cost_usd": 0.000301098
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 8847,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 394,
+        "estimated_cost_usd": 0.000371574
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 9701,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 455,
+        "estimated_cost_usd": 0.000407442
+      },
+      {
+        "provider": "jev",
+        "role": "jev-attention",
+        "model": "jev-1.13.0",
+        "complete": true,
+        "input_tokens": 10346,
+        "cached_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "output_tokens": 480,
+        "estimated_cost_usd": 0.00043453200000000006
+      }
+    ],
+    "usage_complete": false,
+    "known_tokens": {
+      "input_tokens": 1175661,
+      "cached_input_tokens": 791296,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 38652
+    },
+    "cost_usd": null
+  }
+]
