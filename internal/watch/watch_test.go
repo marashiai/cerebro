@@ -53,19 +53,29 @@ func (f *fakeJev) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if cite != "" && body.Questions["evidence"].Criteria[cite] != "" {
 		cited = cite
 	}
-	answer := func(question jev.Question, choice string, confidence float64) jev.Answer {
+	answers := map[string]jev.Answer{}
+	for name, question := range body.Questions {
+		choice, yes := "no", 0.0
+		if name == "evidence" {
+			choice = cited
+		} else if attention == "concern" && name == reason {
+			yes = conf
+			if conf >= 0.5 {
+				choice = "yes"
+			}
+		}
 		probabilities := map[string]float64{}
 		for criterion := range question.Criteria {
 			probabilities[criterion] = 0
 		}
-		probabilities[choice] = 1
-		return jev.Answer{Choice: choice, Confidence: confidence, Probabilities: probabilities}
+		if name == "evidence" {
+			probabilities[choice] = 1
+		} else {
+			probabilities["yes"], probabilities["no"] = yes, 1-yes
+		}
+		answers[name] = jev.Answer{Choice: choice, Confidence: max(yes, 1-yes), Probabilities: probabilities}
 	}
-	json.NewEncoder(w).Encode(jev.Response{Model: "fake", Answers: map[string]jev.Answer{
-		"attention": answer(body.Questions["attention"], attention, conf),
-		"reason":    answer(body.Questions["reason"], reason, conf),
-		"evidence":  answer(body.Questions["evidence"], cited, conf),
-	}})
+	json.NewEncoder(w).Encode(jev.Response{Model: "fake", Answers: answers})
 }
 
 type harness struct {

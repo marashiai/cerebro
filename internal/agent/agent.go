@@ -23,6 +23,7 @@ type Event struct {
 	Output  string   `json:"output,omitempty"`
 	Exit    *int     `json:"exit,omitempty"`
 	Files   []string `json:"files,omitempty"`
+	At      float64  `json:"at,omitempty"` // seconds since the request, when replayed from a record
 }
 
 // Options select the native backend and its model settings.

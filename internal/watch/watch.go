@@ -34,6 +34,18 @@ type Activity struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
 	Text string `json:"text"`
+	At   int    `json:"at_seconds"`
+}
+
+// checks is the embedded question file: a shared preamble and one yes/no
+// question per kind of deviation, keyed like the nudge templates.
+type checks struct {
+	Preamble string `json:"preamble"`
+	Checks   map[string]struct {
+		Question string `json:"question"`
+		Yes      string `json:"yes"`
+		No       string `json:"no"`
+	} `json:"checks"`
 }
 
 // Nudge is a predefined message for the agent.
@@ -81,15 +93,21 @@ type Watcher struct {
 func New(cfg Config) (*Watcher, error) {
 	w := &Watcher{cfg: cfg, Nudges: make(chan Nudge, 4), files: map[string]string{}, nudgedAt: map[string]int{}, escalated: map[string]bool{},
 		wake: make(chan struct{}, 1), userInputs: []string{cfg.Request}, started: time.Now()}
-	if err := json.Unmarshal(questionsJSON, &w.questions); err != nil {
+	var file checks
+	if err := json.Unmarshal(questionsJSON, &file); err != nil {
 		return nil, fmt.Errorf("questions.json: %w", err)
+	}
+	w.questions = map[string]jev.Question{}
+	for name, check := range file.Checks {
+		w.questions[name] = jev.Question{Type: "choice", Instructions: file.Preamble + "\n\nQuestion: " + check.Question,
+			Criteria: map[string]string{"yes": check.Yes, "no": check.No}}
 	}
 	if err := json.Unmarshal(nudgesJSON, &w.templates); err != nil {
 		return nil, fmt.Errorf("nudges.json: %w", err)
 	}
-	for reason := range w.questions["reason"].Criteria {
-		if _, ok := w.templates[reason]; !ok && reason != "none" {
-			return nil, fmt.Errorf("no nudge template for reason %q", reason)
+	for name := range w.questions {
+		if _, ok := w.templates[name]; !ok {
+			return nil, fmt.Errorf("no nudge template for check %q", name)
 		}
 	}
 	return w, nil
@@ -116,7 +134,11 @@ func (w *Watcher) Observe(events []agent.Event) {
 			}
 			w.commands = append(w.commands, command)
 		}
-		w.pending = append(w.pending, Activity{ID: id, Kind: event.Kind, Text: clip(text, activityLimit)})
+		at := int(event.At)
+		if event.At == 0 {
+			at = int(time.Since(w.started).Seconds())
+		}
+		w.pending = append(w.pending, Activity{ID: id, Kind: event.Kind, Text: clip(text, activityLimit), At: at})
 		if event.Kind == "turn_end" || event.Kind == "final" {
 			w.flush = true
 		}
@@ -151,6 +173,41 @@ func (w *Watcher) signal() {
 	case w.wake <- struct{}{}:
 	default:
 	}
+}
+
+// Replay classifies one recorded moment exactly as the live watcher would: the
+// earlier events become history and the last batch is judged. It returns the
+// logged record and any nudge.
+func (w *Watcher) Replay(ctx context.Context, later []string, history, turn []agent.Event) (map[string]any, *Nudge, error) {
+	for _, text := range later {
+		w.UserInput(text)
+	}
+	if len(turn) > batchSize {
+		history, turn = append(append([]agent.Event(nil), history...), turn[:len(turn)-batchSize]...), turn[len(turn)-batchSize:]
+	}
+	w.Observe(history)
+	w.mu.Lock()
+	for _, event := range w.pending {
+		event.Text = clip(event.Text, historyText)
+		w.history = append(w.history, event)
+	}
+	if len(w.history) > historyLimit {
+		w.history = w.history[len(w.history)-historyLimit:]
+	}
+	w.pending = nil
+	w.mu.Unlock()
+	w.Observe(turn)
+	w.mu.Lock()
+	events := w.pending
+	w.pending = nil
+	state := w.state(events)
+	w.mu.Unlock()
+	var record map[string]any
+	logged := w.cfg.Log
+	w.cfg.Log = func(r map[string]any) { record = r }
+	defer func() { w.cfg.Log = logged }()
+	nudge, err := w.classify(ctx, state, events)
+	return record, nudge, err
 }
 
 // Run classifies batches until ctx ends. Jev failures stop observation but
@@ -212,6 +269,11 @@ func (w *Watcher) state(events []Activity) map[string]any {
 	for file, id := range w.files {
 		files[file] = id
 	}
+	// Replayed records carry their own clock; live runs use the watcher's.
+	elapsed := int(time.Since(w.started).Seconds())
+	for _, event := range append(append([]Activity(nil), w.history...), events...) {
+		elapsed = max(elapsed, event.At)
+	}
 	state := map[string]any{
 		"user_request":        w.userInputs[0],
 		"later_user_messages": w.userInputs[1:],
@@ -220,7 +282,7 @@ func (w *Watcher) state(events []Activity) map[string]any {
 		"progress": map[string]any{
 			"files_changed":   files,
 			"commands":        commands,
-			"elapsed_seconds": int(time.Since(w.started).Seconds()),
+			"elapsed_seconds": elapsed,
 		},
 		"nudges_already_sent": append([]Nudge(nil), w.nudges...),
 		"recent_history":      append([]Activity(nil), w.history...),
@@ -256,8 +318,8 @@ func (w *Watcher) classify(ctx context.Context, state map[string]any, events []A
 	for name, question := range w.questions {
 		questions[name] = question
 	}
-	evidence := jev.Question{Type: "choice", Instructions: "Select the event that best shows the concern, or none.",
-		Criteria: map[string]string{"none": "No event shows a concern"}}
+	evidence := jev.Question{Type: "choice", Instructions: "Select the event that most concretely shows a deviation " +
+		"asked about in the other questions, or none if no event does.", Criteria: map[string]string{"none": "No event shows a deviation"}}
 	visible := append(append([]Activity(nil), state["recent_history"].([]Activity)...), events...)
 	for _, event := range visible {
 		if event.Kind != "turn_end" { // a turn boundary is context, not evidence
@@ -268,20 +330,29 @@ func (w *Watcher) classify(ctx context.Context, state map[string]any, events []A
 	call, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	response, raw, err := w.cfg.Client.Evaluate(call, state, questions)
-	record := map[string]any{"type": "jev", "events": events, "raw": json.RawMessage(nonEmpty(raw))}
+	// The full context is logged so every decision can be audited.
+	record := map[string]any{"type": "jev", "events": events, "state": state, "raw": json.RawMessage(nonEmpty(raw))}
 	if err != nil {
 		record["error"] = err.Error()
 		w.cfg.Log(record)
 		return nil, err
 	}
-	attention, reason, cited := response.Answers["attention"], response.Answers["reason"], response.Answers["evidence"]
-	record["classification"] = map[string]any{"attention": attention.Choice, "confidence": attention.Confidence,
-		"reason": reason.Choice, "evidence": cited.Choice}
+	// Each check's score is Jev's probability of "yes"; the strongest check decides.
+	cited := response.Answers["evidence"]
+	scores := map[string]float64{}
+	best := ""
+	for name := range w.questions {
+		scores[name] = response.Answers[name].Probabilities["yes"]
+		if best == "" || scores[name] > scores[best] || scores[name] == scores[best] && name < best {
+			best = name
+		}
+	}
+	record["classification"] = map[string]any{"scores": scores, "best": best, "evidence": cited.Choice}
 	defer w.cfg.Log(record)
-	if attention.Choice != "concern" || attention.Confidence < w.cfg.Threshold || reason.Confidence < w.cfg.Threshold ||
-		reason.Choice == "none" || cited.Choice == "none" {
+	if scores[best] < w.cfg.Threshold || cited.Choice == "none" {
 		return nil, nil
 	}
+	reason := best
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.nudges) >= w.cfg.MaxNudges {
@@ -297,15 +368,15 @@ func (w *Watcher) classify(ctx context.Context, state map[string]any, events []A
 	// The first nudge for a concern steers. The same concern interrupts once,
 	// and only when it cites an event newer than that nudge, so work the agent
 	// did before reading the nudge, or explained after it, cannot escalate.
-	previous, nudged := w.nudgedAt[reason.Choice]
-	if nudged && (w.escalated[reason.Choice] || sequenceOf(event.ID) <= previous) {
+	previous, nudged := w.nudgedAt[reason]
+	if nudged && (w.escalated[reason] || sequenceOf(event.ID) <= previous) {
 		record["suppressed"] = "already nudged"
 		return nil, nil
 	}
-	nudge := Nudge{Reason: reason.Choice, Evidence: event.Text, Interrupt: nudged,
-		Text: render(w.templates[reason.Choice], event.Text, w.userInputs)}
-	w.nudgedAt[reason.Choice] = w.sequence
-	w.escalated[reason.Choice] = nudged
+	nudge := Nudge{Reason: reason, Evidence: event.Text, Interrupt: nudged,
+		Text: render(w.templates[reason], event.Text, w.userInputs)}
+	w.nudgedAt[reason] = w.sequence
+	w.escalated[reason] = nudged
 	w.nudges = append(w.nudges, nudge)
 	record["nudge"] = nudge
 	return &nudge, nil
