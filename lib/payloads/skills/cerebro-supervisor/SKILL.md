@@ -41,8 +41,15 @@ Acknowledge with ["wait", job_id, "--after", sequence, "--disposition", disposit
 implementor. Waiting blocks on events; do not poll status or logs.
 
 Adjudicate the implementation evidence, original independent findings, and Jev
-assessment against the user's goal and acceptance criteria. Address real findings
-with a focused correction packet; keep original acceptance where still relevant.
+assessment against the user's goal and acceptance criteria. The reviewer reports
+what it finds; you decide what merits correction. For each finding, judge from
+its evidence how likely and how harmful the failure is for what the user asked.
+Check a disputed claim yourself when that is quicker than delegating it. A
+correction costs another implementation and independent review, and can introduce
+new defects, so start one only when the accepted findings justify that cost.
+Record the rest as accepted limitations with your reason. A correction packet
+names only the accepted findings and restates the user's scope limits; keep
+original acceptance where still relevant.
 Finish only when the evidence supports the goal, stating remaining limitations.
 If a task response includes `pending_user_input_ids`, those captured inputs arrived
 after the current child-stage snapshot. Decide whether they change the requested
